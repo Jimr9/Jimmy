@@ -1,0 +1,47 @@
+# C# / Visual Studio build outputs
+bin/
+obj/
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.pdb
+packages/
+
+# MSI build outputs
+*.msi
+
+# VS installer build logs and outputs
+Setup1/Debug/
+Setup1/Release/
+Setup1/build_log*.txt
+
+# WiX build outputs and tool cache
+Setup_WiX/.wix/
+Setup_WiX/Release/
+
+# Visual Studio upgrade logs
+UpgradeLog*.htm
+
+# Jimmy development backup files
+*.bak
+*.bak2
+*.bak3
+*.bak-*
+Backups/
+backup_*/
+
+# Generated / temp files
+gen_grid_state_output.txt
+gen_grid_state.py
+make_icon.py
+jimmy_icon_preview.png
+netfol_48x48.png
+dl.JPG
+
+# Internal design / planning docs
+text files/
+
+# User-specific editor settings
+.vscode/

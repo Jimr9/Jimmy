@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Jimmy installer - WiX 4 source
+  Product  : Jimmy (WSJT-X Controller)
+  Version  : 1.60.0
+  Mfr      : KB0UZT
+  Install  : C:\Program Files\KB0UZT\Jimmy\
+  Shortcuts: Desktop + Start Menu (optional checkboxes, both on by default)
+  Sounds   : installed to Resources\ subfolder
+  UpgradeCode retained from original vdproj
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package
+    Name="Jimmy"
+    Version="1.60.0"
+    Manufacturer="KB0UZT"
+    Language="1033"
+    Codepage="1252"
+    UpgradeCode="{D5415907-DD93-4188-85A8-F15A73F949C2}"
+    InstallerVersion="500"
+    Compressed="yes">
+
+    <SummaryInformation Description="Jimmy WSJT-X Controller Installer" />
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of [ProductName] is already installed."
+      Schedule="afterInstallInitialize" />
+
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- Icon for Add/Remove Programs -->
+    <Icon Id="JimmyIcon" SourceFile="..\WSJTX_Controller\Properties\netfol.ico" />
+    <Property Id="ARPPRODUCTICON" Value="JimmyIcon" />
+    <Property Id="ARPCONTACT" Value="KB0UZT" />
+
+    <!-- Standard dialog set: Welcome → InstallDir (Browse) → VerifyReady → Progress → Finish -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <!-- Custom UI fragment that adds ShortcutsDlg and overrides the dialog chain -->
+    <UIRef Id="JimmyUI" />
+
+    <!-- Shortcut options: 1 = create (checked), empty = skip (unchecked).
+         Both default checked. Secure passes them from UI to elevated execute sequence. -->
+    <Property Id="DESKTOP_SHORTCUT" Value="1" Secure="yes" />
+    <Property Id="STARTMENU_SHORTCUT" Value="1" Secure="yes" />
+
+    <!-- .NET Framework 4.7.2 check -->
+    <Property Id="NETFX472RELEASE">
+      <RegistrySearch Id="NetFx472Search"
+        Root="HKLM"
+        Key="SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"
+        Name="Release"
+        Type="raw" />
+    </Property>
+    <Launch Condition="NETFX472RELEASE" Message="Jimmy requires .NET Framework 4.7.2 or later. Please install it and run this installer again." />
+
+    <Feature Id="DefaultFeature" Title="Jimmy" Level="1">
+      <ComponentGroupRef Id="MainComponents" />
+      <ComponentGroupRef Id="ResourceComponents" />
+      <ComponentRef Id="DesktopShortcutComp" />
+      <ComponentRef Id="StartMenuShortcutComp" />
+    </Feature>
+
+  </Package>
+
+  <!-- ── Directory structure ────────────────────────────────────────────── -->
+  <Fragment>
+    <StandardDirectory Id="ProgramFilesFolder">
+      <Directory Id="ManufacturerDir" Name="KB0UZT">
+        <Directory Id="INSTALLFOLDER" Name="Jimmy">
+          <Directory Id="ResourcesDir" Name="Resources" />
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+    <StandardDirectory Id="ProgramMenuFolder" />
+  </Fragment>
+
+  <!-- ── Main install folder ───────────────────────────────────────────── -->
+  <Fragment>
+    <ComponentGroup Id="MainComponents" Directory="INSTALLFOLDER">
+
+      <Component Id="JimmyExe">
+        <File Id="JimmyExeFile"
+              Source="..\WSJTX_Controller\bin\Release\Jimmy.exe"
+              KeyPath="yes" />
+      </Component>
+
+      <Component Id="JimmyConfig">
+        <File Id="JimmyConfigFile"
+              Source="..\WSJTX_Controller\bin\Release\Jimmy.exe.config" />
+      </Component>
+
+      <Component Id="AppIcon">
+        <File Id="AppIconFile"
+              Source="..\WSJTX_Controller\Properties\netfol.ico" />
+      </Component>
+
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- ── Resources subfolder (WAV files) ───────────────────────────────── -->
+  <Fragment>
+    <ComponentGroup Id="ResourceComponents" Directory="ResourcesDir">
+
+      <Component Id="BeepBeepWav">
+        <File Source="..\WSJTX_Controller\Resources\BeepBeep.wav" />
+      </Component>
+
+      <Component Id="BlipWav">
+        <File Source="..\WSJTX_Controller\Resources\Blip.wav" />
+      </Component>
+
+      <Component Id="ChimeWav">
+        <File Source="..\WSJTX_Controller\Resources\Chime.wav" />
+      </Component>
+
+      <Component Id="DingDingWav">
+        <File Source="..\WSJTX_Controller\Resources\DingDing.wav" />
+      </Component>
+
+      <Component Id="DiveWav">
+        <File Source="..\WSJTX_Controller\Resources\Dive.wav" />
+      </Component>
+
+      <Component Id="EchoWav">
+        <File Source="..\WSJTX_Controller\Resources\Echo.wav" />
+      </Component>
+
+      <Component Id="TrumpetWav">
+        <File Source="..\WSJTX_Controller\Resources\Trumpet.wav" />
+      </Component>
+
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- ── Shortcuts ──────────────────────────────────────────────────────── -->
+  <Fragment>
+
+    <!-- Desktop shortcut: only installed when checkbox is checked.
+         Component Condition is evaluated at InstallValidate; empty property = absent. -->
+    <Component Id="DesktopShortcutComp" Directory="DesktopFolder" Condition="DESKTOP_SHORTCUT">
+      <Shortcut Id="DesktopSC"
+                Name="Jimmy"
+                Description="WSJT-X Controller"
+                Target="[INSTALLFOLDER]Jimmy.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="JimmyIcon"
+                IconIndex="0" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\KB0UZT\Jimmy"
+                     Name="DesktopShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <!-- Start Menu shortcut: only installed when checkbox is checked -->
+    <Component Id="StartMenuShortcutComp" Directory="ProgramMenuFolder" Condition="STARTMENU_SHORTCUT">
+      <Shortcut Id="StartMenuSC"
+                Name="Jimmy"
+                Description="WSJT-X Controller"
+                Target="[INSTALLFOLDER]Jimmy.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="JimmyIcon"
+                IconIndex="0" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\KB0UZT\Jimmy"
+                     Name="StartMenuShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+  </Fragment>
+
+  <!-- ── UI customizations ─────────────────────────────────────────────── -->
+  <!--
+    WiX 4 merges multiple <UI> fragments into one MSI UI section.
+    This fragment adds ShortcutsDlg into the dialog chain after InstallDirDlg.
+
+    Fresh-install flow:
+      WelcomeDlg → InstallDirDlg (Browse) → ShortcutsDlg (checkboxes) → VerifyReadyDlg (Install) → ExitDlg (Finish)
+
+    Override strategy:
+      - Order=5 on InstallDirDlg Next fires after the built-in Order=4 (→VerifyReadyDlg),
+        using the same validity condition so invalid paths still block progression.
+      - Order=2 on VerifyReadyDlg Back fires after the built-in Order=1 (→InstallDirDlg),
+        redirecting back to ShortcutsDlg instead.
+  -->
+  <Fragment>
+    <UI Id="JimmyUI">
+      <!-- Skip LicenseAgreementDlg: WelcomeDlg Next → InstallDirDlg (Order=5 overrides built-in Order=1→LicenseAgreementDlg) -->
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Order="5"
+               Condition="NOT Installed" />
+
+      <!-- Fix InstallDirDlg Back to return to WelcomeDlg (not LicenseAgreementDlg) -->
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="5" />
+
+      <!-- Route: InstallDirDlg Next → ShortcutsDlg -->
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="ShortcutsDlg" Order="5"
+               Condition='WIXUI_DONTVALIDATEPATH OR Installed OR PATCH OR WIXUI_INSTALLDIR_VALID = "1"' />
+
+      <!-- Route: VerifyReadyDlg Back → ShortcutsDlg (fresh install only) -->
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="ShortcutsDlg" Order="2"
+               Condition="NOT Installed AND NOT PATCH" />
+
+      <!-- ── ShortcutsDlg ──────────────────────────────────────────── -->
+      <Dialog Id="ShortcutsDlg" Width="370" Height="270" Title="[ProductName] Setup">
+
+        <!-- Banner matching WixUI inner-dialog style -->
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+
+        <!-- Title (bold WixUI font) and subtitle -->
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes">
+          <Text Value="{\WixUI_Font_Title}Shortcuts" />
+        </Control>
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes"
+                 Text="Select which shortcuts to create for [ProductName]." />
+
+        <!-- Checkbox: Desktop shortcut -->
+        <Control Id="DesktopCheckBox" Type="CheckBox" X="20" Y="90" Width="290" Height="17"
+                 Property="DESKTOP_SHORTCUT" CheckBoxValue="1"
+                 Text="&amp;Create Desktop shortcut" />
+
+        <!-- Checkbox: Start Menu shortcut -->
+        <Control Id="StartMenuCheckBox" Type="CheckBox" X="20" Y="112" Width="290" Height="17"
+                 Property="STARTMENU_SHORTCUT" CheckBoxValue="1"
+                 Text="Create &amp;Start Menu shortcut" />
+
+        <!-- Bottom separator -->
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+        <!-- Back: return to InstallDirDlg -->
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="&amp;Back">
+          <Publish Event="NewDialog" Value="InstallDirDlg" />
+        </Control>
+
+        <!-- Next: proceed to VerifyReadyDlg (Install button) -->
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Next">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" />
+        </Control>
+
+        <!-- Cancel: confirm cancellation -->
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+
+      </Dialog>
+    </UI>
+  </Fragment>
+
+</Wix>

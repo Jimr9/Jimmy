@@ -1,0 +1,25 @@
+JIMMY RELEASE STEPS
+===================
+
+1. Bump version in:
+   - WSJTX_Controller/Jimmy.csproj (AssemblyVersion, FileVersion)
+   - Setup_WiX/Jimmy.wxs (Version attribute)
+
+2. Build Release:
+   MSBuild Jimmy.sln /p:Configuration=Release
+
+3. Build installer (from Setup_WiX\):
+   wix build -o ..\Jimmy.msi Jimmy.wxs
+
+4. Test Jimmy.msi install on a clean machine.
+
+5. Commit all changes:
+   git add -A
+   git commit -m "Release vX.Y.Z"
+   git push
+
+6. Tag the release:
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+
+7. Create GitHub Release, attach Jimmy.msi.
