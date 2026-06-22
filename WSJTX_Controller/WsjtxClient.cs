@@ -1164,16 +1164,16 @@ namespace WSJTX_Controller
             if (txFirst)
             {
                 ctrl.advTx1Label.Text             = "TX1 calls waiting:";
-                ctrl.advTx1ListBox.AccessibleName = "TX1 calls waiting";
+                ctrl.advTx1ListBox.AccessibleName = $"TX1 calls waiting, {_tx1SnapshotRows.Count} calls";
                 ctrl.advTx2Label.Text             = "RX2 calls waiting:";
-                ctrl.advTx2ListBox.AccessibleName = "RX2 calls waiting";
+                ctrl.advTx2ListBox.AccessibleName = $"RX2 calls waiting, {_tx2SnapshotRows.Count} calls";
             }
             else
             {
                 ctrl.advTx1Label.Text             = "RX1 calls waiting:";
-                ctrl.advTx1ListBox.AccessibleName = "RX1 calls waiting";
+                ctrl.advTx1ListBox.AccessibleName = $"RX1 calls waiting, {_tx1SnapshotRows.Count} calls";
                 ctrl.advTx2Label.Text             = "TX2 calls waiting:";
-                ctrl.advTx2ListBox.AccessibleName = "TX2 calls waiting";
+                ctrl.advTx2ListBox.AccessibleName = $"TX2 calls waiting, {_tx2SnapshotRows.Count} calls";
             }
         }
 
@@ -2747,14 +2747,14 @@ namespace WSJTX_Controller
                 {
                     _tx1SnapshotRows.Clear();
                     _tx1SnapshotCalls.Clear();
-                    ctrl.advTx1ListBox.AccessibleName = "TX1 no calls waiting";
+                    ctrl.advTx1ListBox.AccessibleName = "TX1 calls waiting, 0 calls";
                     UpdateListIfChanged(ctrl.advTx1ListBox, new List<string> { "No calls waiting" });
                 }
                 else           // TX2 transmitting → clear TX2
                 {
                     _tx2SnapshotRows.Clear();
                     _tx2SnapshotCalls.Clear();
-                    ctrl.advTx2ListBox.AccessibleName = "TX2 no calls waiting";
+                    ctrl.advTx2ListBox.AccessibleName = "TX2 calls waiting, 0 calls";
                     UpdateListIfChanged(ctrl.advTx2ListBox, new List<string> { "No calls waiting" });
                 }
             }
@@ -3917,7 +3917,7 @@ namespace WSJTX_Controller
             {
                 bool tx1HasItems = _tx1SnapshotRows.Count > 0;
                 string tx1Prefix = txFirst ? "TX1" : "RX1";
-                string tx1Name = tx1HasItems ? $"{tx1Prefix} calls waiting" : $"{tx1Prefix} no calls waiting";
+                string tx1Name = $"{tx1Prefix} calls waiting, {_tx1SnapshotRows.Count} calls";
                 if (ctrl.advTx1ListBox.AccessibleName != tx1Name) ctrl.advTx1ListBox.AccessibleName = tx1Name;
                 var display = tx1HasItems
                     ? _tx1SnapshotRows
@@ -3933,7 +3933,7 @@ namespace WSJTX_Controller
             {
                 bool tx2HasItems = _tx2SnapshotRows.Count > 0;
                 string tx2Prefix = txFirst ? "RX2" : "TX2";
-                string tx2Name = tx2HasItems ? $"{tx2Prefix} calls waiting" : $"{tx2Prefix} no calls waiting";
+                string tx2Name = $"{tx2Prefix} calls waiting, {_tx2SnapshotRows.Count} calls";
                 if (ctrl.advTx2ListBox.AccessibleName != tx2Name) ctrl.advTx2ListBox.AccessibleName = tx2Name;
                 var display = tx2HasItems
                     ? _tx2SnapshotRows
