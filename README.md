@@ -41,4 +41,4 @@ Jimmy is built on **Tilly**, the original accessible WSJT-X companion applicatio
 
 ## License
 
-Jimmy is based on Tilly, which was released under GPL-3.0. A GPL-3.0 LICENSE file will be included with this project.
+Jimmy is based on Tilly, which was released under GPL-3.0. See the [LICENSE](LICENSE) file for details.
