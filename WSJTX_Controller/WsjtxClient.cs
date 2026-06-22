@@ -353,8 +353,8 @@ namespace WSJTX_Controller
             { CallCategory.TO_MYCALL,           5 },
             { CallCategory.MANUAL_SEL,          4 },
             { CallCategory.WANTED_CQ,           3 },
-            { CallCategory.POTA,                2 },
-            { CallCategory.SOTA,                1 },
+            { CallCategory.POTA,                0 },
+            { CallCategory.SOTA,                0 },
             { CallCategory.DEFAULT,             0 },
         };
 
@@ -367,10 +367,7 @@ namespace WSJTX_Controller
             CallCategory.NEW_COUNTRY_ON_BAND,
             CallCategory.ALWAYS_WANTED,
             CallCategory.TO_MYCALL,
-            CallCategory.MANUAL_SEL,
             CallCategory.WANTED_CQ,
-            CallCategory.POTA,
-            CallCategory.SOTA,
         };
 
         // User-defined always-wanted callsigns. Calls matching this set get ALWAYS_WANTED category.
@@ -381,9 +378,16 @@ namespace WSJTX_Controller
         public void ApplyCategoryWeights(Dictionary<CallCategory, int> weights)
         {
             if (weights == null) return;
+            // Merge defaults for any keys absent in the loaded table (handles old INI with extra
+            // entries and new UI that hides POTA/SOTA). Missing hidden categories default to 0.
             foreach (CallCategory cat in System.Enum.GetValues(typeof(CallCategory)))
             {
-                if (!weights.ContainsKey(cat)) return;   // reject incomplete table
+                if (!weights.ContainsKey(cat))
+                {
+                    int defaultTier;
+                    categoryWeight.TryGetValue(cat, out defaultTier);
+                    weights[cat] = defaultTier;
+                }
             }
             if (weights[CallCategory.DEFAULT] != 0) return;  // DEFAULT must always be 0
             categoryWeight = weights;
@@ -400,14 +404,21 @@ namespace WSJTX_Controller
                 {
                     CallCategory.NEW_COUNTRY, CallCategory.NEW_COUNTRY_ON_BAND,
                     CallCategory.ALWAYS_WANTED, CallCategory.TO_MYCALL,
-                    CallCategory.MANUAL_SEL, CallCategory.WANTED_CQ,
-                    CallCategory.POTA, CallCategory.SOTA,
+                    CallCategory.WANTED_CQ,
                 };
             }
             else
             {
                 callingEnabled = enabled;
             }
+        }
+
+        // POTA, SOTA, and MANUAL_SEL are hidden from the Alt+N Filter UI; they follow the Directed CQ checkbox.
+        private bool IsCallingEnabled(CallCategory cat)
+        {
+            if (cat == CallCategory.POTA || cat == CallCategory.SOTA || cat == CallCategory.MANUAL_SEL)
+                cat = CallCategory.WANTED_CQ;
+            return callingEnabled.Contains(cat);
         }
 
         // Apply wanted callsign list (loaded from INI or set by Phase 5 UI).
@@ -573,6 +584,20 @@ namespace WSJTX_Controller
             txTimeout = false;
             timedOutCall = null;
             ctrl.holdCheckBox.Checked = false;
+        }
+
+        // Must be called BEFORE CancelQso() so callInProg/replyDecode are still valid.
+        // In advanced layout, the TX1/TX2 snapshot is not cleared by RemoveCall, so the row
+        // remains visible after ReplyTo dequeues it.  Re-adding the call keeps the row backed
+        // by the real queue so Enter works again.  No-op if not in advanced layout, call
+        // already gone, or call is already in the queue.
+        public void RequeueAbortedCall()
+        {
+            if (!ctrl.advancedCallLayout) return;
+            if (callInProg == null || replyDecode == null) return;
+            if (FindCallIndexInQueue(callInProg) >= 0) return;
+            DebugOutput($"{Time()} RequeueAbortedCall: re-enqueuing '{callInProg}'");
+            AddCall(callInProg, replyDecode);
         }
 
         public bool EnableMode()              //cq/listen mode selected
@@ -3766,6 +3791,10 @@ namespace WSJTX_Controller
                 case CallCategory.ALWAYS_WANTED:
                     return PlaySoundEvent(ctrl.soundEnabled_AlwaysWanted, ctrl.soundFile_AlwaysWanted);
                 case CallCategory.WANTED_CQ:
+                    if (IsPotaCall(msg) && ctrl.soundEnabled_Pota && !string.IsNullOrEmpty(ctrl.soundFile_Pota))
+                        return PlaySoundEvent(ctrl.soundEnabled_Pota, ctrl.soundFile_Pota);
+                    if (IsSotaCall(msg) && ctrl.soundEnabled_Sota && !string.IsNullOrEmpty(ctrl.soundFile_Sota))
+                        return PlaySoundEvent(ctrl.soundEnabled_Sota, ctrl.soundFile_Sota);
                     return PlaySoundEvent(ctrl.soundEnabled_DirectedCq, ctrl.soundFile_DirectedCq);
                 case CallCategory.POTA:
                     return PlaySoundEvent(ctrl.soundEnabled_Pota, ctrl.soundFile_Pota);
@@ -3784,10 +3813,7 @@ namespace WSJTX_Controller
                 case CallCategory.NEW_COUNTRY_ON_BAND: return "New DXCC on band";
                 case CallCategory.ALWAYS_WANTED:       return "Wanted";
                 case CallCategory.WANTED_CQ:
-                {
-                    string target = WsjtxMessage.DirectedTo(d.Message);
-                    return target != null ? target : "Directed CQ";
-                }
+                    return "";  // pri field already shows the directed-to target
                 case CallCategory.POTA:                return "POTA";
                 case CallCategory.SOTA:                return "SOTA";
                 default:                               return "";
@@ -5666,7 +5692,7 @@ namespace WSJTX_Controller
                 EnqueueDecodeMessage dmsg;
                 if (!callDict.TryGetValue(arr[i], out dmsg)) continue;
                 if (dmsg.Category == CallCategory.DEFAULT) continue;
-                if (!callingEnabled.Contains(dmsg.Category)) continue;
+                if (!IsCallingEnabled(dmsg.Category)) continue;
                 NextCall(false, i);
                 return;
             }
@@ -5682,7 +5708,7 @@ namespace WSJTX_Controller
                 EnqueueDecodeMessage dmsg;
                 if (!callDict.TryGetValue(call, out dmsg)) continue;
                 if (dmsg.Category == CallCategory.DEFAULT) continue;
-                if (!callingEnabled.Contains(dmsg.Category)) continue;
+                if (!IsCallingEnabled(dmsg.Category)) continue;
                 int qi = FindCallIndexInQueue(call);
                 if (qi >= 0) { NextCall(false, qi); return; }
             }
@@ -5698,7 +5724,7 @@ namespace WSJTX_Controller
                 EnqueueDecodeMessage dmsg;
                 if (!callDict.TryGetValue(call, out dmsg)) continue;
                 if (dmsg.Category == CallCategory.DEFAULT) continue;
-                if (!callingEnabled.Contains(dmsg.Category)) continue;
+                if (!IsCallingEnabled(dmsg.Category)) continue;
                 int qi = FindCallIndexInQueue(call);
                 if (qi >= 0) { NextCall(false, qi); return; }
             }
@@ -5724,7 +5750,7 @@ namespace WSJTX_Controller
                 EnqueueDecodeMessage dmsg;
                 if (!callDict.TryGetValue(arr[i], out dmsg)) continue;
                 if (dmsg.Category == CallCategory.DEFAULT) continue;
-                if (!callingEnabled.Contains(dmsg.Category)) continue;
+                if (!IsCallingEnabled(dmsg.Category)) continue;
                 NextCall(false, i);
                 return;
             }
@@ -7182,7 +7208,12 @@ namespace WSJTX_Controller
             // tied to d.Priority — they are not affected by this function.
             if (d.Category != CallCategory.DEFAULT)
             {
-                int tier = categoryWeight[d.Category];
+                // POTA, SOTA, and MANUAL_SEL are hidden from List Priorities UI; they rank with Directed CQ.
+                CallCategory tierKey = (d.Category == CallCategory.POTA || d.Category == CallCategory.SOTA
+                                        || d.Category == CallCategory.MANUAL_SEL)
+                    ? CallCategory.WANTED_CQ : d.Category;
+                int tier;
+                if (!categoryWeight.TryGetValue(tierKey, out tier)) tier = 0;
                 d.Rank = NON_DEFAULT_TIER_BASE + (CATEGORY_TIER_RANGE * tier);
                 return;
             }

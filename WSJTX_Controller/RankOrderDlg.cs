@@ -79,9 +79,18 @@ namespace WSJTX_Controller
             { WsjtxClient.CallCategory.TO_MYCALL,           "Calling me" },
             { WsjtxClient.CallCategory.MANUAL_SEL,          "Manual selection" },
             { WsjtxClient.CallCategory.WANTED_CQ,           "Directed CQ" },
-            { WsjtxClient.CallCategory.POTA,                "POTA" },
-            { WsjtxClient.CallCategory.SOTA,                "SOTA" },
             { WsjtxClient.CallCategory.DEFAULT,             "Default" },
+        };
+
+        // POTA, SOTA, and MANUAL_SEL are hidden from user-facing lists.
+        // POTA/SOTA are managed via the directed CQ targets field.
+        // MANUAL_SEL is an internal WSJT-X integration category (user click in WSJT-X decode panel).
+        private static readonly HashSet<WsjtxClient.CallCategory> HiddenCategories =
+            new HashSet<WsjtxClient.CallCategory>
+        {
+            WsjtxClient.CallCategory.POTA,
+            WsjtxClient.CallCategory.SOTA,
+            WsjtxClient.CallCategory.MANUAL_SEL,
         };
 
         private static readonly Dictionary<WsjtxClient.CallCategory, int> DefaultCategoryWeights =
@@ -91,10 +100,7 @@ namespace WSJTX_Controller
             { WsjtxClient.CallCategory.NEW_COUNTRY_ON_BAND, 7 },
             { WsjtxClient.CallCategory.ALWAYS_WANTED,       6 },
             { WsjtxClient.CallCategory.TO_MYCALL,           5 },
-            { WsjtxClient.CallCategory.MANUAL_SEL,          4 },
             { WsjtxClient.CallCategory.WANTED_CQ,           3 },
-            { WsjtxClient.CallCategory.POTA,                2 },
-            { WsjtxClient.CallCategory.SOTA,                1 },
             { WsjtxClient.CallCategory.DEFAULT,             0 },
         };
 
@@ -105,10 +111,7 @@ namespace WSJTX_Controller
             WsjtxClient.CallCategory.NEW_COUNTRY_ON_BAND,
             WsjtxClient.CallCategory.ALWAYS_WANTED,
             WsjtxClient.CallCategory.TO_MYCALL,
-            WsjtxClient.CallCategory.MANUAL_SEL,
             WsjtxClient.CallCategory.WANTED_CQ,
-            WsjtxClient.CallCategory.POTA,
-            WsjtxClient.CallCategory.SOTA,
         };
 
         // ── Constructor ────────────────────────────────────────────────────────
@@ -364,8 +367,6 @@ namespace WSJTX_Controller
                 "Example:\r\n" +
                 "  New DXCC checked, Calling Me checked → both appear above\r\n" +
                 "  unchecked categories and ordinary calls.\r\n" +
-                "  POTA unchecked → POTA calls sort among other unchecked\r\n" +
-                "  categories, not elevated above them.\r\n" +
                 "\r\n" +
                 "The order here also determines which category Alt+N prefers\r\n" +
                 "when multiple types of priority calls are waiting.\r\n" +
@@ -383,9 +384,11 @@ namespace WSJTX_Controller
                 "\r\n" +
                 "Note — Directed CQ queue admission:\r\n" +
                 "Whether directed CQ calls appear in the list at all is\r\n" +
-                "controlled by the \"Reply to directed CQs\" checkbox on the\r\n" +
-                "main screen, not by this filter. The \"Directed CQ\" entry\r\n" +
+                "controlled by the \"Queue directed CQ calls for:\" field on\r\n" +
+                "the Receive tab, not by this filter. The \"Directed CQ\" entry\r\n" +
                 "here only controls whether Alt+N will jump to those calls.\r\n" +
+                "To queue POTA, SOTA, DX, or other directed CQ calls, enter\r\n" +
+                "those targets in the \"Queue directed CQ calls for:\" field.\r\n" +
                 "\r\n" +
                 "Normal Sort Order\r\n" +
                 "─────────────────\r\n" +
@@ -458,7 +461,8 @@ namespace WSJTX_Controller
             var nonDefault = new List<WsjtxClient.CallCategory>();
             foreach (WsjtxClient.CallCategory cat in Enum.GetValues(typeof(WsjtxClient.CallCategory)))
             {
-                if (cat != WsjtxClient.CallCategory.DEFAULT) nonDefault.Add(cat);
+                if (cat != WsjtxClient.CallCategory.DEFAULT && !HiddenCategories.Contains(cat))
+                    nonDefault.Add(cat);
             }
             // Sort descending by weight; weight > 0 = checked, 0 = unchecked
             nonDefault.Sort((a, b) =>
@@ -561,10 +565,7 @@ namespace WSJTX_Controller
                 WsjtxClient.CallCategory.NEW_COUNTRY_ON_BAND,
                 WsjtxClient.CallCategory.ALWAYS_WANTED,
                 WsjtxClient.CallCategory.TO_MYCALL,
-                WsjtxClient.CallCategory.MANUAL_SEL,
                 WsjtxClient.CallCategory.WANTED_CQ,
-                WsjtxClient.CallCategory.POTA,
-                WsjtxClient.CallCategory.SOTA,
             };
 
             callingCheckedListBox.Items.Clear();

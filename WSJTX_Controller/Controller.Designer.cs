@@ -325,9 +325,9 @@
             this.replyDirCqCheckBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.replyDirCqCheckBox.Location = new System.Drawing.Point(20, 237);
             this.replyDirCqCheckBox.Name = "replyDirCqCheckBox";
-            this.replyDirCqCheckBox.Size = new System.Drawing.Size(132, 17);
+            this.replyDirCqCheckBox.Size = new System.Drawing.Size(170, 17);
             this.replyDirCqCheckBox.TabIndex = 19;
-            this.replyDirCqCheckBox.Text = "Reply to directed CQs:";
+            this.replyDirCqCheckBox.Text = "Queue directed CQ calls for:";
             this.replyDirCqCheckBox.UseVisualStyleBackColor = true;
             this.replyDirCqCheckBox.Visible = false;
             this.replyDirCqCheckBox.CheckedChanged += new System.EventHandler(this.replyDirCqCheckBox_CheckedChanged);

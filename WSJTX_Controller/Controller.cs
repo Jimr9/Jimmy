@@ -142,6 +142,11 @@ namespace WSJTX_Controller
         [DllImport("user32.dll")]
         static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 #endif
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        private bool IsJimmyForegrounded() => GetForegroundWindow() == this.Handle;
         private void Form_Load(object sender, EventArgs e)
         {
             //use .ini file for settings (avoid .Net config file mess)
@@ -806,7 +811,7 @@ namespace WSJTX_Controller
 
         private void initialConnFaultTimer_Tick(object sender, EventArgs e)
         {
-            BringToFront();
+            if (IsJimmyForegrounded()) BringToFront();
             wsjtxClient.ConnectionDialog();
         }
 
@@ -937,7 +942,6 @@ namespace WSJTX_Controller
 #endif
                 Height = this.MaximumSize.Height;
                 wsjtxClient.UpdateDebug();
-                BringToFront();
             }
             else
             {
@@ -1079,9 +1083,8 @@ namespace WSJTX_Controller
         private void AlertDirectedHelpLabel_Click(object sender, EventArgs e)
         {
             string continent = wsjtxClient.myContinent == null ? "" : $" '{wsjtxClient.myContinent}'";
-            ShowHelp($"To reply to specific directed CQs from callers you haven't worked yet:" +
-                $"{nl}- Enter the code(s) for the directed CQs (2 to 4 letters each), separated by spaces." +
-                $"{nl}{nl}Example: POTA WY" +
+            ShowHelp($"Enter targets such as POTA SOTA DX." +
+                $"{nl}{nl}Matching calls such as CQ POTA are added to the waiting list as Directed CQ calls." +
                 $"{nl}{nl}If you enter 'DX', there will be no reply if the caller is on your continent." +
                 $"{nl}{nl}There is no need to enter 'DX' or your continent{continent} if you have selected 'DX' and 'CQ/73' at 'Reply to new calls'." +
                 $"{nl}{nl}(Note: 'CQ POTA' is an exception to the 'already worked' rule, these calls will allow a reply if you haven't already logged that call in the current mode/band in the current day).");
@@ -1704,6 +1707,7 @@ namespace WSJTX_Controller
                 var focused = this.ActiveControl;
                 if (wsjtxClient.ConnectedToWsjtx())
                 {
+                    wsjtxClient.RequeueAbortedCall();   // must precede CancelQso (needs callInProg/replyDecode)
                     wsjtxClient.CancelQso();
                     wsjtxClient.HaltAndDisableTx();     // unconditional: works in both CQ and Listen mode
                     listenModeButton_Click(null, null);
