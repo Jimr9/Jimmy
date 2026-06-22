@@ -16,12 +16,13 @@ namespace WSJTX_Controller
         private Button cancelButton;
         private Label instructionsLabel;
 
-        public static readonly string[] DefaultFields = new string[] { "callp", "pri", "grid", "snr", "country", "distAz", "oe", "descr", "rankStr" };
+        public static readonly string[] DefaultFields = new string[] { "callp", "pri", "tag", "grid", "snr", "country", "distAz", "oe", "descr", "rankStr" };
 
         public static readonly Dictionary<string, string> FieldLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             { "callp", "Call Sign" },
             { "pri", "Reply Status" },
+            { "tag", "Alert" },
             { "grid", "Grid" },
             { "snr", "SNR" },
             { "country", "Country" },
@@ -33,8 +34,11 @@ namespace WSJTX_Controller
 
         public List<string> SelectedFields { get; private set; }
 
-        public CallWaitingRowOrderDlg(List<string> currentOrder)
+        private readonly bool _debug;
+
+        public CallWaitingRowOrderDlg(List<string> currentOrder, bool debug)
         {
+            _debug = debug;
             InitializeComponent();
             PopulateList(currentOrder);
         }
@@ -186,6 +190,7 @@ namespace WSJTX_Controller
             checkedListBox.Items.Clear();
             foreach (var field in orderedFields)
             {
+                if (!_debug && string.Equals(field, "descr", StringComparison.OrdinalIgnoreCase)) continue;
                 checkedListBox.Items.Add(new FieldItem(field), selectedSet.Contains(field));
             }
 
@@ -200,11 +205,21 @@ namespace WSJTX_Controller
         private void MoveUpButton_Click(object sender, EventArgs e)
         {
             MoveSelectedItem(-1);
+            BeginInvoke((Action)(() =>
+            {
+                if (moveUpButton.Enabled) moveUpButton.Focus();
+                else checkedListBox.Focus();
+            }));
         }
 
         private void MoveDownButton_Click(object sender, EventArgs e)
         {
             MoveSelectedItem(1);
+            BeginInvoke((Action)(() =>
+            {
+                if (moveDownButton.Enabled) moveDownButton.Focus();
+                else checkedListBox.Focus();
+            }));
         }
 
         private void MoveSelectedItem(int direction)
@@ -225,7 +240,6 @@ namespace WSJTX_Controller
             checkedListBox.SetItemChecked(targetIndex, currentChecked);
             checkedListBox.SetItemChecked(index, targetChecked);
             checkedListBox.SelectedIndex = targetIndex;
-            checkedListBox.Focus();
             UpdateMoveButtons();
         }
 

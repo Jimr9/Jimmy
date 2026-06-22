@@ -120,6 +120,11 @@
             this.cqModeButton = new System.Windows.Forms.RadioButton();
             this.listenModeButton = new System.Windows.Forms.RadioButton();
             this.modeGroupBox = new System.Windows.Forms.GroupBox();
+            this.hiddenModePanel = new System.Windows.Forms.Panel();
+            this.cqIntentListenButton = new System.Windows.Forms.RadioButton();
+            this.cqIntentCqOnlyButton = new System.Windows.Forms.RadioButton();
+            this.cqIntentCqDxOnlyButton = new System.Windows.Forms.RadioButton();
+            this.cqIntentCqAndDxButton = new System.Windows.Forms.RadioButton();
             this.periodComboBox = new System.Windows.Forms.ComboBox();
             this.periodLabel = new System.Windows.Forms.Label();
             this.AutoFreqHelpLabel = new System.Windows.Forms.Label();
@@ -133,6 +138,7 @@
             this.advRawListBox = new System.Windows.Forms.ListBox();
             ((System.ComponentModel.ISupportInitialize)(this.timeoutNumUpDown)).BeginInit();
             this.modeGroupBox.SuspendLayout();
+            this.hiddenModePanel.SuspendLayout();
             this.SuspendLayout();
             // 
             // statusText
@@ -341,7 +347,7 @@
             // 
             // timeoutNumUpDown
             // 
-            this.timeoutNumUpDown.AccessibleName = "count";
+            this.timeoutNumUpDown.AccessibleName = "Repeat limit";
             this.timeoutNumUpDown.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.timeoutNumUpDown.Location = new System.Drawing.Point(60, 413);
             this.timeoutNumUpDown.Name = "timeoutNumUpDown";
@@ -450,6 +456,7 @@
             this.UseDirectedHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.UseDirectedHelpLabel.ForeColor = System.Drawing.Color.Blue;
             this.UseDirectedHelpLabel.Location = new System.Drawing.Point(277, 187);
+            this.UseDirectedHelpLabel.AccessibleName = "Help for Directed CQ setting";
             this.UseDirectedHelpLabel.Name = "UseDirectedHelpLabel";
             this.UseDirectedHelpLabel.Size = new System.Drawing.Size(14, 13);
             this.UseDirectedHelpLabel.TabIndex = 45;
@@ -464,6 +471,7 @@
             this.AlertDirectedHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.AlertDirectedHelpLabel.ForeColor = System.Drawing.Color.Blue;
             this.AlertDirectedHelpLabel.Location = new System.Drawing.Point(277, 238);
+            this.AlertDirectedHelpLabel.AccessibleName = "Help for Alert callsign field";
             this.AlertDirectedHelpLabel.Name = "AlertDirectedHelpLabel";
             this.AlertDirectedHelpLabel.Size = new System.Drawing.Size(14, 13);
             this.AlertDirectedHelpLabel.TabIndex = 46;
@@ -478,6 +486,7 @@
             this.LogEarlyHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.LogEarlyHelpLabel.ForeColor = System.Drawing.Color.Blue;
             this.LogEarlyHelpLabel.Location = new System.Drawing.Point(138, 397);
+            this.LogEarlyHelpLabel.AccessibleName = "Help for Log Early setting";
             this.LogEarlyHelpLabel.Name = "LogEarlyHelpLabel";
             this.LogEarlyHelpLabel.Size = new System.Drawing.Size(14, 13);
             this.LogEarlyHelpLabel.TabIndex = 47;
@@ -492,6 +501,7 @@
             this.ExcludeHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.ExcludeHelpLabel.ForeColor = System.Drawing.Color.Blue;
             this.ExcludeHelpLabel.Location = new System.Drawing.Point(277, 264);
+            this.ExcludeHelpLabel.AccessibleName = "Help for Exclude filter setting";
             this.ExcludeHelpLabel.Name = "ExcludeHelpLabel";
             this.ExcludeHelpLabel.Size = new System.Drawing.Size(14, 13);
             this.ExcludeHelpLabel.TabIndex = 50;
@@ -540,6 +550,7 @@
             this.LimitTxHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.LimitTxHelpLabel.ForeColor = System.Drawing.Color.Blue;
             this.LimitTxHelpLabel.Location = new System.Drawing.Point(277, 416);
+            this.LimitTxHelpLabel.AccessibleName = "Help for Transmit limit setting";
             this.LimitTxHelpLabel.Name = "LimitTxHelpLabel";
             this.LimitTxHelpLabel.Size = new System.Drawing.Size(14, 13);
             this.LimitTxHelpLabel.TabIndex = 61;
@@ -574,6 +585,7 @@
             this.ReplyNewHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.ReplyNewHelpLabel.ForeColor = System.Drawing.Color.Blue;
             this.ReplyNewHelpLabel.Location = new System.Drawing.Point(277, 327);
+            this.ReplyNewHelpLabel.AccessibleName = "Help for New DXCC reply setting";
             this.ReplyNewHelpLabel.Name = "ReplyNewHelpLabel";
             this.ReplyNewHelpLabel.Size = new System.Drawing.Size(14, 13);
             this.ReplyNewHelpLabel.TabIndex = 66;
@@ -614,7 +626,7 @@
             this.replyDxCheckBox.Name = "replyDxCheckBox";
             this.replyDxCheckBox.Size = new System.Drawing.Size(41, 17);
             this.replyDxCheckBox.TabIndex = 30;
-            this.replyDxCheckBox.Text = "DX";
+            this.replyDxCheckBox.Text = "DX stations";
             this.replyDxCheckBox.UseVisualStyleBackColor = true;
             this.replyDxCheckBox.Visible = false;
             this.replyDxCheckBox.CheckedChanged += new System.EventHandler(this.replyDxCheckBox_CheckedChanged);
@@ -692,7 +704,7 @@
             this.optimizeCheckBox.Name = "optimizeCheckBox";
             this.optimizeCheckBox.Size = new System.Drawing.Size(66, 17);
             this.optimizeCheckBox.TabIndex = 37;
-            this.optimizeCheckBox.Text = "Optimize";
+            this.optimizeCheckBox.Text = "Optimize throughput";
             this.optimizeCheckBox.UseVisualStyleBackColor = true;
             this.optimizeCheckBox.Visible = false;
             this.optimizeCheckBox.CheckedChanged += new System.EventHandler(this.optimizeCheckBox_CheckedChanged);
@@ -824,7 +836,7 @@
             this.replyNewOnlyCheckBox.Name = "replyNewOnlyCheckBox";
             this.replyNewOnlyCheckBox.Size = new System.Drawing.Size(77, 17);
             this.replyNewOnlyCheckBox.TabIndex = 59;
-            this.replyNewOnlyCheckBox.Text = "exclusively";
+            this.replyNewOnlyCheckBox.Text = "New DXCC only";
             this.replyNewOnlyCheckBox.UseVisualStyleBackColor = true;
             this.replyNewOnlyCheckBox.Visible = false;
             this.replyNewOnlyCheckBox.CheckedChanged += new System.EventHandler(this.replyNewOnlyCheckBox_CheckedChanged);
@@ -941,6 +953,7 @@
             this.IncludeHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.IncludeHelpLabel.ForeColor = System.Drawing.Color.Blue;
             this.IncludeHelpLabel.Location = new System.Drawing.Point(277, 285);
+            this.IncludeHelpLabel.AccessibleName = "Help for Include filter setting";
             this.IncludeHelpLabel.Name = "IncludeHelpLabel";
             this.IncludeHelpLabel.Size = new System.Drawing.Size(14, 13);
             this.IncludeHelpLabel.TabIndex = 83;
@@ -965,6 +978,7 @@
             this.IgnoreNonDxHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.IgnoreNonDxHelpLabel.ForeColor = System.Drawing.Color.Blue;
             this.IgnoreNonDxHelpLabel.Location = new System.Drawing.Point(277, 170);
+            this.IgnoreNonDxHelpLabel.AccessibleName = "Help for Ignore non-DX setting";
             this.IgnoreNonDxHelpLabel.Name = "IgnoreNonDxHelpLabel";
             this.IgnoreNonDxHelpLabel.Size = new System.Drawing.Size(14, 13);
             this.IgnoreNonDxHelpLabel.TabIndex = 86;
@@ -992,6 +1006,7 @@
             this.ReplyRR73HelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.ReplyRR73HelpLabel.ForeColor = System.Drawing.Color.Blue;
             this.ReplyRR73HelpLabel.Location = new System.Drawing.Point(277, 398);
+            this.ReplyRR73HelpLabel.AccessibleName = "Help for RR73 reply setting";
             this.ReplyRR73HelpLabel.Name = "ReplyRR73HelpLabel";
             this.ReplyRR73HelpLabel.Size = new System.Drawing.Size(14, 13);
             this.ReplyRR73HelpLabel.TabIndex = 88;
@@ -1124,6 +1139,7 @@
             this.PeriodHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.PeriodHelpLabel.ForeColor = System.Drawing.Color.Blue;
             this.PeriodHelpLabel.Location = new System.Drawing.Point(277, 436);
+            this.PeriodHelpLabel.AccessibleName = "Help for Transmit period setting";
             this.PeriodHelpLabel.Name = "PeriodHelpLabel";
             this.PeriodHelpLabel.Size = new System.Drawing.Size(14, 13);
             this.PeriodHelpLabel.TabIndex = 102;
@@ -1177,6 +1193,7 @@
             this.blockHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.blockHelpLabel.ForeColor = System.Drawing.Color.Blue;
             this.blockHelpLabel.Location = new System.Drawing.Point(278, 348);
+            this.blockHelpLabel.AccessibleName = "Help for Except callsigns setting";
             this.blockHelpLabel.Name = "blockHelpLabel";
             this.blockHelpLabel.Size = new System.Drawing.Size(14, 13);
             this.blockHelpLabel.TabIndex = 106;
@@ -1211,20 +1228,85 @@
             this.listenModeButton.Visible = false;
             this.listenModeButton.CheckedChanged += new System.EventHandler(this.listenModeButton_CheckedChanged);
             this.listenModeButton.Click += new System.EventHandler(this.listenModeButton_Click);
-            // 
+            //
             // modeGroupBox
-            // 
+            //
             this.modeGroupBox.AccessibleName = "Select operating mode";
-            this.modeGroupBox.Controls.Add(this.listenModeButton);
-            this.modeGroupBox.Controls.Add(this.cqModeButton);
+            this.modeGroupBox.Controls.Add(this.cqIntentListenButton);
+            this.modeGroupBox.Controls.Add(this.cqIntentCqOnlyButton);
+            this.modeGroupBox.Controls.Add(this.cqIntentCqDxOnlyButton);
+            this.modeGroupBox.Controls.Add(this.cqIntentCqAndDxButton);
             this.modeGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.modeGroupBox.Location = new System.Drawing.Point(15, 141);
             this.modeGroupBox.Name = "modeGroupBox";
-            this.modeGroupBox.Size = new System.Drawing.Size(185, 68);
+            this.modeGroupBox.Size = new System.Drawing.Size(205, 108);
             this.modeGroupBox.TabIndex = 3;
             this.modeGroupBox.TabStop = false;
             this.modeGroupBox.Text = "Operating mode:";
             this.modeGroupBox.Visible = false;
+            //
+            // cqIntentListenButton
+            //
+            this.cqIntentListenButton.AccessibleName = "Listen";
+            this.cqIntentListenButton.AutoSize = true;
+            this.cqIntentListenButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.cqIntentListenButton.Location = new System.Drawing.Point(15, 20);
+            this.cqIntentListenButton.Name = "cqIntentListenButton";
+            this.cqIntentListenButton.Size = new System.Drawing.Size(52, 17);
+            this.cqIntentListenButton.TabIndex = 2;
+            this.cqIntentListenButton.TabStop = true;
+            this.cqIntentListenButton.Text = "Listen";
+            this.cqIntentListenButton.UseVisualStyleBackColor = true;
+            this.cqIntentListenButton.Click += new System.EventHandler(this.cqIntentListenButton_Click);
+            //
+            // cqIntentCqOnlyButton
+            //
+            this.cqIntentCqOnlyButton.AccessibleName = "CQ only, press Alt C to start";
+            this.cqIntentCqOnlyButton.AutoSize = true;
+            this.cqIntentCqOnlyButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.cqIntentCqOnlyButton.Location = new System.Drawing.Point(15, 40);
+            this.cqIntentCqOnlyButton.Name = "cqIntentCqOnlyButton";
+            this.cqIntentCqOnlyButton.Size = new System.Drawing.Size(63, 17);
+            this.cqIntentCqOnlyButton.TabIndex = 3;
+            this.cqIntentCqOnlyButton.Text = "CQ only";
+            this.cqIntentCqOnlyButton.UseVisualStyleBackColor = true;
+            this.cqIntentCqOnlyButton.Click += new System.EventHandler(this.cqIntentCqOnlyButton_Click);
+            //
+            // cqIntentCqDxOnlyButton
+            //
+            this.cqIntentCqDxOnlyButton.AccessibleName = "CQ DX only, press Alt C to start";
+            this.cqIntentCqDxOnlyButton.AutoSize = true;
+            this.cqIntentCqDxOnlyButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.cqIntentCqDxOnlyButton.Location = new System.Drawing.Point(15, 60);
+            this.cqIntentCqDxOnlyButton.Name = "cqIntentCqDxOnlyButton";
+            this.cqIntentCqDxOnlyButton.Size = new System.Drawing.Size(78, 17);
+            this.cqIntentCqDxOnlyButton.TabIndex = 4;
+            this.cqIntentCqDxOnlyButton.Text = "CQ DX only";
+            this.cqIntentCqDxOnlyButton.UseVisualStyleBackColor = true;
+            this.cqIntentCqDxOnlyButton.Click += new System.EventHandler(this.cqIntentCqDxOnlyButton_Click);
+            //
+            // cqIntentCqAndDxButton
+            //
+            this.cqIntentCqAndDxButton.AccessibleName = "CQ and CQ DX, press Alt C to start";
+            this.cqIntentCqAndDxButton.AutoSize = true;
+            this.cqIntentCqAndDxButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.cqIntentCqAndDxButton.Location = new System.Drawing.Point(15, 80);
+            this.cqIntentCqAndDxButton.Name = "cqIntentCqAndDxButton";
+            this.cqIntentCqAndDxButton.Size = new System.Drawing.Size(101, 17);
+            this.cqIntentCqAndDxButton.TabIndex = 5;
+            this.cqIntentCqAndDxButton.Text = "CQ and CQ DX";
+            this.cqIntentCqAndDxButton.UseVisualStyleBackColor = true;
+            this.cqIntentCqAndDxButton.Click += new System.EventHandler(this.cqIntentCqAndDxButton_Click);
+            //
+            // hiddenModePanel
+            //
+            this.hiddenModePanel.Controls.Add(this.listenModeButton);
+            this.hiddenModePanel.Controls.Add(this.cqModeButton);
+            this.hiddenModePanel.Location = new System.Drawing.Point(-500, -500);
+            this.hiddenModePanel.Name = "hiddenModePanel";
+            this.hiddenModePanel.Size = new System.Drawing.Size(10, 10);
+            this.hiddenModePanel.TabIndex = 200;
+            this.hiddenModePanel.Visible = false;
             // 
             // periodComboBox
             // 
@@ -1261,6 +1343,7 @@
             this.AutoFreqHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.AutoFreqHelpLabel.ForeColor = System.Drawing.Color.Blue;
             this.AutoFreqHelpLabel.Location = new System.Drawing.Point(150, 436);
+            this.AutoFreqHelpLabel.AccessibleName = "Help for Auto frequency setting";
             this.AutoFreqHelpLabel.Name = "AutoFreqHelpLabel";
             this.AutoFreqHelpLabel.Size = new System.Drawing.Size(14, 13);
             this.AutoFreqHelpLabel.TabIndex = 63;
@@ -1284,6 +1367,7 @@
             // showUsStateCheckBox
             //
             this.showUsStateCheckBox.AccessibleName = "Show U.S. state instead of USA";
+            this.showUsStateCheckBox.AccessibleDescription = "When checked, shows the U.S. state abbreviation in the calls waiting list instead of USA.";
             this.showUsStateCheckBox.AutoSize = true;
             this.showUsStateCheckBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.showUsStateCheckBox.Location = new System.Drawing.Point(21, 455);
@@ -1471,6 +1555,7 @@
             this.Controls.Add(this.exceptLabel);
             this.Controls.Add(this.replyDirCqCheckBox);
             this.Controls.Add(this.modeGroupBox);
+            this.Controls.Add(this.hiddenModePanel);
             this.Controls.Add(this.IgnoreNonDxHelpLabel);
             this.Controls.Add(this.ignoreNonDxCheckBox);
             this.Controls.Add(this.ReplyRR73HelpLabel);
@@ -1490,6 +1575,8 @@
             ((System.ComponentModel.ISupportInitialize)(this.timeoutNumUpDown)).EndInit();
             this.modeGroupBox.ResumeLayout(false);
             this.modeGroupBox.PerformLayout();
+            this.hiddenModePanel.ResumeLayout(false);
+            this.hiddenModePanel.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -1589,6 +1676,11 @@
         public System.Windows.Forms.RadioButton cqModeButton;
         public System.Windows.Forms.RadioButton listenModeButton;
         public System.Windows.Forms.GroupBox modeGroupBox;
+        public System.Windows.Forms.Panel hiddenModePanel;
+        public System.Windows.Forms.RadioButton cqIntentListenButton;
+        public System.Windows.Forms.RadioButton cqIntentCqOnlyButton;
+        public System.Windows.Forms.RadioButton cqIntentCqDxOnlyButton;
+        public System.Windows.Forms.RadioButton cqIntentCqAndDxButton;
         public System.Windows.Forms.ComboBox periodComboBox;
         public System.Windows.Forms.Label periodLabel;
         public System.Windows.Forms.Label AutoFreqHelpLabel;

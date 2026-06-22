@@ -30,11 +30,11 @@ namespace WSJTX_Controller
 
         private bool startOnUdpTab;
 
-        private const int HotkeysTabIndex      = 1;
-        private const int AdvUiTabIndex        = 3;
-        private const int WantedCallsTabIndex  = 4;
-        private const int SoundsTabIndex       = 5;
-        private const int UdpTabIndex          = 6;
+        private const int HotkeysTabIndex      = 4;
+        private const int AdvUiTabIndex        = 5;
+        private const int WantedCallsTabIndex  = 7;
+        private const int SoundsTabIndex       = 8;
+        private const int UdpTabIndex          = 9;
 
         // Advanced UI tab — controls created dynamically in BuildAdvancedUiTab()
         private System.Windows.Forms.CheckBox advCallLayoutCheckBox;
@@ -59,10 +59,14 @@ namespace WSJTX_Controller
         private System.Windows.Forms.CheckBox rawOnlyUnworkedCheckBox;
         private System.Windows.Forms.CheckBox rawOnlyRankedCheckBox;
         private System.Windows.Forms.CheckBox rawPriorityTagsCheckBox;
+        private System.Windows.Forms.CheckBox rawNewestFirstCheckBox;
+        private System.Windows.Forms.CheckBox keepTransmitListDuringTxCheckBox;
+        private System.Windows.Forms.CheckBox keepListPositionDuringRefreshCheckBox;
         private List<System.Windows.Forms.Control> _advUiDependentControls;
 
         // Sounds tab state
         private List<SoundRow> _soundRows;
+        private System.Windows.Forms.CheckBox _soundsEnabledCb;
 
         private sealed class SoundRow
         {
@@ -79,6 +83,9 @@ namespace WSJTX_Controller
 
         // Wanted Calls tab
         private System.Windows.Forms.TextBox wantedCallsTextBox;
+
+        // General tab
+        private System.Windows.Forms.CheckBox pskReporterCheckBox;
 
         private Dictionary<Control, Control> originalParents = new Dictionary<Control, Control>();
         private Dictionary<Control, Point> originalLocations = new Dictionary<Control, Point>();
@@ -126,6 +133,7 @@ namespace WSJTX_Controller
                 screen.Bounds.Y + (screen.Bounds.Height - Height) / 2);
 
             LoadUdpTab();
+            BuildGeneralTab();
             BuildHotkeysTab();
             BuildAdvancedUiTab();
             BuildWantedCallsTab();
@@ -158,6 +166,35 @@ namespace WSJTX_Controller
             udpOverrideCheckBox_CheckedChanged(null, null);
         }
 
+        // ===== GENERAL TAB =====
+
+        private void BuildGeneralTab()
+        {
+            var font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
+
+            pskReporterCheckBox = new System.Windows.Forms.CheckBox
+            {
+                Text                  = "PSK Reporter Enabled",
+                AccessibleName        = "PSK Reporter enabled",
+                AccessibleDescription = "Send spots to PSK Reporter. Same as the PSK Reporter hotkey.",
+                AutoSize              = true,
+                Location              = new System.Drawing.Point(10, 38),
+                TabIndex              = 1,
+                Checked               = wsjtxClient.usePskReporter,
+                Font                  = font,
+            };
+            generalPanel.Controls.Add(pskReporterCheckBox);
+        }
+
+        private void ApplyGeneralSettings()
+        {
+            if (pskReporterCheckBox != null &&
+                pskReporterCheckBox.Checked != wsjtxClient.usePskReporter)
+            {
+                wsjtxClient.TogglePskReporter();
+            }
+        }
+
         private void OptionsDlg_FormClosing(object sender, FormClosingEventArgs e)
         {
             if (dxButtonEnabled || nonDxButtonEnabled)
@@ -175,6 +212,7 @@ namespace WSJTX_Controller
 
         private void OptionsDlg_KeyDown(object sender, KeyEventArgs e)
         {
+            if (e.KeyCode == Keys.Escape) { e.Handled = true; Close(); return; }
             // When the capture box has focus, let the key pass through to it.
             if (IsCaptureFieldFocused()) return;
             if (e.Control && e.KeyCode == Keys.Q) Close();
@@ -186,6 +224,7 @@ namespace WSJTX_Controller
         {
             if (!ApplyUdpSettings()) return;
             if (!ValidateHotkeys()) return;
+            ApplyGeneralSettings();
             SaveHotkeysTab();
             SaveAdvancedUiTab();
             SaveWantedCallsTab();
@@ -313,7 +352,7 @@ namespace WSJTX_Controller
             {
                 Text = "Advanced call waiting layout",
                 Location = new System.Drawing.Point(left, y),
-                Size = new System.Drawing.Size(fullW, 110),
+                Size = new System.Drawing.Size(fullW, 132),
                 Font = font,
                 TabStop = false,
                 AccessibleName = "Advanced call waiting layout options"
@@ -335,11 +374,12 @@ namespace WSJTX_Controller
             advShowTx1CheckBox = MakeCheck(layoutGroup, "Show TX1 calls waiting", "Show TX1 calls waiting", 8, 44, 1, ctrl.advShowTx1, font);
             advShowTx2CheckBox = MakeCheck(layoutGroup, "Show TX2 calls waiting", "Show TX2 calls waiting", 210, 44, 2, ctrl.advShowTx2, font);
             advShowRawCheckBox = MakeCheck(layoutGroup, "Show raw decodes", "Show raw decodes", 8, 66, 3, ctrl.advShowRaw, font);
+            keepTransmitListDuringTxCheckBox = MakeCheck(layoutGroup, "Keep transmit list during transmit", "Keep transmit list during transmit", 8, 88, 4, ctrl.keepTransmitListDuringTx, font);
             var maxLabel = new System.Windows.Forms.Label
             {
                 Text = "Maximum raw decode rows:",
                 AutoSize = true,
-                Location = new System.Drawing.Point(8, 91),
+                Location = new System.Drawing.Point(8, 113),
                 Font = font,
                 TabStop = false
             };
@@ -348,9 +388,9 @@ namespace WSJTX_Controller
             rawMaxRowsNumeric = new System.Windows.Forms.NumericUpDown
             {
                 AccessibleName = "Maximum raw decode rows",
-                Location = new System.Drawing.Point(195, 88),
+                Location = new System.Drawing.Point(195, 110),
                 Size = new System.Drawing.Size(70, 20),
-                TabIndex = 4,
+                TabIndex = 5,
                 Minimum = 10,
                 Maximum = 5000,
                 Value = Math.Max(10, Math.Min(5000, ctrl.rawMaxRows)),
@@ -361,7 +401,21 @@ namespace WSJTX_Controller
             _advUiDependentControls.Add(rawMaxRowsNumeric);
 
             advUiPanel.Controls.Add(layoutGroup);
-            y += 118;
+            y += 140;
+
+            keepListPositionDuringRefreshCheckBox = new System.Windows.Forms.CheckBox
+            {
+                Text = "Keep list position during refresh",
+                AccessibleName = "Keep list position during refresh",
+                AccessibleDescription = "Keeps the selected row when lists refresh. Uncheck for quieter screen-reader behavior.",
+                AutoSize = true,
+                Location = new System.Drawing.Point(left + 8, y),
+                TabIndex = 23,
+                Checked = ctrl.keepListPositionDuringRefresh,
+                Font = font
+            };
+            advUiPanel.Controls.Add(keepListPositionDuringRefreshCheckBox);
+            y += 24;
 
             // ── Group: Message types ──────────────────────────────────────────────
             var msgGroup = new System.Windows.Forms.GroupBox
@@ -371,7 +425,7 @@ namespace WSJTX_Controller
                 Size = new System.Drawing.Size(groupW, 125),
                 Font = font,
                 TabStop = false,
-                AccessibleName = "Message types group"
+                AccessibleName = "Message types in raw decodes"
             };
             rawShowCqCheckBox       = MakeCheck(msgGroup, "CQ messages",     "CQ messages",       8,   22,  5, ctrl.rawShowCq,       font);
             rawShowDirectedCheckBox = MakeCheck(msgGroup, "Directed calls",   "Directed calls",    8,   44,  6, ctrl.rawShowDirected,  font);
@@ -391,7 +445,7 @@ namespace WSJTX_Controller
                 Size = new System.Drawing.Size(groupW, 125),
                 Font = font,
                 TabStop = false,
-                AccessibleName = "Display fields group"
+                AccessibleName = "Display fields in raw decodes"
             };
             rawShowSnrCheckBox     = MakeCheck(displayGroup, "SNR",               "Show SNR",                8,   22, 13, ctrl.rawShowSnr,     font);
             rawShowGridCheckBox    = MakeCheck(displayGroup, "Grid",              "Show Grid",               8,   44, 14, ctrl.rawShowGrid,     font);
@@ -411,16 +465,18 @@ namespace WSJTX_Controller
                 TabStop = false,
                 AccessibleName = "Advanced filters group"
             };
-            rawOnlyCallsignsCheckBox = MakeCheck(filtersGroup, "Show only decodes containing callsigns",           "Only callsigns",         8, 20, 18, ctrl.rawOnlyCallsigns, font);
-            rawOnlyUnworkedCheckBox  = MakeCheck(filtersGroup, "Show only stations not previously worked",          "Only unworked",           8, 44, 19, ctrl.rawOnlyUnworked,  font);
-            rawOnlyRankedCheckBox    = MakeCheck(filtersGroup, "Show only stations matching current ranking filters","Only ranked",             8, 68, 20, ctrl.rawOnlyRanked,    font);
-            rawPriorityTagsCheckBox  = MakeCheck(filtersGroup, "Show priority tags in Raw Decodes",                 "Show priority tags",      8, 92, 21, ctrl.rawPriorityTags,  font);
+            rawOnlyCallsignsCheckBox = MakeCheck(filtersGroup, "Show only decodes containing callsigns",           "Only callsigns",         8,  20, 18, ctrl.rawOnlyCallsigns, font);
+            rawOnlyUnworkedCheckBox  = MakeCheck(filtersGroup, "Show only stations not previously worked",          "Only unworked",           8,  44, 19, ctrl.rawOnlyUnworked,  font);
+            rawOnlyRankedCheckBox    = MakeCheck(filtersGroup, "Show only stations matching current ranking filters","Only ranked",             8,  68, 20, ctrl.rawOnlyRanked,    font);
+            rawPriorityTagsCheckBox  = MakeCheck(filtersGroup, "Show priority tags in Raw Decodes",                 "Show priority tags",      8,  92, 21, ctrl.rawPriorityTags,  font);
+            rawNewestFirstCheckBox   = MakeCheck(filtersGroup, "Show newest decodes at top",                        "Newest at top",           8, 116, 22, ctrl.rawNewestFirst,   font);
             advUiPanel.Controls.Add(filtersGroup);
 
             // All groups (except the enable checkbox itself) are dependent controls
             _advUiDependentControls.Add(advShowTx1CheckBox);
             _advUiDependentControls.Add(advShowTx2CheckBox);
             _advUiDependentControls.Add(advShowRawCheckBox);
+            _advUiDependentControls.Add(keepTransmitListDuringTxCheckBox);
             _advUiDependentControls.Add(msgGroup);
             _advUiDependentControls.Add(displayGroup);
             _advUiDependentControls.Add(filtersGroup);
@@ -479,6 +535,9 @@ namespace WSJTX_Controller
             ctrl.rawOnlyRanked     = rawOnlyRankedCheckBox?.Checked ?? false;
             ctrl.rawPriorityTags   = rawPriorityTagsCheckBox?.Checked ?? false;
             if (ctrl.wsjtxClient != null) ctrl.wsjtxClient.rawPriorityTags = ctrl.rawPriorityTags;
+            ctrl.rawNewestFirst    = rawNewestFirstCheckBox?.Checked ?? false;
+            ctrl.keepTransmitListDuringTx = keepTransmitListDuringTxCheckBox?.Checked ?? false;
+            ctrl.keepListPositionDuringRefresh = keepListPositionDuringRefreshCheckBox?.Checked ?? false;
             int rawMax = (int)(rawMaxRowsNumeric?.Value ?? 100);
             ctrl.rawMaxRows = Math.Max(10, Math.Min(5000, rawMax));
         }
@@ -571,6 +630,21 @@ namespace WSJTX_Controller
 
             var font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
 
+            // Global sounds enabled checkbox
+            int tabIdx = 0;
+            _soundsEnabledCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Sounds enabled",
+                Checked        = ctrl.soundsEnabled,
+                Location       = new System.Drawing.Point(8, 6),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                TabStop        = true,
+                AccessibleName = "All Jimmy sounds enabled",
+                Font           = font,
+            };
+            soundsPanel.Controls.Add(_soundsEnabledCb);
+
             // Instruction label
             var instrBox = new System.Windows.Forms.TextBox
             {
@@ -579,10 +653,9 @@ namespace WSJTX_Controller
                 BorderStyle    = System.Windows.Forms.BorderStyle.None,
                 BackColor      = soundsPanel.BackColor,
                 ForeColor      = System.Drawing.SystemColors.ControlText,
-                Location       = new System.Drawing.Point(8, 6),
+                Location       = new System.Drawing.Point(8, 28),
                 Size           = new System.Drawing.Size(648, 32),
-                Text           = "Enable or disable each sound event and choose a WAV file. Leave the path empty to disable a sound.\r\n" +
-                                 "Call added / Calling me / Logged enable state is controlled by the Advanced tab Sound checkboxes.",
+                Text           = "Enable or disable each sound event and choose a WAV file. Leave the path empty to disable a sound.",
                 TabStop        = false,
                 AccessibleName = "Sounds tab instructions",
                 Font           = font,
@@ -590,18 +663,18 @@ namespace WSJTX_Controller
             soundsPanel.Controls.Add(instrBox);
 
             // Column headers
-            var hdrEnabled = new System.Windows.Forms.Label { Text = "On",      AutoSize = true, Location = new System.Drawing.Point(8,   44), Font = font, TabStop = false };
-            var hdrEvent   = new System.Windows.Forms.Label { Text = "Event",   AutoSize = true, Location = new System.Drawing.Point(32,  44), Font = font, TabStop = false };
-            var hdrFile    = new System.Windows.Forms.Label { Text = "WAV file path (empty = no sound)", AutoSize = true, Location = new System.Drawing.Point(190, 44), Font = font, TabStop = false };
+            var hdrEnabled = new System.Windows.Forms.Label { Text = "On",      AutoSize = true, Location = new System.Drawing.Point(8,   66), Font = font, TabStop = false };
+            var hdrEvent   = new System.Windows.Forms.Label { Text = "Event",   AutoSize = true, Location = new System.Drawing.Point(32,  66), Font = font, TabStop = false };
+            var hdrFile    = new System.Windows.Forms.Label { Text = "WAV file path (empty = no sound)", AutoSize = true, Location = new System.Drawing.Point(190, 66), Font = font, TabStop = false };
             soundsPanel.Controls.Add(hdrEnabled);
             soundsPanel.Controls.Add(hdrEvent);
             soundsPanel.Controls.Add(hdrFile);
 
             var eventDefs = new[]
             {
-                new { Key = "CallAdded",      Label = "Call added",          Enabled = ctrl.callAddedCheckBox.Checked, File = ctrl.soundFile_CallAdded,   EnabledEditable = false },
-                new { Key = "CallingMe",      Label = "Calling me",          Enabled = ctrl.mycallCheckBox.Checked,    File = ctrl.soundFile_CallingMe,   EnabledEditable = false },
-                new { Key = "Logged",         Label = "Logged",              Enabled = ctrl.loggedCheckBox.Checked,    File = ctrl.soundFile_Logged,      EnabledEditable = false },
+                new { Key = "CallAdded",      Label = "Call added",          Enabled = ctrl.callAddedCheckBox.Checked, File = ctrl.soundFile_CallAdded,   EnabledEditable = true  },
+                new { Key = "CallingMe",      Label = "Calling me",          Enabled = ctrl.mycallCheckBox.Checked,    File = ctrl.soundFile_CallingMe,   EnabledEditable = true  },
+                new { Key = "Logged",         Label = "Logged",              Enabled = ctrl.loggedCheckBox.Checked,    File = ctrl.soundFile_Logged,      EnabledEditable = true  },
                 new { Key = "TxEnabled",      Label = "TX enabled",          Enabled = ctrl.soundEnabled_TxEnabled,    File = ctrl.soundFile_TxEnabled,   EnabledEditable = true  },
                 new { Key = "Disconnected",   Label = "WSJT-X disconnected", Enabled = ctrl.soundEnabled_Disconnected, File = ctrl.soundFile_Disconnected,EnabledEditable = true  },
                 new { Key = "NewDxcc",        Label = "New DXCC",            Enabled = ctrl.soundEnabled_NewDxcc,      File = ctrl.soundFile_NewDxcc,     EnabledEditable = true  },
@@ -612,8 +685,7 @@ namespace WSJTX_Controller
                 new { Key = "Sota",           Label = "SOTA",                Enabled = ctrl.soundEnabled_Sota,         File = ctrl.soundFile_Sota,         EnabledEditable = true },
             };
 
-            int y = 62;
-            int tabIdx = 0;
+            int y = 84;
 
             foreach (var ev in eventDefs)
             {
@@ -650,7 +722,6 @@ namespace WSJTX_Controller
                     Size            = new System.Drawing.Size(295, 20),
                     TabIndex        = tabIdx++,
                     AccessibleName  = ev.Label + " sound file path",
-                    AccessibleDescription = "Full path to WAV file for " + ev.Label + " event. Leave empty for no sound.",
                     Font            = font,
                 };
                 soundsPanel.Controls.Add(fileTb);
@@ -666,7 +737,6 @@ namespace WSJTX_Controller
                     Size            = new System.Drawing.Size(60, 22),
                     TabIndex        = tabIdx++,
                     AccessibleName  = "Browse " + ev.Label + " sound file",
-                    AccessibleDescription = "Open file browser to select WAV file for " + ev.Label,
                     Font            = font,
                 };
                 browseBtn.Click += (s, e) => BrowseSoundFile(capturedLabel, capturedTb);
@@ -679,7 +749,6 @@ namespace WSJTX_Controller
                     Size            = new System.Drawing.Size(48, 22),
                     TabIndex        = tabIdx++,
                     AccessibleName  = "Test " + ev.Label + " sound",
-                    AccessibleDescription = "Play the selected WAV file as a test for " + ev.Label,
                     Font            = font,
                 };
                 testBtn.Click += (s, e) => TestSoundFile(capturedTb.Text);
@@ -722,6 +791,7 @@ namespace WSJTX_Controller
         private void SaveSoundsTab()
         {
             if (_soundRows == null) return;
+            if (_soundsEnabledCb != null) ctrl.soundsEnabled = _soundsEnabledCb.Checked;
             foreach (var row in _soundRows)
             {
                 bool enabled = row.EnabledCb?.Checked ?? false;
@@ -780,47 +850,66 @@ namespace WSJTX_Controller
 
         private void ReparentControlsToDialog()
         {
-            // Calling group
-            ReparentTo(ctrl.callNonDirCqCheckBox, callingGroupBox, new Point(10, 18));
-            ReparentTo(ctrl.callCqDxCheckBox,     callingGroupBox, new Point(10, 40));
-            ReparentTo(ctrl.callDirCqCheckBox,    callingGroupBox, new Point(10, 62));
-            ReparentTo(ctrl.directedTextBox,      callingGroupBox, new Point(155, 60));
-            ReparentTo(ctrl.UseDirectedHelpLabel, callingGroupBox, new Point(270, 63));
-            ReparentTo(ctrl.ignoreNonDxCheckBox,  callingGroupBox, new Point(10, 86));
-            ReparentTo(ctrl.IgnoreNonDxHelpLabel, callingGroupBox, new Point(270, 89));
+            // Calling / CQ Mode section → Receive / Auto Reply tab
+            ReparentTo(ctrl.callNonDirCqCheckBox, rcvCallingGroupBox, new Point(10, 18));
+            ReparentTo(ctrl.callCqDxCheckBox,     rcvCallingGroupBox, new Point(10, 40));
+            ReparentTo(ctrl.callDirCqCheckBox,    rcvCallingGroupBox, new Point(10, 62));
+            ReparentTo(ctrl.directedTextBox,      rcvCallingGroupBox, new Point(175, 60));
+            ReparentTo(ctrl.UseDirectedHelpLabel, rcvCallingGroupBox, new Point(350, 63));
+            ReparentTo(ctrl.ignoreNonDxCheckBox,  rcvCallingGroupBox, new Point(10, 86));
+            ReparentTo(ctrl.IgnoreNonDxHelpLabel, rcvCallingGroupBox, new Point(350, 89));
 
-            // Replying group
-            ReparentTo(ctrl.replyDirCqCheckBox,      replyingGroupBox, new Point(10, 18));
-            ReparentTo(ctrl.alertTextBox,            replyingGroupBox, new Point(155, 16));
-            ReparentTo(ctrl.AlertDirectedHelpLabel,  replyingGroupBox, new Point(270, 19));
-            ReparentTo(ctrl.replyNewDxccCheckBox,    replyingGroupBox, new Point(10, 42));
-            ReparentTo(ctrl.replyNewOnlyCheckBox,    replyingGroupBox, new Point(200, 42));
-            ReparentTo(ctrl.ReplyNewHelpLabel,       replyingGroupBox, new Point(280, 44));
-            ReparentTo(ctrl.replyRR73CheckBox,       replyingGroupBox, new Point(10, 66));
-            ReparentTo(ctrl.ReplyRR73HelpLabel,      replyingGroupBox, new Point(135, 68));
-            ReparentTo(ctrl.exceptLabel,             replyingGroupBox, new Point(10, 92));
-            ReparentTo(ctrl.exceptTextBox,           replyingGroupBox, new Point(115, 89));
-            ReparentTo(ctrl.blockHelpLabel,          replyingGroupBox, new Point(280, 92));
+            // Replying section (DX/Local + band/message filter) → Receive / Auto Reply tab
+            ReparentTo(ctrl.replyNormCqLabel,   rcvReplyingGroupBox, new Point(8, 22));
+            ReparentTo(ctrl.replyDxCheckBox,    rcvReplyingGroupBox, new Point(185, 20));
+            ReparentTo(ctrl.replyLocalCheckBox, rcvReplyingGroupBox, new Point(240, 20));
+            ReparentTo(ctrl.bandComboBox,        rcvReplyingGroupBox, new Point(112, 43));
+            ReparentTo(ctrl.forLabel,            rcvReplyingGroupBox, new Point(190, 46));
+            ReparentTo(ctrl.ExcludeHelpLabel,    rcvReplyingGroupBox, new Point(215, 46));
+            ReparentTo(ctrl.includeLabel,        rcvReplyingGroupBox, new Point(8, 70));
+            ReparentTo(ctrl.cqOnlyRadioButton,   rcvReplyingGroupBox, new Point(100, 68));
+            ReparentTo(ctrl.cqGridRadioButton,   rcvReplyingGroupBox, new Point(162, 68));
+            ReparentTo(ctrl.anyMsgRadioButton,   rcvReplyingGroupBox, new Point(232, 68));
+            ReparentTo(ctrl.IncludeHelpLabel,    rcvReplyingGroupBox, new Point(282, 70));
 
-            // Transmit group
-            ReparentTo(ctrl.freqCheckBox,       transmitGroupBox, new Point(10, 18));
-            ReparentTo(ctrl.AutoFreqHelpLabel,  transmitGroupBox, new Point(150, 20));
-            ReparentTo(ctrl.skipGridCheckBox,   transmitGroupBox, new Point(10, 40));
-            ReparentTo(ctrl.useRR73CheckBox,    transmitGroupBox, new Point(110, 40));
-            ReparentTo(ctrl.logEarlyCheckBox,   transmitGroupBox, new Point(10, 62));
-            ReparentTo(ctrl.LogEarlyHelpLabel,  transmitGroupBox, new Point(140, 64));
-            ReparentTo(ctrl.optimizeCheckBox,   transmitGroupBox, new Point(10, 84));
-            ReparentTo(ctrl.holdCheckBox,       transmitGroupBox, new Point(90, 84));
-            ReparentTo(ctrl.limitLabel,         transmitGroupBox, new Point(10, 108));
-            ReparentTo(ctrl.timeoutNumUpDown,   transmitGroupBox, new Point(57, 105));
+            // Directed CQ Alert → Receive / Auto Reply tab
+            ReparentTo(ctrl.replyDirCqCheckBox,     rcvDirectedCqGroupBox, new Point(10, 18));
+            ReparentTo(ctrl.alertTextBox,           rcvDirectedCqGroupBox, new Point(180, 16));
+            ReparentTo(ctrl.AlertDirectedHelpLabel, rcvDirectedCqGroupBox, new Point(300, 19));
+
+            // New DXCC → Receive / Auto Reply tab
+            ReparentTo(ctrl.replyNewDxccCheckBox, rcvNewDxccGroupBox, new Point(10, 20));
+            ReparentTo(ctrl.replyNewOnlyCheckBox, rcvNewDxccGroupBox, new Point(30, 44));
+            ReparentTo(ctrl.ReplyNewHelpLabel,    rcvNewDxccGroupBox, new Point(280, 46));
+
+            // Reply Behavior → Receive / Auto Reply tab
+            ReparentTo(ctrl.replyRR73CheckBox,  rcvReplyBehaviorGroupBox, new Point(10, 18));
+            ReparentTo(ctrl.ReplyRR73HelpLabel, rcvReplyBehaviorGroupBox, new Point(200, 20));
+
+            // Block List → Receive / Auto Reply tab
+            ReparentTo(ctrl.exceptLabel,   rcvBlockListGroupBox, new Point(10, 20));
+            ReparentTo(ctrl.exceptTextBox, rcvBlockListGroupBox, new Point(110, 17));
+            ReparentTo(ctrl.blockHelpLabel, rcvBlockListGroupBox, new Point(275, 20));
+
+            // Transmit group → Transmit tab
+            ReparentTo(ctrl.freqCheckBox,       rcvTransmitGroupBox, new Point(10, 18));
+            ReparentTo(ctrl.AutoFreqHelpLabel,  rcvTransmitGroupBox, new Point(150, 20));
+            ReparentTo(ctrl.skipGridCheckBox,   rcvTransmitGroupBox, new Point(10, 40));
+            ReparentTo(ctrl.useRR73CheckBox,    rcvTransmitGroupBox, new Point(110, 40));
+            ReparentTo(ctrl.logEarlyCheckBox,   rcvTransmitGroupBox, new Point(10, 62));
+            ReparentTo(ctrl.LogEarlyHelpLabel,  rcvTransmitGroupBox, new Point(140, 64));
+            ReparentTo(ctrl.optimizeCheckBox,   rcvTransmitGroupBox, new Point(10, 84));
+            ReparentTo(ctrl.holdCheckBox,       rcvTransmitGroupBox, new Point(90, 84));
+            ReparentTo(ctrl.limitLabel,         rcvTransmitGroupBox, new Point(10, 108));
+            ReparentTo(ctrl.timeoutNumUpDown,   rcvTransmitGroupBox, new Point(57, 105));
             ctrl.timeoutNumUpDown.TabStop = true;
-            ReparentTo(ctrl.repeatLabel,        transmitGroupBox, new Point(95, 108));
-            ReparentTo(ctrl.LimitTxHelpLabel,   transmitGroupBox, new Point(240, 108));
-            ReparentTo(ctrl.periodLabel,        transmitGroupBox, new Point(10, 132));
-            ReparentTo(ctrl.periodComboBox,     transmitGroupBox, new Point(67, 129));
-            ReparentTo(ctrl.PeriodHelpLabel,    transmitGroupBox, new Point(127, 132));
+            ReparentTo(ctrl.repeatLabel,        rcvTransmitGroupBox, new Point(95, 108));
+            ReparentTo(ctrl.LimitTxHelpLabel,   rcvTransmitGroupBox, new Point(240, 108));
+            ReparentTo(ctrl.periodLabel,        rcvTransmitGroupBox, new Point(10, 132));
+            ReparentTo(ctrl.periodComboBox,     rcvTransmitGroupBox, new Point(67, 129));
+            ReparentTo(ctrl.PeriodHelpLabel,    rcvTransmitGroupBox, new Point(127, 132));
 
-            // Sound group
+            // Sound group (remains on Advanced tab for now)
             ReparentTo(ctrl.playSoundLabel,    soundGroupBox, new Point(10, 22));
             ReparentTo(ctrl.callAddedCheckBox, soundGroupBox, new Point(79, 20));
             ReparentTo(ctrl.mycallCheckBox,    soundGroupBox, new Point(161, 20));
@@ -829,19 +918,8 @@ namespace WSJTX_Controller
             ctrl.mycallCheckBox.TabStop    = true;
             ctrl.loggedCheckBox.TabStop    = true;
 
-            // Display options (Basic tab)
-            ReparentTo(ctrl.showUsStateCheckBox, basicTabPage, new Point(8, 295));
-
-            // Filter group (Basic tab)
-            ReparentTo(ctrl.replyNormCqLabel,   filterGroupBox, new Point(8, 22));
-            ReparentTo(ctrl.bandComboBox,        filterGroupBox, new Point(112, 18));
-            ReparentTo(ctrl.forLabel,            filterGroupBox, new Point(190, 22));
-            ReparentTo(ctrl.ExcludeHelpLabel,    filterGroupBox, new Point(215, 22));
-            ReparentTo(ctrl.includeLabel,        filterGroupBox, new Point(8, 45));
-            ReparentTo(ctrl.cqOnlyRadioButton,   filterGroupBox, new Point(100, 43));
-            ReparentTo(ctrl.cqGridRadioButton,   filterGroupBox, new Point(162, 43));
-            ReparentTo(ctrl.anyMsgRadioButton,   filterGroupBox, new Point(232, 43));
-            ReparentTo(ctrl.IncludeHelpLabel,    filterGroupBox, new Point(282, 45));
+            // General tab
+            ReparentTo(ctrl.showUsStateCheckBox, generalPanel, new Point(10, 61));
         }
 
         private void ReparentTo(Control c, Control newParent, Point newLocation)
@@ -905,9 +983,9 @@ namespace WSJTX_Controller
             SetState(recentButton, (wsjtxClient.rankOrderList.Count > 0 && wsjtxClient.rankOrderList[0] == WsjtxClient.RankMethods.MOST_RECENT), true);
 
             if (callCqButton.Checked)
-                label9.Text = ", You're now ready to start. Press OK to close this Options dialog, then enable CQ mode using Ctrl, E.";
+                label9.Text = "You're now ready to start. Press OK to close this Options dialog, then enable CQ mode using Ctrl, E.";
             else
-                label9.Text = ", You're now ready to start. Press OK to close this Options dialog, and Listen mode is enabled.";
+                label9.Text = "You're now ready to start. Press OK to close this Options dialog, and Listen mode is enabled.";
         }
 
         private void callCqButton_Click(object sender, EventArgs e)
@@ -1070,7 +1148,7 @@ namespace WSJTX_Controller
                 Size           = new Size(640, 34),
                 Text           = "Choose an action, then tab to the shortcut field and press the new shortcut.",
                 TabStop        = false,
-                AccessibleName = "Instruction",
+                AccessibleName = "Hotkeys usage instructions",
             };
             hotkeysPanel.Controls.Add(instrBox);
 

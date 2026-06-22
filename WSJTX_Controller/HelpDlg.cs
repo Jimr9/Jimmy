@@ -36,7 +36,7 @@ namespace WSJTX_Controller
 
             helpLabel.SelectionStart = 0;
             helpLabel.SelectionLength = 0;
-            this.Focus();
+            this.Activate();
         }
 
         private void closeButton_Click(object sender, EventArgs e)

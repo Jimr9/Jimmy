@@ -254,13 +254,13 @@ namespace WsjtxUdpLib.Messages.Out
             decodeMessage.Message = DecodeString(message, ref cur);
 
             //this actually happens, because of AP (a priori) set
-            //'W1AW K1HZ FN42                      ? a2'
-            //01234567890123456789012345678901234567890
-            //          1         2         3         4
-            int idx = decodeMessage.Message.IndexOf("   ");
+            //'W1AW K1HZ FN42                      ? a2'  (long pad before ?)
+            //'KB0UZT LA8ENA +00  ? a3'                   (short pad before ?)
+            //use " ?" as delimiter; "?" is never a valid FT8 message character
+            int idx = decodeMessage.Message.IndexOf(" ?");
             if (idx != -1)
             {
-                decodeMessage.Message = decodeMessage.Message.Substring(0, idx);
+                decodeMessage.Message = decodeMessage.Message.Substring(0, idx).TrimEnd();
             }
 
             //hashed message case, brackets and only two words:
@@ -404,13 +404,13 @@ namespace WsjtxUdpLib.Messages.Out
             enqueueDecodeMessage.Message = DecodeString(message, ref cur);
 
             //this actually happens, because of AP (a priori) set
-            //'W1AW K1HZ FN42                      ? a2'
-            //01234567890123456789012345678901234567890
-            //          1         2         3         4
-            int idx = enqueueDecodeMessage.Message.IndexOf("        ");
+            //'W1AW K1HZ FN42                      ? a2'  (long pad before ?)
+            //'KB0UZT LA8ENA +00  ? a3'                   (short pad before ?)
+            //use " ?" as delimiter; "?" is never a valid FT8 message character
+            int idx = enqueueDecodeMessage.Message.IndexOf(" ?");
             if (idx != -1)
             {
-                enqueueDecodeMessage.Message = enqueueDecodeMessage.Message.Substring(0, idx);
+                enqueueDecodeMessage.Message = enqueueDecodeMessage.Message.Substring(0, idx).TrimEnd();
             }
 
             //hashed message case, brackets and only two words:

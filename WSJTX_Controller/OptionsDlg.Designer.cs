@@ -17,6 +17,19 @@ namespace WSJTX_Controller
         private void InitializeComponent()
         {
             this.tabControl1 = new System.Windows.Forms.TabControl();
+            this.generalTabPage = new System.Windows.Forms.TabPage();
+            this.generalPanel = new System.Windows.Forms.Panel();
+            this.receiveReplyTabPage = new System.Windows.Forms.TabPage();
+            this.receiveReplyPanel = new System.Windows.Forms.Panel();
+            this.rcvCallingGroupBox = new System.Windows.Forms.GroupBox();
+            this.rcvReplyingGroupBox = new System.Windows.Forms.GroupBox();
+            this.rcvDirectedCqGroupBox = new System.Windows.Forms.GroupBox();
+            this.rcvNewDxccGroupBox = new System.Windows.Forms.GroupBox();
+            this.rcvReplyBehaviorGroupBox = new System.Windows.Forms.GroupBox();
+            this.rcvBlockListGroupBox = new System.Windows.Forms.GroupBox();
+            this.transmitTabPage = new System.Windows.Forms.TabPage();
+            this.transmitPanel = new System.Windows.Forms.Panel();
+            this.rcvTransmitGroupBox = new System.Windows.Forms.GroupBox();
             this.basicTabPage = new System.Windows.Forms.TabPage();
             this.hotkeysTabPage = new System.Windows.Forms.TabPage();
             this.hotkeysPanel = new System.Windows.Forms.Panel();
@@ -32,7 +45,7 @@ namespace WSJTX_Controller
             this.udpPanel = new System.Windows.Forms.Panel();
             this.udpGroupBox = new System.Windows.Forms.GroupBox();
             this.udpOverrideCheckBox = new System.Windows.Forms.CheckBox();
-            this.udpHelpButton = new System.Windows.Forms.Label();
+            this.udpHelpButton = new System.Windows.Forms.Button();
             this.udpAddrStaticLabel = new System.Windows.Forms.Label();
             this.udpAddrTextBox = new System.Windows.Forms.TextBox();
             this.udpAddrLabel = new System.Windows.Forms.Label();
@@ -67,6 +80,12 @@ namespace WSJTX_Controller
             this.okButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
             this.tabControl1.SuspendLayout();
+            this.generalTabPage.SuspendLayout();
+            this.generalPanel.SuspendLayout();
+            this.receiveReplyTabPage.SuspendLayout();
+            this.receiveReplyPanel.SuspendLayout();
+            this.transmitTabPage.SuspendLayout();
+            this.transmitPanel.SuspendLayout();
             this.basicTabPage.SuspendLayout();
             this.hotkeysTabPage.SuspendLayout();
             this.advancedTabPage.SuspendLayout();
@@ -84,19 +103,137 @@ namespace WSJTX_Controller
             //
             // tabControl1
             //
-            this.tabControl1.Controls.Add(this.basicTabPage);
-            this.tabControl1.Controls.Add(this.hotkeysTabPage);
-            this.tabControl1.Controls.Add(this.advancedTabPage);
-            this.tabControl1.Controls.Add(this.advUiTabPage);
-            this.tabControl1.Controls.Add(this.wantedCallsTabPage);
-            this.tabControl1.Controls.Add(this.soundsTabPage);
-            this.tabControl1.Controls.Add(this.udpTabPage);
+            this.tabControl1.Controls.Add(this.basicTabPage);          // index 0
+            this.tabControl1.Controls.Add(this.generalTabPage);       // index 1
+            this.tabControl1.Controls.Add(this.receiveReplyTabPage);  // index 2
+            this.tabControl1.Controls.Add(this.transmitTabPage);      // index 3
+            this.tabControl1.Controls.Add(this.hotkeysTabPage);       // index 4
+            this.tabControl1.Controls.Add(this.advUiTabPage);         // index 5
+            this.tabControl1.Controls.Add(this.advancedTabPage);      // index 6
+            this.tabControl1.Controls.Add(this.wantedCallsTabPage);   // index 7
+            this.tabControl1.Controls.Add(this.soundsTabPage);        // index 8
+            this.tabControl1.Controls.Add(this.udpTabPage);           // index 9
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
             this.tabControl1.Size = new System.Drawing.Size(680, 380);
             this.tabControl1.TabIndex = 0;
-            this.tabControl1.AccessibleName = "Options tabs";
+            this.tabControl1.AccessibleName = "";
+            //
+            // generalTabPage
+            //
+            this.generalTabPage.Controls.Add(this.generalPanel);
+            this.generalTabPage.Text = "General";
+            this.generalTabPage.Name = "generalTabPage";
+            this.generalTabPage.AccessibleName = "General tab";
+            //
+            // generalPanel
+            //
+            this.generalPanel.Controls.Add(this.udpOnTopCheckBox);
+            this.generalPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.generalPanel.Name = "generalPanel";
+            //
+            // receiveReplyTabPage
+            //
+            this.receiveReplyTabPage.Controls.Add(this.receiveReplyPanel);
+            this.receiveReplyTabPage.Text = "Receive / Auto Reply";
+            this.receiveReplyTabPage.Name = "receiveReplyTabPage";
+            this.receiveReplyTabPage.AccessibleName = "Receive Auto Reply tab";
+            //
+            // receiveReplyPanel
+            //
+            this.receiveReplyPanel.AutoScroll = true;
+            this.receiveReplyPanel.Controls.Add(this.rcvCallingGroupBox);
+            this.receiveReplyPanel.Controls.Add(this.rcvReplyingGroupBox);
+            this.receiveReplyPanel.Controls.Add(this.rcvDirectedCqGroupBox);
+            this.receiveReplyPanel.Controls.Add(this.rcvNewDxccGroupBox);
+            this.receiveReplyPanel.Controls.Add(this.rcvReplyBehaviorGroupBox);
+            this.receiveReplyPanel.Controls.Add(this.rcvBlockListGroupBox);
+            this.receiveReplyPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.receiveReplyPanel.Name = "receiveReplyPanel";
+            //
+            // rcvCallingGroupBox
+            //
+            this.rcvCallingGroupBox.AccessibleName = "Calling options";
+            this.rcvCallingGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
+            this.rcvCallingGroupBox.Location = new System.Drawing.Point(5, 5);
+            this.rcvCallingGroupBox.Name = "rcvCallingGroupBox";
+            this.rcvCallingGroupBox.Size = new System.Drawing.Size(650, 115);
+            this.rcvCallingGroupBox.TabStop = false;
+            this.rcvCallingGroupBox.Text = "Calling";
+            //
+            // rcvReplyingGroupBox
+            //
+            this.rcvReplyingGroupBox.AccessibleName = "Replying options";
+            this.rcvReplyingGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
+            this.rcvReplyingGroupBox.Location = new System.Drawing.Point(5, 125);
+            this.rcvReplyingGroupBox.Name = "rcvReplyingGroupBox";
+            this.rcvReplyingGroupBox.Size = new System.Drawing.Size(650, 105);
+            this.rcvReplyingGroupBox.TabStop = false;
+            this.rcvReplyingGroupBox.Text = "Replying";
+            //
+            // rcvDirectedCqGroupBox
+            //
+            this.rcvDirectedCqGroupBox.AccessibleName = "Directed CQ Alert options";
+            this.rcvDirectedCqGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
+            this.rcvDirectedCqGroupBox.Location = new System.Drawing.Point(5, 235);
+            this.rcvDirectedCqGroupBox.Name = "rcvDirectedCqGroupBox";
+            this.rcvDirectedCqGroupBox.Size = new System.Drawing.Size(650, 55);
+            this.rcvDirectedCqGroupBox.TabStop = false;
+            this.rcvDirectedCqGroupBox.Text = "Directed CQ Alert";
+            //
+            // rcvNewDxccGroupBox
+            //
+            this.rcvNewDxccGroupBox.AccessibleName = "New DXCC options";
+            this.rcvNewDxccGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
+            this.rcvNewDxccGroupBox.Location = new System.Drawing.Point(5, 295);
+            this.rcvNewDxccGroupBox.Name = "rcvNewDxccGroupBox";
+            this.rcvNewDxccGroupBox.Size = new System.Drawing.Size(650, 70);
+            this.rcvNewDxccGroupBox.TabStop = false;
+            this.rcvNewDxccGroupBox.Text = "New DXCC";
+            //
+            // rcvReplyBehaviorGroupBox
+            //
+            this.rcvReplyBehaviorGroupBox.AccessibleName = "Reply Behavior options";
+            this.rcvReplyBehaviorGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
+            this.rcvReplyBehaviorGroupBox.Location = new System.Drawing.Point(5, 370);
+            this.rcvReplyBehaviorGroupBox.Name = "rcvReplyBehaviorGroupBox";
+            this.rcvReplyBehaviorGroupBox.Size = new System.Drawing.Size(650, 50);
+            this.rcvReplyBehaviorGroupBox.TabStop = false;
+            this.rcvReplyBehaviorGroupBox.Text = "Reply Behavior";
+            //
+            // rcvBlockListGroupBox
+            //
+            this.rcvBlockListGroupBox.AccessibleName = "Block List";
+            this.rcvBlockListGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
+            this.rcvBlockListGroupBox.Location = new System.Drawing.Point(5, 425);
+            this.rcvBlockListGroupBox.Name = "rcvBlockListGroupBox";
+            this.rcvBlockListGroupBox.Size = new System.Drawing.Size(650, 52);
+            this.rcvBlockListGroupBox.TabStop = false;
+            this.rcvBlockListGroupBox.Text = "Block List";
+            //
+            // transmitTabPage
+            //
+            this.transmitTabPage.Controls.Add(this.transmitPanel);
+            this.transmitTabPage.Text = "Transmit";
+            this.transmitTabPage.Name = "transmitTabPage";
+            this.transmitTabPage.AccessibleName = "Transmit tab";
+            //
+            // transmitPanel
+            //
+            this.transmitPanel.Controls.Add(this.rcvTransmitGroupBox);
+            this.transmitPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.transmitPanel.Name = "transmitPanel";
+            //
+            // rcvTransmitGroupBox
+            //
+            this.rcvTransmitGroupBox.AccessibleName = "Transmit options";
+            this.rcvTransmitGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
+            this.rcvTransmitGroupBox.Location = new System.Drawing.Point(5, 5);
+            this.rcvTransmitGroupBox.Name = "rcvTransmitGroupBox";
+            this.rcvTransmitGroupBox.Size = new System.Drawing.Size(650, 165);
+            this.rcvTransmitGroupBox.TabStop = false;
+            this.rcvTransmitGroupBox.Text = "Transmit";
             //
             // basicTabPage
             //
@@ -182,7 +319,7 @@ namespace WSJTX_Controller
             // udpTabPage
             //
             this.udpTabPage.Controls.Add(this.udpPanel);
-            this.udpTabPage.Text = "UDP Server";
+            this.udpTabPage.Text = "UDP / Connection";
             this.udpTabPage.Name = "udpTabPage";
             //
             // advancedPanel
@@ -198,7 +335,6 @@ namespace WSJTX_Controller
             // udpPanel
             //
             this.udpPanel.Controls.Add(this.udpGroupBox);
-            this.udpPanel.Controls.Add(this.udpOnTopCheckBox);
             this.udpPanel.Controls.Add(this.udpDiagLogCheckBox);
             this.udpPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.udpPanel.Name = "udpPanel";
@@ -224,7 +360,7 @@ namespace WSJTX_Controller
             //
             // udpOverrideCheckBox
             //
-            this.udpOverrideCheckBox.AccessibleName = "Override UDP automatic detection checkbox";
+            this.udpOverrideCheckBox.AccessibleName = "Override UDP automatic detection";
             this.udpOverrideCheckBox.AutoSize = true;
             this.udpOverrideCheckBox.Location = new System.Drawing.Point(12, 22);
             this.udpOverrideCheckBox.Name = "udpOverrideCheckBox";
@@ -235,13 +371,15 @@ namespace WSJTX_Controller
             //
             // udpHelpButton
             //
-            this.udpHelpButton.AutoSize = true;
-            this.udpHelpButton.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.udpHelpButton.AccessibleName = "UDP connection help";
             this.udpHelpButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.udpHelpButton.ForeColor = System.Drawing.Color.Blue;
             this.udpHelpButton.Location = new System.Drawing.Point(294, 0);
             this.udpHelpButton.Name = "udpHelpButton";
+            this.udpHelpButton.Size = new System.Drawing.Size(26, 22);
+            this.udpHelpButton.TabIndex = 4;
             this.udpHelpButton.Text = "?";
+            this.udpHelpButton.UseVisualStyleBackColor = true;
             this.udpHelpButton.Click += new System.EventHandler(this.udpHelpButton_Click);
             //
             // udpAddrStaticLabel
@@ -290,7 +428,7 @@ namespace WSJTX_Controller
             //
             // udpMulticastCheckBox
             //
-            this.udpMulticastCheckBox.AccessibleName = "Multicast checkbox";
+            this.udpMulticastCheckBox.AccessibleName = "Multicast";
             this.udpMulticastCheckBox.AutoSize = true;
             this.udpMulticastCheckBox.Location = new System.Drawing.Point(28, 107);
             this.udpMulticastCheckBox.Name = "udpMulticastCheckBox";
@@ -299,27 +437,27 @@ namespace WSJTX_Controller
             this.udpMulticastCheckBox.UseVisualStyleBackColor = true;
             this.udpMulticastCheckBox.CheckedChanged += new System.EventHandler(this.udpMulticastCheckBox_CheckedChanged);
             //
-            // udpOnTopCheckBox
+            // udpOnTopCheckBox  (moved to General tab / generalPanel)
             //
-            this.udpOnTopCheckBox.AccessibleName = "Always on top checkbox";
+            this.udpOnTopCheckBox.AccessibleName = "Always on top";
             this.udpOnTopCheckBox.AutoSize = true;
-            this.udpOnTopCheckBox.Location = new System.Drawing.Point(10, 173);
+            this.udpOnTopCheckBox.Location = new System.Drawing.Point(10, 15);
             this.udpOnTopCheckBox.Name = "udpOnTopCheckBox";
-            this.udpOnTopCheckBox.TabIndex = 4;
+            this.udpOnTopCheckBox.TabIndex = 0;
             this.udpOnTopCheckBox.Text = "Always on top";
             this.udpOnTopCheckBox.UseVisualStyleBackColor = true;
             //
             // udpDiagLogCheckBox
             //
-            this.udpDiagLogCheckBox.AccessibleName = "Log diagnostic info checkbox";
+            this.udpDiagLogCheckBox.AccessibleName = "Log diagnostic info";
             this.udpDiagLogCheckBox.AutoSize = true;
-            this.udpDiagLogCheckBox.Location = new System.Drawing.Point(10, 198);
+            this.udpDiagLogCheckBox.Location = new System.Drawing.Point(10, 170);
             this.udpDiagLogCheckBox.Name = "udpDiagLogCheckBox";
-            this.udpDiagLogCheckBox.TabIndex = 5;
+            this.udpDiagLogCheckBox.TabIndex = 4;
             this.udpDiagLogCheckBox.Text = "Log diagnostic info";
             this.udpDiagLogCheckBox.UseVisualStyleBackColor = true;
             //
-            // callingGroupBox
+            // callingGroupBox  (remains on Advanced tab; receives no reparented controls after Phase 2)
             //
             this.callingGroupBox.AccessibleName = "Calling options";
             this.callingGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
@@ -329,7 +467,7 @@ namespace WSJTX_Controller
             this.callingGroupBox.TabStop = false;
             this.callingGroupBox.Text = "Calling";
             //
-            // replyingGroupBox
+            // replyingGroupBox  (remains on Advanced tab; receives no reparented controls after Phase 2)
             //
             this.replyingGroupBox.AccessibleName = "Replying options";
             this.replyingGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
@@ -339,7 +477,7 @@ namespace WSJTX_Controller
             this.replyingGroupBox.TabStop = false;
             this.replyingGroupBox.Text = "Replying";
             //
-            // transmitGroupBox
+            // transmitGroupBox  (remains on Advanced tab; receives no reparented controls after Phase 2)
             //
             this.transmitGroupBox.AccessibleName = "Transmit options";
             this.transmitGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
@@ -349,7 +487,7 @@ namespace WSJTX_Controller
             this.transmitGroupBox.TabStop = false;
             this.transmitGroupBox.Text = "Transmit";
             //
-            // soundGroupBox
+            // soundGroupBox  (remains on Advanced tab; still receives sound controls)
             //
             this.soundGroupBox.AccessibleName = "Sound options";
             this.soundGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
@@ -359,7 +497,7 @@ namespace WSJTX_Controller
             this.soundGroupBox.TabStop = false;
             this.soundGroupBox.Text = "Sound";
             //
-            // filterGroupBox
+            // filterGroupBox  (remains on Basic tab; receives no reparented controls after Phase 2)
             //
             this.filterGroupBox.AccessibleName = "Reply to new calls filter";
             this.filterGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
@@ -372,30 +510,33 @@ namespace WSJTX_Controller
             // subtitleLabel
             //
             this.subtitleLabel.AccessibleDescription = "";
-            this.subtitleLabel.AccessibleName = "\"Options\"";
+            this.subtitleLabel.AccessibleName = "Setup wizard instructions";
+            this.subtitleLabel.AccessibleRole = System.Windows.Forms.AccessibleRole.StaticText;
             this.subtitleLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F, System.Drawing.FontStyle.Bold);
             this.subtitleLabel.Location = new System.Drawing.Point(10, 10);
             this.subtitleLabel.Name = "subtitleLabel";
             this.subtitleLabel.ReadOnly = true;
             this.subtitleLabel.Size = new System.Drawing.Size(650, 22);
             this.subtitleLabel.TabIndex = 0;
-            this.subtitleLabel.Text = ", Use this dialog to set operating options. Tab through the rows and press a button.";
+            this.subtitleLabel.Text = "Use this dialog to set operating options. Tab through the rows and press a button.";
             this.subtitleLabel.Enter += new System.EventHandler(this.subtitleLabel_Enter);
             //
             // modeLabel
             //
-            this.modeLabel.AccessibleName = "\"...\"";
+            this.modeLabel.AccessibleName = "Operating mode question";
+            this.modeLabel.AccessibleRole = System.Windows.Forms.AccessibleRole.StaticText;
             this.modeLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F);
             this.modeLabel.Location = new System.Drawing.Point(10, 40);
             this.modeLabel.Name = "modeLabel";
             this.modeLabel.ReadOnly = true;
             this.modeLabel.Size = new System.Drawing.Size(440, 22);
             this.modeLabel.TabIndex = 1;
-            this.modeLabel.Text = ", Do you want to call CQ, or only listen for interesting calls?";
+            this.modeLabel.Text = "Do you want to call CQ, or only listen for interesting calls?";
             this.modeLabel.Enter += new System.EventHandler(this.modeLabel_Enter);
             //
             // callCqButton
             //
+            this.callCqButton.AccessibleName = "Call CQ mode";
             this.callCqButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F);
             this.callCqButton.Location = new System.Drawing.Point(460, 38);
             this.callCqButton.Name = "callCqButton";
@@ -407,7 +548,7 @@ namespace WSJTX_Controller
             //
             // listenButton
             //
-            this.listenButton.AccessibleName = "'Listen for calls' mode";
+            this.listenButton.AccessibleName = "Listen mode";
             this.listenButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F);
             this.listenButton.Location = new System.Drawing.Point(565, 38);
             this.listenButton.Name = "listenButton";
@@ -419,18 +560,20 @@ namespace WSJTX_Controller
             //
             // label12
             //
-            this.label12.AccessibleName = "\"...\"";
+            this.label12.AccessibleName = "CQ type question";
+            this.label12.AccessibleRole = System.Windows.Forms.AccessibleRole.StaticText;
             this.label12.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F);
             this.label12.Location = new System.Drawing.Point(10, 76);
             this.label12.Name = "label12";
             this.label12.ReadOnly = true;
             this.label12.Size = new System.Drawing.Size(440, 22);
             this.label12.TabIndex = 4;
-            this.label12.Text = ", When calling CQ, call 'CQ' or 'CQ DX'? (You can choose one or both)";
+            this.label12.Text = "When calling CQ, call CQ or CQ DX? (You can choose one or both)";
             this.label12.Enter += new System.EventHandler(this.label12_Enter);
             //
             // cqButton
             //
+            this.cqButton.AccessibleName = "CQ";
             this.cqButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F);
             this.cqButton.Location = new System.Drawing.Point(460, 74);
             this.cqButton.Name = "cqButton";
@@ -442,6 +585,7 @@ namespace WSJTX_Controller
             //
             // cqDxButton
             //
+            this.cqDxButton.AccessibleName = "CQ DX";
             this.cqDxButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F);
             this.cqDxButton.Location = new System.Drawing.Point(565, 74);
             this.cqDxButton.Name = "cqDxButton";
@@ -453,14 +597,15 @@ namespace WSJTX_Controller
             //
             // label2
             //
-            this.label2.AccessibleName = "\"...\"";
+            this.label2.AccessibleName = "Reply target question";
+            this.label2.AccessibleRole = System.Windows.Forms.AccessibleRole.StaticText;
             this.label2.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F);
             this.label2.Location = new System.Drawing.Point(10, 112);
             this.label2.Name = "label2";
             this.label2.ReadOnly = true;
             this.label2.Size = new System.Drawing.Size(440, 22);
             this.label2.TabIndex = 7;
-            this.label2.Text = ", In addition to calls to you, which calls do you want to reply to?";
+            this.label2.Text = "In addition to calls to you, which calls do you want to reply to?";
             this.label2.Enter += new System.EventHandler(this.label2_Enter);
             //
             // dxButton
@@ -487,18 +632,20 @@ namespace WSJTX_Controller
             //
             // label4
             //
-            this.label4.AccessibleName = "\"...\"";
+            this.label4.AccessibleName = "POTA role question";
+            this.label4.AccessibleRole = System.Windows.Forms.AccessibleRole.StaticText;
             this.label4.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F);
             this.label4.Location = new System.Drawing.Point(10, 148);
             this.label4.Name = "label4";
             this.label4.ReadOnly = true;
             this.label4.Size = new System.Drawing.Size(440, 22);
             this.label4.TabIndex = 10;
-            this.label4.Text = ", If you're operating Parks on the Air, what will you be doing?";
+            this.label4.Text = "If you're operating Parks on the Air, what will you be doing?";
             this.label4.Enter += new System.EventHandler(this.label4_Enter);
             //
             // potaButton
             //
+            this.potaButton.AccessibleName = "POTA Activator";
             this.potaButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F);
             this.potaButton.Location = new System.Drawing.Point(460, 146);
             this.potaButton.Name = "potaButton";
@@ -510,6 +657,7 @@ namespace WSJTX_Controller
             //
             // hunterButton
             //
+            this.hunterButton.AccessibleName = "POTA Hunter";
             this.hunterButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F);
             this.hunterButton.Location = new System.Drawing.Point(565, 146);
             this.hunterButton.Name = "hunterButton";
@@ -521,14 +669,15 @@ namespace WSJTX_Controller
             //
             // label5
             //
-            this.label5.AccessibleName = "\"...\"";
+            this.label5.AccessibleName = "Reply order question";
+            this.label5.AccessibleRole = System.Windows.Forms.AccessibleRole.StaticText;
             this.label5.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F);
             this.label5.Location = new System.Drawing.Point(10, 184);
             this.label5.Name = "label5";
             this.label5.ReadOnly = true;
             this.label5.Size = new System.Drawing.Size(440, 22);
             this.label5.TabIndex = 13;
-            this.label5.Text = ", When replying to calls, reply in order received, or to most-recent first?";
+            this.label5.Text = "When replying to calls, reply in order received, or to most-recent first?";
             this.label5.Enter += new System.EventHandler(this.label5_Enter);
             //
             // allButton
@@ -557,14 +706,15 @@ namespace WSJTX_Controller
             //
             // label9
             //
-            this.label9.AccessibleName = "\"...\"";
+            this.label9.AccessibleName = "Ready to start message";
+            this.label9.AccessibleRole = System.Windows.Forms.AccessibleRole.StaticText;
             this.label9.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F, System.Drawing.FontStyle.Bold);
             this.label9.Location = new System.Drawing.Point(10, 326);
             this.label9.Name = "label9";
             this.label9.ReadOnly = true;
             this.label9.Size = new System.Drawing.Size(540, 22);
             this.label9.TabIndex = 16;
-            this.label9.Text = ", You're now ready to start. Press OK to close this Options dialog.";
+            this.label9.Text = "You're now ready to start. Press OK to close this Options dialog.";
             this.label9.Enter += new System.EventHandler(this.label9_Enter);
             //
             // okButton
@@ -610,6 +760,13 @@ namespace WSJTX_Controller
             this.Load += new System.EventHandler(this.OptionsDlg_Load);
             this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.OptionsDlg_KeyDown);
             this.tabControl1.ResumeLayout(false);
+            this.generalTabPage.ResumeLayout(false);
+            this.generalPanel.ResumeLayout(false);
+            this.generalPanel.PerformLayout();
+            this.receiveReplyTabPage.ResumeLayout(false);
+            this.receiveReplyPanel.ResumeLayout(false);
+            this.transmitTabPage.ResumeLayout(false);
+            this.transmitPanel.ResumeLayout(false);
             this.basicTabPage.ResumeLayout(false);
             this.basicTabPage.PerformLayout();
             this.hotkeysTabPage.ResumeLayout(false);
@@ -632,6 +789,19 @@ namespace WSJTX_Controller
         #endregion
 
         private System.Windows.Forms.TabControl tabControl1;
+        private System.Windows.Forms.TabPage generalTabPage;
+        private System.Windows.Forms.Panel generalPanel;
+        private System.Windows.Forms.TabPage receiveReplyTabPage;
+        private System.Windows.Forms.Panel receiveReplyPanel;
+        public System.Windows.Forms.GroupBox rcvCallingGroupBox;
+        public System.Windows.Forms.GroupBox rcvReplyingGroupBox;
+        public System.Windows.Forms.GroupBox rcvDirectedCqGroupBox;
+        public System.Windows.Forms.GroupBox rcvNewDxccGroupBox;
+        public System.Windows.Forms.GroupBox rcvReplyBehaviorGroupBox;
+        public System.Windows.Forms.GroupBox rcvBlockListGroupBox;
+        private System.Windows.Forms.TabPage transmitTabPage;
+        private System.Windows.Forms.Panel transmitPanel;
+        public System.Windows.Forms.GroupBox rcvTransmitGroupBox;
         private System.Windows.Forms.TabPage basicTabPage;
         private System.Windows.Forms.TabPage hotkeysTabPage;
         private System.Windows.Forms.Panel hotkeysPanel;
@@ -641,7 +811,7 @@ namespace WSJTX_Controller
         private System.Windows.Forms.Panel udpPanel;
         private System.Windows.Forms.GroupBox udpGroupBox;
         private System.Windows.Forms.CheckBox udpOverrideCheckBox;
-        private System.Windows.Forms.Label udpHelpButton;
+        private System.Windows.Forms.Button udpHelpButton;
         private System.Windows.Forms.Label udpAddrStaticLabel;
         private System.Windows.Forms.TextBox udpAddrTextBox;
         private System.Windows.Forms.Label udpAddrLabel;

@@ -48,10 +48,14 @@ namespace WSJTX_Controller
         public bool rawOnlyUnworked = false;
         public bool rawOnlyRanked = false;
         public bool rawPriorityTags = false;
+        public bool rawNewestFirst = false;
         public int rawMaxRows = 100;
+        public bool keepTransmitListDuringTx = false;
+        public bool keepListPositionDuringRefresh = false;
 
         // Sound settings: enabled flags and file paths for each sound event
         // CallAdded/CallingMe/Logged enabled state is controlled by existing checkboxes
+        public bool   soundsEnabled         = true;
         public string soundFile_CallAdded   = "blip.wav";
         public string soundFile_CallingMe   = "trumpet.wav";
         public string soundFile_Logged      = "echo.wav";
@@ -75,6 +79,7 @@ namespace WSJTX_Controller
         private bool formLoaded = false;
         private bool openOptionsOnUdpTab = false;
         private HelpDlg helpDlg = null;
+        private Control _helpReturnFocus = null;
         private IniFile iniFile = null;
         public HotkeyConfig hotkeyConfig;
         private int minSkipCount = 1;
@@ -86,6 +91,7 @@ namespace WSJTX_Controller
         private bool ignoreDirectedChange = false;
         private string helpSuffix = " Help";
         private bool ignoreExceptChange = false;
+        private bool _suppressIntentSync = false;
 
         private System.Windows.Forms.Timer mainLoopTimer;
 
@@ -159,7 +165,7 @@ namespace WSJTX_Controller
                     {
                         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                         {
-                            "callp", "pri", "grid", "snr", "country", "distAz", "oe", "descr", "rankStr"
+                            "callp", "pri", "tag", "grid", "snr", "country", "distAz", "oe", "descr", "rankStr"
                         };
 
                         var parsed = new List<string>();
@@ -305,7 +311,7 @@ namespace WSJTX_Controller
                 alwaysOnTop = iniFile.Read("alwaysOnTop") == "True";
                 useRR73 = iniFile.Read("useRR73") == "True";
                 skipGridCheckBox.Checked = iniFile.Read("skipGrid") == "True";
-                replyNewDxccCheckBox.Checked = iniFile.Read("autoReplyNewCq") == "True";
+                replyNewDxccCheckBox.Checked = iniFile.Read("autoReplyNewCq") != "False";     //default: true
                 replyDxCheckBox.Checked = iniFile.Read("enableReplyDx") != "False";     //default: true
                 diagLog = iniFile.Read("diagLog") == "True";
                 freqCheckBox.Checked = iniFile.Read("bestOffset") == "True";
@@ -366,9 +372,12 @@ namespace WSJTX_Controller
                 rawOnlyCallsigns = iniFile.Read("rawOnlyCallsigns") == "True";
                 rawOnlyUnworked = iniFile.Read("rawOnlyUnworked") == "True";
                 rawOnlyRanked = iniFile.Read("rawOnlyRanked") == "True";
+                rawNewestFirst = iniFile.Read("rawNewestFirst") == "True";
                 int rawMax;
                 if (iniFile.KeyExists("rawMaxRows") && int.TryParse(iniFile.Read("rawMaxRows"), out rawMax) && rawMax >= 10 && rawMax <= 5000)
                     rawMaxRows = rawMax;
+                keepTransmitListDuringTx = iniFile.Read("keepTransmitListDuringTx") == "True";
+                keepListPositionDuringRefresh = iniFile.Read("keepListPositionDuringRefresh") == "True";
 
                 // Sound settings: migrate old enabled keys for backward compat
                 // Enabled state for CallAdded/CallingMe/Logged already read above from playCallAdded/playMyCall/playLogged
@@ -391,6 +400,7 @@ namespace WSJTX_Controller
                 if (iniFile.KeyExists("soundFile_Pota"))             soundFile_Pota             = iniFile.Read("soundFile_Pota");
                 if (iniFile.KeyExists("soundEnabled_Sota"))          soundEnabled_Sota          = iniFile.Read("soundEnabled_Sota") == "True";
                 if (iniFile.KeyExists("soundFile_Sota"))             soundFile_Sota             = iniFile.Read("soundFile_Sota");
+                if (iniFile.KeyExists("soundsEnabled"))              soundsEnabled              = iniFile.Read("soundsEnabled") != "False";
             }
 
             txMode = mode ? WsjtxClient.TxModes.LISTEN : WsjtxClient.TxModes.CALL_CQ;
@@ -437,6 +447,13 @@ namespace WSJTX_Controller
             if (parsedCallWaitingRowOrder != null)
             {
                 wsjtxClient.callWaitingRowOrderFields = parsedCallWaitingRowOrder;
+            }
+            if (iniFile != null)
+            {
+                int.TryParse(iniFile.Read("txOddOffset"), out int cachedOdd);
+                int.TryParse(iniFile.Read("txEvenOffset"), out int cachedEven);
+                if (cachedOdd > 0) wsjtxClient.cachedOddOffset = cachedOdd;
+                if (cachedEven > 0) wsjtxClient.cachedEvenOffset = cachedEven;
             }
             wsjtxClient.myContinent = myContinent;
             if (myContinent != null) replyLocalCheckBox.Text = myContinent;
@@ -559,7 +576,10 @@ namespace WSJTX_Controller
                 iniFile.Write("rawOnlyUnworked", rawOnlyUnworked.ToString());
                 iniFile.Write("rawOnlyRanked", rawOnlyRanked.ToString());
                 iniFile.Write("rawPriorityTags", rawPriorityTags.ToString());
+                iniFile.Write("rawNewestFirst", rawNewestFirst.ToString());
                 iniFile.Write("rawMaxRows", rawMaxRows.ToString());
+                iniFile.Write("keepTransmitListDuringTx", keepTransmitListDuringTx.ToString());
+                iniFile.Write("keepListPositionDuringRefresh", keepListPositionDuringRefresh.ToString());
                 // Sound settings
                 iniFile.Write("soundFile_CallAdded",        soundFile_CallAdded   ?? "");
                 iniFile.Write("soundFile_CallingMe",        soundFile_CallingMe   ?? "");
@@ -580,6 +600,9 @@ namespace WSJTX_Controller
                 iniFile.Write("soundFile_Pota",             soundFile_Pota          ?? "");
                 iniFile.Write("soundEnabled_Sota",          soundEnabled_Sota.ToString());
                 iniFile.Write("soundFile_Sota",             soundFile_Sota          ?? "");
+                iniFile.Write("soundsEnabled",              soundsEnabled.ToString());
+                iniFile.Write("txOddOffset",  wsjtxClient.cachedOddOffset.ToString());
+                iniFile.Write("txEvenOffset", wsjtxClient.cachedEvenOffset.ToString());
                 hotkeyConfig?.SaveToIni(iniFile);
             }
 
@@ -684,13 +707,18 @@ namespace WSJTX_Controller
 
             if (keyData == hotkeyConfig[HotkeyAction.HaltTx])
             {
+                var focused = this.ActiveControl;
                 wsjtxClient.Pause(true, true);
+                BeginInvoke((Action)(() => RestoreFocus(focused)));
                 return true;
             }
 
             if (keyData == hotkeyConfig[HotkeyAction.CallCqMode])
             {
-                cqModeButton_Click(null, null);
+                if (modeGroupBox.Visible && cqIntentListenButton.Checked)
+                    ShowMsg("Listen mode selected; CQ not started.", true);
+                else if (modeGroupBox.Visible)
+                    cqModeButton_Click(null, null);
                 return true;
             }
 
@@ -1007,6 +1035,8 @@ namespace WSJTX_Controller
         {
             initialConnFaultTimer.Start();
             helpDlg = null;
+            RestoreFocus(_helpReturnFocus);
+            _helpReturnFocus = null;
         }
 
         public void ShowMsg(string text, bool sound)
@@ -1069,7 +1099,7 @@ namespace WSJTX_Controller
 
         private void verLabel2_Click(object sender, EventArgs e)
         {
-            string command = "https://github.com/avantol/Tilly/releases/latest";
+            string command = "https://github.com/jimr9/Jimmy/releases/latest";
             System.Diagnostics.Process.Start(command);
         }
 
@@ -1122,7 +1152,7 @@ namespace WSJTX_Controller
                 $"{nl}{nl}Command keys:" +
                 $"{nl}{K(HotkeyAction.RowOrder)}: Open call waiting row order editor." +
                 $"{nl}{K(HotkeyAction.Options)}: Review or set options for processing 'QSO's." +
-                $"{nl}{K(HotkeyAction.CallCqMode)}: Select 'Call CQ' mode." +
+                $"{nl}{K(HotkeyAction.CallCqMode)}: Start selected CQ mode (CQ only / CQ DX only / CQ and CQ DX). Does nothing in Listen mode." +
                 $"{nl}{K(HotkeyAction.ListenMode)}: Select 'Listen for calls' mode." +
                 $"{nl}{K(HotkeyAction.EnableTx)}: Enable transmit, or re-enable timed out 'QSO'." +
                 $"{nl}{K(HotkeyAction.HaltTx)}: Halt transmit immediately." +
@@ -1145,7 +1175,7 @@ namespace WSJTX_Controller
                 $"{nl}{K(HotkeyAction.UploadLotw)}: Upload to Logbook of the World." +
                 $"{nl}{K(HotkeyAction.ToggleMode)}: Select operating mode (FT8 or FT4)." +
                 $"{nl}{K(HotkeyAction.Prompts)}: Toggle command prompts in {friendlyName} status." +
-                $"{nl}Escape key: Halt transmit, cancel current 'QSO'." +
+                $"{nl}Escape key: Halt transmit, cancel current 'QSO', switch to Listen mode." +
                 $"{nl}{K(HotkeyAction.UpdateCheck)}: Check for update to {friendlyName}." +
                 $"{nl}{K(HotkeyAction.PSKReporter)}: Toggle sending spots to PSKReporter (leave 'Enabled' to help other hams)" +
                 $"{nl}{K(HotkeyAction.SortOrder)}: Open call waiting sort order editor." +
@@ -1178,6 +1208,75 @@ namespace WSJTX_Controller
             optionsDlg?.UpdateView();
         }
 
+        // Sets the 4-radio from the current txMode (called when mode flips between LISTEN and CALL_CQ)
+        public void SyncCqIntentFromMode()
+        {
+            if (wsjtxClient == null) return;
+            if (wsjtxClient.txMode == WsjtxClient.TxModes.LISTEN)
+                cqIntentListenButton.Checked = true;
+            else
+                SyncCqSubtypeRadio();
+        }
+
+        // Sets the CQ subtype radio (CQ only / CQ DX only / CQ and CQ DX) from the checkboxes
+        private void SyncCqSubtypeRadio()
+        {
+            bool callCq = callNonDirCqCheckBox.Checked;
+            bool callCqDx = callCqDxCheckBox.Checked;
+            if (callCq && callCqDx)
+                cqIntentCqAndDxButton.Checked = true;
+            else if (!callCq && callCqDx)
+                cqIntentCqDxOnlyButton.Checked = true;
+            else
+                cqIntentCqOnlyButton.Checked = true;
+        }
+
+        // Called when CQ checkboxes change: only updates CQ subtype radio if a CQ intent is already selected
+        public void SyncCqIntentFromCheckboxes()
+        {
+            if (_suppressIntentSync) return;
+            if (!cqIntentListenButton.Checked)
+                SyncCqSubtypeRadio();
+        }
+
+        // Click handlers for the 4 operating-mode intent radio buttons
+
+        private void cqIntentListenButton_Click(object sender, EventArgs e)
+        {
+            if (!formLoaded) return;
+            listenModeButton_Click(null, null);
+        }
+
+        private void cqIntentCqOnlyButton_Click(object sender, EventArgs e)
+        {
+            if (!formLoaded) return;
+            _suppressIntentSync = true;
+            callNonDirCqCheckBox.Checked = true;
+            callCqDxCheckBox.Checked = false;
+            _suppressIntentSync = false;
+            optionsDlg?.UpdateView();
+        }
+
+        private void cqIntentCqDxOnlyButton_Click(object sender, EventArgs e)
+        {
+            if (!formLoaded) return;
+            _suppressIntentSync = true;
+            callCqDxCheckBox.Checked = true;
+            callNonDirCqCheckBox.Checked = false;
+            _suppressIntentSync = false;
+            optionsDlg?.UpdateView();
+        }
+
+        private void cqIntentCqAndDxButton_Click(object sender, EventArgs e)
+        {
+            if (!formLoaded) return;
+            _suppressIntentSync = true;
+            callNonDirCqCheckBox.Checked = true;
+            callCqDxCheckBox.Checked = true;
+            _suppressIntentSync = false;
+            optionsDlg?.UpdateView();
+        }
+
         private void freqCheckBox_CheckedChanged(object sender, EventArgs e)
         {
             if (!formLoaded) return;
@@ -1191,7 +1290,7 @@ namespace WSJTX_Controller
         {
             if (!formLoaded) return;
 
-            string adv = wsjtxClient != null ? $"{nl}{nl}If 'Optimize' is selected, the maximum number of replies and CQs for the current call is automatically adjusted lower than the specified limit (if possible), to help process the call queue faster." +
+            string adv = wsjtxClient != null ? $"{nl}{nl}If 'Optimize throughput' is selected, the maximum number of replies and CQs for the current call is automatically adjusted lower than the specified limit (if possible), to help process the call queue faster." +
                 $"{nl}{nl}If 'Hold' is selected, the 'Repeated Tx' limit is ignored, and replies to the current call sign are transmitted a maximum of {wsjtxClient.holdMaxTxRepeat} times. 'Hold' is automatically enabled when processing a 'new DXCC', deselect 'Reply to new DXCC' to prevent this action." : "";
             ShowHelp($"This will limit the number of times the same message is transmitted." +
                 $"{nl}{nl}For example, it will limit the number of repeated transmitted replies or CQs for the current call. If there is no response to your reply messages when the limit is reached, the next call in the queue is processed (or if the call queue is empty, CQing (or listening) will resume)." +
@@ -1322,6 +1421,7 @@ namespace WSJTX_Controller
             }
 
             optionsDlg?.UpdateView();
+            SyncCqIntentFromCheckboxes();
 
             if (formLoaded) wsjtxClient.WsjtxSettingChanged();
         }
@@ -1397,6 +1497,7 @@ namespace WSJTX_Controller
             if (formLoaded) wsjtxClient.WsjtxSettingChanged();              //resets CQ to non-directed
 
             optionsDlg?.UpdateView();
+            SyncCqIntentFromCheckboxes();
         }
 
         private void alertTextBox_Leave(object sender, EventArgs e)
@@ -1573,8 +1674,6 @@ namespace WSJTX_Controller
                 {
                     if (formLoaded && wsjtxClient.ConnectedToWsjtx()) wsjtxClient.HaltTuning();
                     advTx1ListBox.Focus();
-                    if (advTx1ListBox.Items.Count > 0 && advTx1ListBox.SelectionMode != SelectionMode.None && advTx1ListBox.SelectedIndex < 0)
-                        advTx1ListBox.SelectedIndex = 0;
                 }
             }
 
@@ -1584,8 +1683,6 @@ namespace WSJTX_Controller
                 {
                     if (formLoaded && wsjtxClient.ConnectedToWsjtx()) wsjtxClient.HaltTuning();
                     advTx2ListBox.Focus();
-                    if (advTx2ListBox.Items.Count > 0 && advTx2ListBox.SelectionMode != SelectionMode.None && advTx2ListBox.SelectedIndex < 0)
-                        advTx2ListBox.SelectedIndex = 0;
                 }
             }
 
@@ -1602,19 +1699,30 @@ namespace WSJTX_Controller
 
             if (!formLoaded) return;
 
-            if (e.KeyCode == Keys.Escape)               //halt Tx immediately
+            if (e.KeyCode == Keys.Escape)               //halt Tx, return to Listen mode
             {
+                var focused = this.ActiveControl;
                 if (wsjtxClient.ConnectedToWsjtx())
                 {
                     wsjtxClient.CancelQso();
-                    wsjtxClient.Pause(true, true);
+                    wsjtxClient.HaltAndDisableTx();     // unconditional: works in both CQ and Listen mode
+                    listenModeButton_Click(null, null);
                     ShowMsg("Tx halted", true);
                 }
                 else
                 {
                     Console.Beep();
                 }
+                BeginInvoke((Action)(() =>
+                    BeginInvoke((Action)(() => RestoreFocus(focused)))
+                ));
             }
+        }
+
+        private void RestoreFocus(Control c)
+        {
+            if (c != null && !c.IsDisposed && c.IsHandleCreated && c.Visible && c.Enabled && c.CanFocus)
+                c.Focus();
         }
 
         private void OpenCallWaitingRowOrderEditor()
@@ -1622,7 +1730,7 @@ namespace WSJTX_Controller
             if (iniFile == null || wsjtxClient == null) return;
 
             var currentOrder = wsjtxClient.callWaitingRowOrderFields;
-            using (var dlg = new CallWaitingRowOrderDlg(currentOrder))
+            using (var dlg = new CallWaitingRowOrderDlg(currentOrder, wsjtxClient.debug))
             {
                 if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
@@ -1642,19 +1750,23 @@ namespace WSJTX_Controller
         private void helpTimer_Tick(object sender, EventArgs e)
         {
             helpTimer.Stop();
+            _helpReturnFocus = this.ActiveControl;
             if (helpDlg != null) helpDlg.Close();
             helpDlg = new HelpDlg(this, $"{wsjtxClient.pgmName}{helpSuffix}", (string)helpTimer.Tag);
             helpDlg.Show();
+            helpDlg.Activate();
         }
 
         private void cqModeButton_CheckedChanged(object sender, EventArgs e)
         {
             updateReplyNewOnlyCheckBoxEnabled();
+            SyncCqIntentFromMode();
         }
 
         private void listenModeButton_CheckedChanged(object sender, EventArgs e)
         {
             updateReplyNewOnlyCheckBoxEnabled();
+            SyncCqIntentFromMode();
         }
 
         private void UpdateCqNewOnBand()
@@ -1948,7 +2060,6 @@ namespace WSJTX_Controller
                 {
                     if (callListBox.SelectionMode == SelectionMode.None) return;
                     wsjtxClient.NextCall(false, idx);
-                    statusText.Focus();
                 }
                 else
                 {
@@ -2158,9 +2269,9 @@ namespace WSJTX_Controller
             if (callListBox.SelectionMode == SelectionMode.None) return;
             if (e.KeyChar != (char)Keys.Space && e.KeyChar != (char)Keys.Enter) return;
 
+            e.Handled = true;   // prevent Win32 ListBox type-ahead after our handler
             int idx = callListBox.SelectedIndex;
             wsjtxClient.NextCall(false, idx);
-            statusText.Focus();
         }
 
         private void statusText_TextChanged(object sender, EventArgs e)
@@ -2186,9 +2297,6 @@ namespace WSJTX_Controller
 
         private void Controller_Activated(object sender, EventArgs e)
         {
-            //tempOnly
-            statusText_Enter(null, null);
-            statusText.Focus();
         }
 
         private string SpacifyMyCall()
@@ -2368,10 +2476,10 @@ namespace WSJTX_Controller
             if (!formLoaded) return;
             if (e.KeyChar != (char)Keys.Space && e.KeyChar != (char)Keys.Enter) return;
 
+            e.Handled = true;   // prevent Win32 ListBox type-ahead after our handler
             int idx = advTx1ListBox.SelectedIndex;
-            if (idx < 0) return;
+            if (idx < 0) idx = 0;
             wsjtxClient.NextCallFromTx1(idx);
-            statusText.Focus();
         }
 
         private void AdvTx2ListBox_KeyDown(object sender, KeyEventArgs e)
@@ -2407,10 +2515,10 @@ namespace WSJTX_Controller
             if (!formLoaded) return;
             if (e.KeyChar != (char)Keys.Space && e.KeyChar != (char)Keys.Enter) return;
 
+            e.Handled = true;   // prevent Win32 ListBox type-ahead after our handler
             int idx = advTx2ListBox.SelectedIndex;
-            if (idx < 0) return;
+            if (idx < 0) idx = 0;
             wsjtxClient.NextCallFromTx2(idx);
-            statusText.Focus();
         }
 
         private void AdvRawListBox_KeyDown(object sender, KeyEventArgs e)
@@ -2437,10 +2545,10 @@ namespace WSJTX_Controller
             if (!formLoaded) return;
             if (e.KeyChar != (char)Keys.Space && e.KeyChar != (char)Keys.Enter) return;
 
+            e.Handled = true;   // prevent Win32 ListBox type-ahead after our handler
             int idx = advRawListBox.SelectedIndex;
             if (idx < 0) return;
             wsjtxClient.NextCallFromRawDecode(idx);
-            statusText.Focus();
         }
     }
 }

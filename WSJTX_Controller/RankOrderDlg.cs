@@ -16,19 +16,16 @@ namespace WSJTX_Controller
         private TabPage    helpTabPage;
 
         // ── Tab 1 – List Priorities ────────────────────────────────────────────
-        private Label            listPriorityInfoLabel;
-        private ListBox          listPriorityListBox;
+        private CheckedListBox   listPriorityListBox;
         private Button           listMoveUpButton;
         private Button           listMoveDownButton;
         private Button           restoreListDefaultsButton;
 
-        // ── Tab 2 – Calling Priorities ─────────────────────────────────────────
-        private Label            callingInfoLabel;
+        // ── Tab 2 – Alt+N Filter ──────────────────────────────────────────────────
         private CheckedListBox   callingCheckedListBox;
         private Button           restoreCallingDefaultsButton;
 
         // ── Tab 3 – Normal Sort Order ──────────────────────────────────────────
-        private Label            sortInfoLabel;
         private CheckedListBox   sortCheckedListBox;
         private Button           sortMoveUpButton;
         private Button           sortMoveDownButton;
@@ -36,10 +33,10 @@ namespace WSJTX_Controller
         private ComboBox         beamComboBox;
         private Button           restoreSortDefaultsButton;
 
-        // ── Tab 4 – Help / Notes ───────────────────────────────────────────────
+        // ── Tab 4 – Help ───────────────────────────────────────────────────────
         private TextBox          helpTextBox;
 
-        // ── Form-level buttons (always last in tab order) ──────────────────────
+        // ── Form-level buttons ─────────────────────────────────────────────────
         private Button           okButton;
         private Button           cancelButton;
 
@@ -133,38 +130,28 @@ namespace WSJTX_Controller
         {
             var font = new Font("Microsoft Sans Serif", 8.25F);
 
-            // ── Top-level containers ───────────────────────────────────────────
             this.tabControl               = new TabControl();
             this.listPrioritiesTabPage    = new TabPage();
             this.callingPrioritiesTabPage = new TabPage();
             this.sortTabPage              = new TabPage();
             this.helpTabPage              = new TabPage();
 
-            // ── Tab 1 controls ─────────────────────────────────────────────────
-            this.listPriorityInfoLabel      = new Label();
-            this.listPriorityListBox        = new ListBox();
-            this.listMoveUpButton           = new Button();
-            this.listMoveDownButton         = new Button();
-            this.restoreListDefaultsButton  = new Button();
+            this.listPriorityListBox       = new CheckedListBox();
+            this.listMoveUpButton          = new Button();
+            this.listMoveDownButton        = new Button();
+            this.restoreListDefaultsButton = new Button();
 
-            // ── Tab 2 controls ─────────────────────────────────────────────────
-            this.callingInfoLabel              = new Label();
-            this.callingCheckedListBox         = new CheckedListBox();
-            this.restoreCallingDefaultsButton  = new Button();
+            this.callingCheckedListBox        = new CheckedListBox();
+            this.restoreCallingDefaultsButton = new Button();
 
-            // ── Tab 3 controls ─────────────────────────────────────────────────
-            this.sortInfoLabel          = new Label();
-            this.sortCheckedListBox     = new CheckedListBox();
-            this.sortMoveUpButton       = new Button();
-            this.sortMoveDownButton     = new Button();
-            this.beamStaticLabel        = new Label();
-            this.beamComboBox           = new ComboBox();
+            this.sortCheckedListBox        = new CheckedListBox();
+            this.sortMoveUpButton          = new Button();
+            this.sortMoveDownButton        = new Button();
+            this.beamStaticLabel           = new Label();
+            this.beamComboBox              = new ComboBox();
             this.restoreSortDefaultsButton = new Button();
 
-            // ── Tab 4 controls ─────────────────────────────────────────────────
-            this.helpTextBox = new TextBox();
-
-            // ── Form-level buttons ─────────────────────────────────────────────
+            this.helpTextBox  = new TextBox();
             this.okButton     = new Button();
             this.cancelButton = new Button();
 
@@ -185,121 +172,81 @@ namespace WSJTX_Controller
             this.tabControl.SelectedIndex = 0;
             this.tabControl.Size          = new Size(406, 306);
             this.tabControl.TabIndex      = 0;
-            this.tabControl.AccessibleName        = "Call Waiting Sort Order settings";
-            this.tabControl.AccessibleDescription = "Four tabs: List Priorities, Calling Priorities, Normal Sort Order, Help.";
+            this.tabControl.AccessibleName = "Call Waiting Sort Order";
 
             // ══ TAB 1 – LIST PRIORITIES ════════════════════════════════════════
-            this.listPrioritiesTabPage.Controls.Add(this.listPriorityInfoLabel);
             this.listPrioritiesTabPage.Controls.Add(this.listPriorityListBox);
             this.listPrioritiesTabPage.Controls.Add(this.listMoveUpButton);
             this.listPrioritiesTabPage.Controls.Add(this.listMoveDownButton);
             this.listPrioritiesTabPage.Controls.Add(this.restoreListDefaultsButton);
-            this.listPrioritiesTabPage.Name           = "listPrioritiesTabPage";
-            this.listPrioritiesTabPage.Text           = "List Priorities";
-            this.listPrioritiesTabPage.Padding        = new Padding(6);
-            this.listPrioritiesTabPage.AccessibleName = "List Priorities tab";
-            this.listPrioritiesTabPage.AccessibleDescription =
-                "Controls display order in the main call waiting list, TX1 list, and TX2 list. " +
-                "Select a row and use Move Up or Move Down to reorder. Default is always last.";
+            this.listPrioritiesTabPage.Name    = "listPrioritiesTabPage";
+            this.listPrioritiesTabPage.Text    = "List Priorities";
+            this.listPrioritiesTabPage.Padding = new Padding(6);
+            this.listPrioritiesTabPage.AccessibleName = "List Priorities";
 
-            // info label (no tab stop)
-            this.listPriorityInfoLabel.AutoSize  = false;
-            this.listPriorityInfoLabel.Font      = font;
-            this.listPriorityInfoLabel.Location  = new Point(8, 6);
-            this.listPriorityInfoLabel.Name      = "listPriorityInfoLabel";
-            this.listPriorityInfoLabel.Size      = new Size(384, 26);
-            this.listPriorityInfoLabel.TabStop   = false;
-            this.listPriorityInfoLabel.Text      = "Select a row and use Move Up/Down to reorder. Default is always last.";
-            this.listPriorityInfoLabel.AccessibleName = "List priority instructions";
-
-            // ListBox – TabIndex 0
-            this.listPriorityListBox.Font              = font;
-            this.listPriorityListBox.FormattingEnabled = true;
-            this.listPriorityListBox.Location          = new Point(8, 36);
-            this.listPriorityListBox.Name              = "listPriorityListBox";
-            this.listPriorityListBox.Size              = new Size(384, 160);
-            this.listPriorityListBox.TabIndex          = 0;
-            this.listPriorityListBox.AccessibleName    = "List priorities category list";
-            this.listPriorityListBox.AccessibleDescription =
-                "Categories listed top to bottom from highest to lowest display priority. " +
-                "Select a category and press Tab to reach Move Up or Move Down. " +
-                "Default is always last and cannot be moved.";
+            // CheckedListBox – TabIndex 0
+            this.listPriorityListBox.CheckOnClick          = true;
+            this.listPriorityListBox.Font                  = font;
+            this.listPriorityListBox.FormattingEnabled     = true;
+            this.listPriorityListBox.Location              = new Point(8, 8);
+            this.listPriorityListBox.Name                  = "listPriorityListBox";
+            this.listPriorityListBox.Size                  = new Size(384, 160);
+            this.listPriorityListBox.TabIndex              = 0;
+            this.listPriorityListBox.AccessibleName        = "List priority categories";
             this.listPriorityListBox.SelectedIndexChanged += new EventHandler(this.ListPriorityListBox_SelectedIndexChanged);
 
-            // Move list priority up – TabIndex 1
+            // Move Up – TabIndex 1
             this.listMoveUpButton.Font                  = font;
-            this.listMoveUpButton.Location              = new Point(8, 204);
+            this.listMoveUpButton.Location              = new Point(8, 176);
             this.listMoveUpButton.Name                  = "listMoveUpButton";
             this.listMoveUpButton.Size                  = new Size(182, 26);
             this.listMoveUpButton.TabIndex              = 1;
             this.listMoveUpButton.Text                  = "Move Up";
             this.listMoveUpButton.UseVisualStyleBackColor = true;
-            this.listMoveUpButton.AccessibleName        = "Move list priority up";
-            this.listMoveUpButton.AccessibleDescription = "Moves the selected category one position higher in the list.";
+            this.listMoveUpButton.AccessibleName        = "Move Up";
             this.listMoveUpButton.Click                += new EventHandler(this.ListMoveUpButton_Click);
 
-            // Move list priority down – TabIndex 2
+            // Move Down – TabIndex 2
             this.listMoveDownButton.Font                  = font;
-            this.listMoveDownButton.Location              = new Point(198, 204);
+            this.listMoveDownButton.Location              = new Point(198, 176);
             this.listMoveDownButton.Name                  = "listMoveDownButton";
             this.listMoveDownButton.Size                  = new Size(182, 26);
             this.listMoveDownButton.TabIndex              = 2;
             this.listMoveDownButton.Text                  = "Move Down";
             this.listMoveDownButton.UseVisualStyleBackColor = true;
-            this.listMoveDownButton.AccessibleName        = "Move list priority down";
-            this.listMoveDownButton.AccessibleDescription = "Moves the selected category one position lower in the list.";
+            this.listMoveDownButton.AccessibleName        = "Move Down";
             this.listMoveDownButton.Click                += new EventHandler(this.ListMoveDownButton_Click);
 
-            // Restore list defaults – TabIndex 3
+            // Restore Defaults – TabIndex 3
             this.restoreListDefaultsButton.Font                  = font;
-            this.restoreListDefaultsButton.Location              = new Point(8, 238);
+            this.restoreListDefaultsButton.Location              = new Point(8, 210);
             this.restoreListDefaultsButton.Name                  = "restoreListDefaultsButton";
             this.restoreListDefaultsButton.Size                  = new Size(182, 26);
             this.restoreListDefaultsButton.TabIndex              = 3;
             this.restoreListDefaultsButton.Text                  = "Restore Defaults";
             this.restoreListDefaultsButton.UseVisualStyleBackColor = true;
-            this.restoreListDefaultsButton.AccessibleName        = "Restore list priority defaults";
-            this.restoreListDefaultsButton.AccessibleDescription =
-                "Resets the list priority order to defaults. Does not save until OK is pressed.";
-            this.restoreListDefaultsButton.Click += new EventHandler(this.RestoreListDefaultsButton_Click);
+            this.restoreListDefaultsButton.AccessibleName        = "Restore Defaults";
+            this.restoreListDefaultsButton.Click                += new EventHandler(this.RestoreListDefaultsButton_Click);
 
-            // ══ TAB 2 – CALLING PRIORITIES ═════════════════════════════════════
-            this.callingPrioritiesTabPage.Controls.Add(this.callingInfoLabel);
+            // ══ TAB 2 – ALT+N FILTER ═══════════════════════════════════════════
             this.callingPrioritiesTabPage.Controls.Add(this.callingCheckedListBox);
             this.callingPrioritiesTabPage.Controls.Add(this.restoreCallingDefaultsButton);
-            this.callingPrioritiesTabPage.Name           = "callingPrioritiesTabPage";
-            this.callingPrioritiesTabPage.Text           = "Calling Priorities";
-            this.callingPrioritiesTabPage.Padding        = new Padding(6);
-            this.callingPrioritiesTabPage.AccessibleName = "Calling Priorities tab";
-            this.callingPrioritiesTabPage.AccessibleDescription =
-                "Controls which categories Alt+N is allowed to call. " +
-                "Checked categories may be called by Alt+N. Unchecked categories are skipped by Alt+N. " +
-                "Space and Enter always call the selected row regardless of this setting.";
-
-            // info label (no tab stop)
-            this.callingInfoLabel.AutoSize  = false;
-            this.callingInfoLabel.Font      = font;
-            this.callingInfoLabel.Location  = new Point(8, 6);
-            this.callingInfoLabel.Name      = "callingInfoLabel";
-            this.callingInfoLabel.Size      = new Size(384, 40);
-            this.callingInfoLabel.TabStop   = false;
-            this.callingInfoLabel.Text      = "Checked = Alt+N may call this category. Unchecked = Alt+N skips it.\r\nSpace/Enter always call the selected row regardless of this setting.";
-            this.callingInfoLabel.AccessibleName = "Calling priority instructions";
+            this.callingPrioritiesTabPage.Name    = "callingPrioritiesTabPage";
+            this.callingPrioritiesTabPage.Text    = "Alt+N Filter";
+            this.callingPrioritiesTabPage.Padding = new Padding(6);
+            this.callingPrioritiesTabPage.AccessibleName = "Alt N Filter";
 
             // CheckedListBox – TabIndex 0
             this.callingCheckedListBox.CheckOnClick          = true;
             this.callingCheckedListBox.Font                  = font;
             this.callingCheckedListBox.FormattingEnabled     = true;
-            this.callingCheckedListBox.Location              = new Point(8, 52);
+            this.callingCheckedListBox.Location              = new Point(8, 8);
             this.callingCheckedListBox.Name                  = "callingCheckedListBox";
-            this.callingCheckedListBox.Size                  = new Size(384, 152);
+            this.callingCheckedListBox.Size                  = new Size(384, 196);
             this.callingCheckedListBox.TabIndex              = 0;
-            this.callingCheckedListBox.AccessibleName        = "Calling priorities category list";
-            this.callingCheckedListBox.AccessibleDescription =
-                "List of categories. Check a category to allow Alt+N to call it. " +
-                "Uncheck to have Alt+N skip it. Default category is never called by Alt+N.";
+            this.callingCheckedListBox.AccessibleName        = "Alt N eligible categories";
 
-            // Restore calling defaults – TabIndex 1
+            // Restore Defaults – TabIndex 1
             this.restoreCallingDefaultsButton.Font                  = font;
             this.restoreCallingDefaultsButton.Location              = new Point(8, 212);
             this.restoreCallingDefaultsButton.Name                  = "restoreCallingDefaultsButton";
@@ -307,80 +254,58 @@ namespace WSJTX_Controller
             this.restoreCallingDefaultsButton.TabIndex              = 1;
             this.restoreCallingDefaultsButton.Text                  = "Restore Defaults";
             this.restoreCallingDefaultsButton.UseVisualStyleBackColor = true;
-            this.restoreCallingDefaultsButton.AccessibleName        = "Restore calling priority defaults";
-            this.restoreCallingDefaultsButton.AccessibleDescription =
-                "Checks all categories so Alt+N may call any of them. Does not save until OK is pressed.";
-            this.restoreCallingDefaultsButton.Click += new EventHandler(this.RestoreCallingDefaultsButton_Click);
+            this.restoreCallingDefaultsButton.AccessibleName        = "Restore Defaults";
+            this.restoreCallingDefaultsButton.Click                += new EventHandler(this.RestoreCallingDefaultsButton_Click);
 
             // ══ TAB 3 – NORMAL SORT ORDER ══════════════════════════════════════
-            this.sortTabPage.Controls.Add(this.sortInfoLabel);
             this.sortTabPage.Controls.Add(this.sortCheckedListBox);
             this.sortTabPage.Controls.Add(this.sortMoveUpButton);
             this.sortTabPage.Controls.Add(this.sortMoveDownButton);
             this.sortTabPage.Controls.Add(this.beamStaticLabel);
             this.sortTabPage.Controls.Add(this.beamComboBox);
             this.sortTabPage.Controls.Add(this.restoreSortDefaultsButton);
-            this.sortTabPage.Name           = "sortTabPage";
-            this.sortTabPage.Text           = "Normal Sort Order";
-            this.sortTabPage.Padding        = new Padding(6);
-            this.sortTabPage.AccessibleName = "Normal Sort Order tab";
-            this.sortTabPage.AccessibleDescription =
-                "Choose how Default category calls are ordered. " +
-                "Check and order sort methods. Optionally set a beam direction preference.";
-
-            // info label (no tab stop)
-            this.sortInfoLabel.AutoSize  = false;
-            this.sortInfoLabel.Font      = font;
-            this.sortInfoLabel.Location  = new Point(8, 6);
-            this.sortInfoLabel.Name      = "sortInfoLabel";
-            this.sortInfoLabel.Size      = new Size(384, 26);
-            this.sortInfoLabel.TabStop   = false;
-            this.sortInfoLabel.Text      = "Checked = active. First checked item is primary sort. Select a row and use Move Up/Down.";
-            this.sortInfoLabel.AccessibleName = "Sort order instructions";
+            this.sortTabPage.Name    = "sortTabPage";
+            this.sortTabPage.Text    = "Normal Sort Order";
+            this.sortTabPage.Padding = new Padding(6);
+            this.sortTabPage.AccessibleName = "Normal Sort Order";
 
             // Sort methods list – TabIndex 0
             this.sortCheckedListBox.CheckOnClick          = true;
             this.sortCheckedListBox.Font                  = font;
             this.sortCheckedListBox.FormattingEnabled     = true;
-            this.sortCheckedListBox.Location              = new Point(8, 36);
+            this.sortCheckedListBox.Location              = new Point(8, 8);
             this.sortCheckedListBox.Name                  = "sortCheckedListBox";
             this.sortCheckedListBox.Size                  = new Size(384, 110);
             this.sortCheckedListBox.TabIndex              = 0;
-            this.sortCheckedListBox.AccessibleName        = "Sort methods list";
-            this.sortCheckedListBox.AccessibleDescription =
-                "List of sort methods for Default calls. Check to activate. " +
-                "The first checked item is the primary sort. " +
-                "Select a row then press Tab to reach the Move Up or Move Down buttons.";
+            this.sortCheckedListBox.AccessibleName        = "Sort methods";
             this.sortCheckedListBox.SelectedIndexChanged += new EventHandler(this.SortCheckedListBox_SelectedIndexChanged);
 
-            // Move sort method up – TabIndex 1
+            // Move Up – TabIndex 1
             this.sortMoveUpButton.Font                  = font;
-            this.sortMoveUpButton.Location              = new Point(8, 154);
+            this.sortMoveUpButton.Location              = new Point(8, 126);
             this.sortMoveUpButton.Name                  = "sortMoveUpButton";
             this.sortMoveUpButton.Size                  = new Size(182, 26);
             this.sortMoveUpButton.TabIndex              = 1;
             this.sortMoveUpButton.Text                  = "Move Up";
             this.sortMoveUpButton.UseVisualStyleBackColor = true;
-            this.sortMoveUpButton.AccessibleName        = "Move sort method up";
-            this.sortMoveUpButton.AccessibleDescription = "Moves the selected sort method one position higher in priority.";
+            this.sortMoveUpButton.AccessibleName        = "Move Up";
             this.sortMoveUpButton.Click                += new EventHandler(this.SortMoveUpButton_Click);
 
-            // Move sort method down – TabIndex 2
+            // Move Down – TabIndex 2
             this.sortMoveDownButton.Font                  = font;
-            this.sortMoveDownButton.Location              = new Point(198, 154);
+            this.sortMoveDownButton.Location              = new Point(198, 126);
             this.sortMoveDownButton.Name                  = "sortMoveDownButton";
             this.sortMoveDownButton.Size                  = new Size(182, 26);
             this.sortMoveDownButton.TabIndex              = 2;
             this.sortMoveDownButton.Text                  = "Move Down";
             this.sortMoveDownButton.UseVisualStyleBackColor = true;
-            this.sortMoveDownButton.AccessibleName        = "Move sort method down";
-            this.sortMoveDownButton.AccessibleDescription = "Moves the selected sort method one position lower in priority.";
+            this.sortMoveDownButton.AccessibleName        = "Move Down";
             this.sortMoveDownButton.Click                += new EventHandler(this.SortMoveDownButton_Click);
 
-            // Beam static label (no tab stop)
+            // Beam label (no tab stop)
             this.beamStaticLabel.AutoSize       = true;
             this.beamStaticLabel.Font           = font;
-            this.beamStaticLabel.Location       = new Point(8, 192);
+            this.beamStaticLabel.Location       = new Point(8, 164);
             this.beamStaticLabel.Name           = "beamStaticLabel";
             this.beamStaticLabel.TabStop        = false;
             this.beamStaticLabel.Text           = "Beam preference:";
@@ -390,36 +315,30 @@ namespace WSJTX_Controller
             this.beamComboBox.DropDownStyle     = ComboBoxStyle.DropDownList;
             this.beamComboBox.Font              = font;
             this.beamComboBox.FormattingEnabled = true;
-            this.beamComboBox.Location          = new Point(120, 188);
+            this.beamComboBox.Location          = new Point(120, 160);
             this.beamComboBox.Name              = "beamComboBox";
             this.beamComboBox.Size              = new Size(100, 21);
             this.beamComboBox.TabIndex          = 3;
             this.beamComboBox.AccessibleName    = "Beam preference";
-            this.beamComboBox.AccessibleDescription =
-                "Select a beam heading to favor callers in that direction. None disables beam ranking.";
 
-            // Restore sort defaults – TabIndex 4
+            // Restore Defaults – TabIndex 4
             this.restoreSortDefaultsButton.Font                  = font;
-            this.restoreSortDefaultsButton.Location              = new Point(8, 220);
+            this.restoreSortDefaultsButton.Location              = new Point(8, 192);
             this.restoreSortDefaultsButton.Name                  = "restoreSortDefaultsButton";
             this.restoreSortDefaultsButton.Size                  = new Size(182, 26);
             this.restoreSortDefaultsButton.TabIndex              = 4;
-            this.restoreSortDefaultsButton.Text                  = "Restore Sort Defaults";
+            this.restoreSortDefaultsButton.Text                  = "Restore Defaults";
             this.restoreSortDefaultsButton.UseVisualStyleBackColor = true;
-            this.restoreSortDefaultsButton.AccessibleName        = "Restore sort defaults";
-            this.restoreSortDefaultsButton.AccessibleDescription =
-                "Resets the sort method order and beam preference to defaults. Does not save until OK is pressed.";
-            this.restoreSortDefaultsButton.Click += new EventHandler(this.RestoreSortDefaultsButton_Click);
+            this.restoreSortDefaultsButton.AccessibleName        = "Restore Defaults";
+            this.restoreSortDefaultsButton.Click                += new EventHandler(this.RestoreSortDefaultsButton_Click);
 
-            // ══ TAB 4 – HELP / NOTES ══════════════════════════════════════════
+            // ══ TAB 4 – HELP ══════════════════════════════════════════════════
             this.helpTabPage.Controls.Add(this.helpTextBox);
-            this.helpTabPage.Name           = "helpTabPage";
-            this.helpTabPage.Text           = "Help";
-            this.helpTabPage.Padding        = new Padding(6);
-            this.helpTabPage.AccessibleName = "Help tab";
-            this.helpTabPage.AccessibleDescription = "Explanation of how list priorities, calling priorities, and sort order work.";
+            this.helpTabPage.Name    = "helpTabPage";
+            this.helpTabPage.Text    = "Help";
+            this.helpTabPage.Padding = new Padding(6);
+            this.helpTabPage.AccessibleName = "Help";
 
-            // Help text – TabIndex 0 (read-only, focusable for screen reader)
             this.helpTextBox.Multiline      = true;
             this.helpTextBox.ReadOnly       = true;
             this.helpTextBox.ScrollBars     = ScrollBars.Vertical;
@@ -432,37 +351,56 @@ namespace WSJTX_Controller
             this.helpTextBox.TabIndex       = 0;
             this.helpTextBox.TabStop        = true;
             this.helpTextBox.AccessibleName = "Help notes";
-            this.helpTextBox.AccessibleDescription = "Explanation of call ranking settings.";
             this.helpTextBox.Text =
                 "List Priorities\r\n" +
                 "───────────────\r\n" +
-                "Controls the display order in the Main Call Waiting list, TX1, and TX2.\r\n" +
-                "Categories higher in the list appear before categories lower in the list.\r\n" +
-                "All non-Default categories are always elevated above Default calls.\r\n" +
-                "Default is always last and cannot be moved.\r\n" +
+                "Promotes special categories above others in the call waiting list.\r\n" +
+                "Check a category to elevate it above unchecked categories.\r\n" +
+                "Unchecked categories are not promoted above checked categories,\r\n" +
+                "but may still rank above ordinary default calls depending on\r\n" +
+                "their category type.\r\n" +
+                "Move categories up or down to set their relative priority.\r\n" +
                 "\r\n" +
-                "Calling Priorities\r\n" +
-                "──────────────────\r\n" +
+                "Example:\r\n" +
+                "  New DXCC checked, Calling Me checked → both appear above\r\n" +
+                "  unchecked categories and ordinary calls.\r\n" +
+                "  POTA unchecked → POTA calls sort among other unchecked\r\n" +
+                "  categories, not elevated above them.\r\n" +
+                "\r\n" +
+                "The order here also determines which category Alt+N prefers\r\n" +
+                "when multiple types of priority calls are waiting.\r\n" +
+                "\r\n" +
+                "Alt+N Filter\r\n" +
+                "────────────\r\n" +
                 "Controls which categories Alt+N is allowed to call.\r\n" +
-                "Checked = Alt+N may call this category.\r\n" +
-                "Unchecked = Alt+N skips this category and looks for the next eligible one.\r\n" +
-                "Example: POTA can appear at the top of the list but be unchecked so\r\n" +
-                "Alt+N skips POTA and calls the next eligible category instead.\r\n" +
-                "Space and Enter always call the selected row, unaffected by this setting.\r\n" +
+                "Checked = Alt+N may jump to this category.\r\n" +
+                "Unchecked = Alt+N skips this category.\r\n" +
+                "Unchecked calls still appear in the list and can be called\r\n" +
+                "manually with Space or Enter.\r\n" +
+                "\r\n" +
+                "Alt+N always picks the highest-ranked eligible call based on\r\n" +
+                "the List Priorities order above.\r\n" +
+                "\r\n" +
+                "Note — Directed CQ queue admission:\r\n" +
+                "Whether directed CQ calls appear in the list at all is\r\n" +
+                "controlled by the \"Reply to directed CQs\" checkbox on the\r\n" +
+                "main screen, not by this filter. The \"Directed CQ\" entry\r\n" +
+                "here only controls whether Alt+N will jump to those calls.\r\n" +
                 "\r\n" +
                 "Normal Sort Order\r\n" +
                 "─────────────────\r\n" +
-                "Controls how Default category calls are sorted within their tier.\r\n" +
-                "Check one or more methods. The first checked item is the primary sort.\r\n" +
+                "Controls how calls within the same priority tier are sorted.\r\n" +
+                "Check one or more methods. The first checked item is the\r\n" +
+                "primary sort within a tier.\r\n" +
                 "Beam preference favors callers in a compass direction.\r\n" +
                 "\r\n" +
                 "Keyboard shortcuts\r\n" +
                 "──────────────────\r\n" +
                 "Space or Enter — call the selected row in the call list.\r\n" +
-                "Alt+N — call the best eligible category call in the current view context.";
+                "Alt+N — call the best eligible category call.";
 
             // ══ FORM-LEVEL BUTTONS ═════════════════════════════════════════════
-            // OK – TabIndex 1 (second stop on form, after TabControl)
+            // OK – TabIndex 1
             this.okButton.Font                  = font;
             this.okButton.Location              = new Point(246, 322);
             this.okButton.Name                  = "okButton";
@@ -470,13 +408,10 @@ namespace WSJTX_Controller
             this.okButton.TabIndex              = 1;
             this.okButton.Text                  = "OK";
             this.okButton.UseVisualStyleBackColor = true;
-            this.okButton.AccessibleName        = "OK, save and close";
-            this.okButton.AccessibleDescription =
-                "Save the sort order and ranking settings and close the dialog. " +
-                "At least one sort method must be checked.";
-            this.okButton.Click += new EventHandler(this.OkButton_Click);
+            this.okButton.AccessibleName        = "OK";
+            this.okButton.Click                += new EventHandler(this.OkButton_Click);
 
-            // Cancel – TabIndex 2 (third stop on form, after OK)
+            // Cancel – TabIndex 2
             this.cancelButton.Font                  = font;
             this.cancelButton.Location              = new Point(330, 322);
             this.cancelButton.Name                  = "cancelButton";
@@ -484,8 +419,7 @@ namespace WSJTX_Controller
             this.cancelButton.TabIndex              = 2;
             this.cancelButton.Text                  = "Cancel";
             this.cancelButton.UseVisualStyleBackColor = true;
-            this.cancelButton.AccessibleName        = "Cancel, discard changes";
-            this.cancelButton.AccessibleDescription = "Close the dialog without saving any changes.";
+            this.cancelButton.AccessibleName        = "Cancel";
             this.cancelButton.DialogResult          = DialogResult.Cancel;
 
             // ══ FORM ═══════════════════════════════════════════════════════════
@@ -501,7 +435,7 @@ namespace WSJTX_Controller
             this.Name            = "RankOrderDlg";
             this.StartPosition   = FormStartPosition.CenterParent;
             this.Text            = "Call Waiting Sort Order";
-            this.AccessibleName  = "Call Waiting Sort Order dialog";
+            this.AccessibleName  = "Call Waiting Sort Order";
             this.ShowInTaskbar   = false;
 
             this.helpTabPage.ResumeLayout(false);
@@ -515,8 +449,7 @@ namespace WSJTX_Controller
 
         // ── Tab 1: List Priorities logic ───────────────────────────────────────
 
-        private void PopulateListPriorities(
-            Dictionary<WsjtxClient.CallCategory, int> currentWeights)
+        private void PopulateListPriorities(Dictionary<WsjtxClient.CallCategory, int> currentWeights)
         {
             var weights = (currentWeights != null && currentWeights.Count > 0)
                 ? currentWeights
@@ -527,22 +460,22 @@ namespace WSJTX_Controller
             {
                 if (cat != WsjtxClient.CallCategory.DEFAULT) nonDefault.Add(cat);
             }
+            // Sort descending by weight; weight > 0 = checked, 0 = unchecked
             nonDefault.Sort((a, b) =>
             {
                 int wa = weights.ContainsKey(a) ? weights[a] : 0;
                 int wb = weights.ContainsKey(b) ? weights[b] : 0;
-                return wb.CompareTo(wa); // descending: highest tier first
+                return wb.CompareTo(wa);
             });
 
             listPriorityListBox.Items.Clear();
             foreach (var cat in nonDefault)
             {
-                string label = CategoryLabels.ContainsKey(cat) ? CategoryLabels[cat] : cat.ToString();
-                listPriorityListBox.Items.Add(new CategoryEntry(cat, label));
+                string label     = CategoryLabels.ContainsKey(cat) ? CategoryLabels[cat] : cat.ToString();
+                int    w         = weights.ContainsKey(cat) ? weights[cat] : 0;
+                bool   isChecked = (w > 0);
+                listPriorityListBox.Items.Add(new CategoryEntry(cat, label), isChecked);
             }
-            // DEFAULT always last
-            listPriorityListBox.Items.Add(
-                new CategoryEntry(WsjtxClient.CallCategory.DEFAULT, CategoryLabels[WsjtxClient.CallCategory.DEFAULT]));
 
             if (listPriorityListBox.Items.Count > 0)
                 listPriorityListBox.SelectedIndex = 0;
@@ -550,31 +483,44 @@ namespace WSJTX_Controller
             UpdateListMoveButtons();
         }
 
-        private void ListMoveUpButton_Click(object sender, EventArgs e)   => MoveListItem(-1);
-        private void ListMoveDownButton_Click(object sender, EventArgs e) => MoveListItem(1);
+        private void ListMoveUpButton_Click(object sender, EventArgs e)
+        {
+            MoveListItem(-1);
+            BeginInvoke((Action)(() =>
+            {
+                if (listMoveUpButton.Enabled) listMoveUpButton.Focus();
+                else listPriorityListBox.Focus();
+            }));
+        }
+
+        private void ListMoveDownButton_Click(object sender, EventArgs e)
+        {
+            MoveListItem(1);
+            BeginInvoke((Action)(() =>
+            {
+                if (listMoveDownButton.Enabled) listMoveDownButton.Focus();
+                else listPriorityListBox.Focus();
+            }));
+        }
 
         private void MoveListItem(int direction)
         {
             int index = listPriorityListBox.SelectedIndex;
             if (index < 0) return;
 
-            var entry = (CategoryEntry)listPriorityListBox.Items[index];
-            if (entry.Category == WsjtxClient.CallCategory.DEFAULT) return;
-
             int target = index + direction;
-            if (target < 0) return;
+            if (target < 0 || target >= listPriorityListBox.Items.Count) return;
 
-            if (target >= listPriorityListBox.Items.Count) return;
-            var targetEntry = (CategoryEntry)listPriorityListBox.Items[target];
-            if (targetEntry.Category == WsjtxClient.CallCategory.DEFAULT) return;
-
+            bool   currentChk  = listPriorityListBox.GetItemChecked(index);
+            bool   targetChk   = listPriorityListBox.GetItemChecked(target);
             object currentItem = listPriorityListBox.Items[index];
             object targetItem  = listPriorityListBox.Items[target];
 
             listPriorityListBox.Items[target] = currentItem;
             listPriorityListBox.Items[index]  = targetItem;
+            listPriorityListBox.SetItemChecked(target, currentChk);
+            listPriorityListBox.SetItemChecked(index,  targetChk);
             listPriorityListBox.SelectedIndex = target;
-            listPriorityListBox.Focus();
             UpdateListMoveButtons();
         }
 
@@ -592,10 +538,8 @@ namespace WSJTX_Controller
                 listMoveUpButton.Enabled = listMoveDownButton.Enabled = false;
                 return;
             }
-            var entry     = (CategoryEntry)listPriorityListBox.Items[index];
-            bool isDefault = (entry.Category == WsjtxClient.CallCategory.DEFAULT);
-            listMoveUpButton.Enabled   = !isDefault && index > 0;
-            listMoveDownButton.Enabled = !isDefault && index < count - 2; // DEFAULT is always last
+            listMoveUpButton.Enabled   = index > 0;
+            listMoveDownButton.Enabled = index < count - 1;
         }
 
         private void RestoreListDefaultsButton_Click(object sender, EventArgs e)
@@ -603,7 +547,7 @@ namespace WSJTX_Controller
             PopulateListPriorities(DefaultCategoryWeights);
         }
 
-        // ── Tab 2: Calling Priorities logic ────────────────────────────────────
+        // ── Tab 2: Alt+N Filter logic ──────────────────────────────────────────
 
         private void PopulateCallingList(HashSet<WsjtxClient.CallCategory> currentCallingPriorities)
         {
@@ -611,7 +555,6 @@ namespace WSJTX_Controller
                 ? currentCallingPriorities
                 : DefaultCallingPriorities;
 
-            // Order follows list priorities order (same as current list weights default)
             var ordered = new List<WsjtxClient.CallCategory>
             {
                 WsjtxClient.CallCategory.NEW_COUNTRY,
@@ -627,8 +570,8 @@ namespace WSJTX_Controller
             callingCheckedListBox.Items.Clear();
             foreach (var cat in ordered)
             {
-                string label = CategoryLabels.ContainsKey(cat) ? CategoryLabels[cat] : cat.ToString();
-                bool enabled = calling.Contains(cat);
+                string label   = CategoryLabels.ContainsKey(cat) ? CategoryLabels[cat] : cat.ToString();
+                bool   enabled = calling.Contains(cat);
                 callingCheckedListBox.Items.Add(new CategoryEntry(cat, label), enabled);
             }
 
@@ -686,27 +629,44 @@ namespace WSJTX_Controller
             beamComboBox.SelectedIndex = selectedIdx;
         }
 
-        private void SortMoveUpButton_Click(object sender, EventArgs e)   => MoveSortItem(-1);
-        private void SortMoveDownButton_Click(object sender, EventArgs e) => MoveSortItem(1);
+        private void SortMoveUpButton_Click(object sender, EventArgs e)
+        {
+            MoveSortItem(-1);
+            BeginInvoke((Action)(() =>
+            {
+                if (sortMoveUpButton.Enabled) sortMoveUpButton.Focus();
+                else sortCheckedListBox.Focus();
+            }));
+        }
+
+        private void SortMoveDownButton_Click(object sender, EventArgs e)
+        {
+            MoveSortItem(1);
+            BeginInvoke((Action)(() =>
+            {
+                if (sortMoveDownButton.Enabled) sortMoveDownButton.Focus();
+                else sortCheckedListBox.Focus();
+            }));
+        }
 
         private void MoveSortItem(int direction)
         {
             int index = sortCheckedListBox.SelectedIndex;
             if (index < 0) return;
+
             int target = index + direction;
             if (target < 0 || target >= sortCheckedListBox.Items.Count) return;
 
-            object currentItem = sortCheckedListBox.Items[index];
             bool   currentChk  = sortCheckedListBox.GetItemChecked(index);
-            object targetItem  = sortCheckedListBox.Items[target];
             bool   targetChk   = sortCheckedListBox.GetItemChecked(target);
+            object currentItem = sortCheckedListBox.Items[index];
+            object targetItem  = sortCheckedListBox.Items[target];
 
             sortCheckedListBox.Items[target] = currentItem;
             sortCheckedListBox.Items[index]  = targetItem;
             sortCheckedListBox.SetItemChecked(target, currentChk);
-            sortCheckedListBox.SetItemChecked(index, targetChk);
+            sortCheckedListBox.SetItemChecked(index,  targetChk);
             sortCheckedListBox.SelectedIndex = target;
-            sortCheckedListBox.Focus();
             UpdateSortMoveButtons();
         }
 
@@ -755,23 +715,26 @@ namespace WSJTX_Controller
             SelectedOrder = selected;
             SelectedBeam  = ((BeamEntry)beamComboBox.SelectedItem)?.Method;
 
-            // Build category weights from list priority order (position 0 = highest tier)
-            int nonDefaultCount = listPriorityListBox.Items.Count - 1; // exclude DEFAULT
-            var weights = new Dictionary<WsjtxClient.CallCategory, int>();
+            // Checked items are elevated above normal calls; order = priority.
+            // Unchecked items and DEFAULT are treated as normal calls (weight 0).
+            int checkedCount = 0;
+            for (int i = 0; i < listPriorityListBox.Items.Count; i++)
+            {
+                if (listPriorityListBox.GetItemChecked(i))
+                    checkedCount++;
+            }
 
+            var weights = new Dictionary<WsjtxClient.CallCategory, int>();
+            int rank    = checkedCount;
             for (int i = 0; i < listPriorityListBox.Items.Count; i++)
             {
                 var entry = (CategoryEntry)listPriorityListBox.Items[i];
-                if (entry.Category == WsjtxClient.CallCategory.DEFAULT)
-                {
-                    weights[entry.Category] = 0;
-                }
+                if (listPriorityListBox.GetItemChecked(i))
+                    weights[entry.Category] = rank--;
                 else
-                {
-                    weights[entry.Category] = nonDefaultCount - i; // position 0 → highest tier
-                }
+                    weights[entry.Category] = 0;
             }
-
+            weights[WsjtxClient.CallCategory.DEFAULT] = 0;
             SelectedCategoryWeights = weights;
 
             // Build calling priorities from checked items
@@ -779,10 +742,7 @@ namespace WSJTX_Controller
             for (int i = 0; i < callingCheckedListBox.Items.Count; i++)
             {
                 if (callingCheckedListBox.GetItemChecked(i))
-                {
-                    var entry = (CategoryEntry)callingCheckedListBox.Items[i];
-                    callingSet.Add(entry.Category);
-                }
+                    callingSet.Add(((CategoryEntry)callingCheckedListBox.Items[i]).Category);
             }
             SelectedCallingPriorities = callingSet;
 

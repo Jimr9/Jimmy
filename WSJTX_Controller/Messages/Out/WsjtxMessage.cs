@@ -261,6 +261,7 @@ namespace WsjtxUdpLib.Messages.Out
             string[] words = msg.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             if (words.Count() != 3) return false;
             if (!words[2].Contains("R+") && !words[2].Contains("R-")) return false;
+            if (words[2].Length < 4) return false;
             return (int.TryParse(words[2].Substring(2, 2), out int i));
         }
 

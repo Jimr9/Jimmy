@@ -90,7 +90,7 @@ namespace WSJTX_Controller
             [HotkeyAction.Options]         = "Options",
             [HotkeyAction.Help]            = "Help (show shortcuts)",
             [HotkeyAction.UpdateCheck]     = "Check for Update",
-            [HotkeyAction.CallCqMode]      = "Call CQ Mode",
+            [HotkeyAction.CallCqMode]      = "Start selected CQ mode",
             [HotkeyAction.ListenMode]      = "Listen for Calls Mode",
             [HotkeyAction.EnableTx]        = "Enable Transmit",
             [HotkeyAction.HaltTx]          = "Halt Transmit",
