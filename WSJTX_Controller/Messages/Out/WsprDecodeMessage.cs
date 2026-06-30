@@ -37,7 +37,7 @@ namespace WsjtxUdpLib.Messages.Out
         public ulong Frequency { get; private set; }
         public int Drift { get; private set; }
         public string Callsign { get; private set; }
-        public string Grid { get; private set; }
+        public new string Grid { get; private set; }
         public int PowerDbm { get; private set; }
         public bool FromRecording { get; private set; }
 

@@ -33,6 +33,7 @@ namespace WSJTX_Controller
 
             Height = helpLabel.Location.Y + y + 85;
             closeButton.Location = new Point(closeButton.Location.X, Height - 70);
+            supportReportButton.Location = new Point(15, closeButton.Location.Y);
 
             helpLabel.SelectionStart = 0;
             helpLabel.SelectionLength = 0;
@@ -47,6 +48,51 @@ namespace WSJTX_Controller
         private void HelpDlg_FormClosing(object sender, FormClosingEventArgs e)
         {
             ctrl.HelpClosed();
+        }
+
+        private void supportReportButton_Click(object sender, EventArgs e)
+        {
+            string prefill = null;
+            try { prefill = ctrl.wsjtxClient?.myCall; } catch { }
+
+            var dlg = new SupportReportDlg(prefill) { Owner = this };
+            if (dlg.ShowDialog() != DialogResult.OK) return;
+
+            string confirmText =
+                "Jimmy will create a support report ZIP in your Downloads folder.\n\n" +
+                "The ZIP may contain diagnostic information including Jimmy version, settings, " +
+                "recent log files, recent decode history, Windows information, WSJT-X connection " +
+                "information, and your written description.\n\n" +
+                "Nothing will be emailed automatically.\n\n" +
+                "You may review the ZIP before sending it.\n\n" +
+                "Create the report?";
+
+            if (MessageBox.Show(confirmText, "Create Support Report",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+                    MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+                return;
+
+            var result = SupportReportBuilder.Build(
+                ctrl,
+                dlg.Callsign, dlg.PersonName, dlg.Email,
+                dlg.ProblemType, dlg.Description, dlg.Steps);
+
+            if (result.Success)
+            {
+                MessageBox.Show(
+                    $"Support report saved:\n{result.ZipPath}\n\nYou may review the ZIP before sending it to support.",
+                    "Support Report Created",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show(
+                    $"Could not create support report:\n{result.Error}",
+                    "Support Report Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
         }
 
         private void HelpDlg_Activated(object sender, EventArgs e)

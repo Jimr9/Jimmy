@@ -31,6 +31,7 @@ namespace WSJTX_Controller
         UploadLotw,
         SortOrder,
         RowOrder,
+        AnalyzeSlot,
         // Accessibility Navigation
         NavStatus,
         NavCallList,
@@ -40,6 +41,18 @@ namespace WSJTX_Controller
         NavAdvTx1,
         NavAdvTx2,
         NavAdvRaw,
+        // Direct Band Selection
+        Band160m,
+        Band80m,
+        Band60m,
+        Band40m,
+        Band30m,
+        Band20m,
+        Band17m,
+        Band15m,
+        Band12m,
+        Band10m,
+        Band6m,
     }
 
     public class HotkeyConfig
@@ -74,6 +87,7 @@ namespace WSJTX_Controller
             [HotkeyAction.UploadLotw]      = Keys.Alt | Keys.U,
             [HotkeyAction.SortOrder]       = Keys.Alt | Keys.S,
             [HotkeyAction.RowOrder]        = Keys.Alt | Keys.I,
+            [HotkeyAction.AnalyzeSlot]     = Keys.None,
             [HotkeyAction.NavStatus]       = Keys.Control | Keys.S,
             [HotkeyAction.NavCallList]     = Keys.Control | Keys.W,
             [HotkeyAction.NavPendingCount] = Keys.Control | Keys.P,
@@ -83,6 +97,17 @@ namespace WSJTX_Controller
             [HotkeyAction.NavAdvTx1]       = Keys.Control | Keys.D1,
             [HotkeyAction.NavAdvTx2]       = Keys.Control | Keys.D2,
             [HotkeyAction.NavAdvRaw]       = Keys.Control | Keys.D3,
+            [HotkeyAction.Band160m]        = Keys.None,
+            [HotkeyAction.Band80m]         = Keys.None,
+            [HotkeyAction.Band60m]         = Keys.None,
+            [HotkeyAction.Band40m]         = Keys.None,
+            [HotkeyAction.Band30m]         = Keys.None,
+            [HotkeyAction.Band20m]         = Keys.None,
+            [HotkeyAction.Band17m]         = Keys.None,
+            [HotkeyAction.Band15m]         = Keys.None,
+            [HotkeyAction.Band12m]         = Keys.None,
+            [HotkeyAction.Band10m]         = Keys.None,
+            [HotkeyAction.Band6m]          = Keys.None,
         };
 
         public static readonly Dictionary<HotkeyAction, string> DisplayNames = new Dictionary<HotkeyAction, string>
@@ -96,7 +121,7 @@ namespace WSJTX_Controller
             [HotkeyAction.HaltTx]          = "Halt Transmit",
             [HotkeyAction.NextCall]        = "Skip to Next Call",
             [HotkeyAction.ManualCall]      = "Call Callsign Manually",
-            [HotkeyAction.DeleteAllCalls]  = "Delete All Calls Waiting",
+            [HotkeyAction.DeleteAllCalls]  = "Delete All Available Stations",
             [HotkeyAction.TxPeriod]        = "Toggle Transmit Period",
             [HotkeyAction.HoldTimeout]     = "Toggle Extended Timeout",
             [HotkeyAction.TuneMode]        = "Toggle Tune Mode",
@@ -111,22 +136,46 @@ namespace WSJTX_Controller
             [HotkeyAction.UploadLotw]      = "Upload to Logbook of the World",
             [HotkeyAction.SortOrder]       = "Sort Order Editor",
             [HotkeyAction.RowOrder]        = "Row Order Editor",
+            [HotkeyAction.AnalyzeSlot]     = "Analyze Transmit Slot",
             [HotkeyAction.NavStatus]       = "Focus Status Area",
-            [HotkeyAction.NavCallList]     = "Focus Calls Waiting List",
+            [HotkeyAction.NavCallList]     = "Focus Available Stations List",
             [HotkeyAction.NavPendingCount] = "Focus Pending Count",
             [HotkeyAction.NavLoggedList]   = "Focus Auto Logged List",
             [HotkeyAction.NavLoggedCount]  = "Focus Auto Logged Count",
-            [HotkeyAction.NavAdvTx1]       = "Focus TX1 Calls Waiting",
-            [HotkeyAction.NavAdvTx2]       = "Focus TX2 Calls Waiting",
+            [HotkeyAction.NavAdvTx1]       = "Focus TX1 Available Stations",
+            [HotkeyAction.NavAdvTx2]       = "Focus TX2 Available Stations",
             [HotkeyAction.NavAdvRaw]       = "Focus Raw Decodes",
+            [HotkeyAction.Band160m]        = "Select 160 Meter Band",
+            [HotkeyAction.Band80m]         = "Select 80 Meter Band",
+            [HotkeyAction.Band60m]         = "Select 60 Meter Band",
+            [HotkeyAction.Band40m]         = "Select 40 Meter Band",
+            [HotkeyAction.Band30m]         = "Select 30 Meter Band",
+            [HotkeyAction.Band20m]         = "Select 20 Meter Band",
+            [HotkeyAction.Band17m]         = "Select 17 Meter Band",
+            [HotkeyAction.Band15m]         = "Select 15 Meter Band",
+            [HotkeyAction.Band12m]         = "Select 12 Meter Band",
+            [HotkeyAction.Band10m]         = "Select 10 Meter Band",
+            [HotkeyAction.Band6m]          = "Select 6 Meter Band",
         };
 
         // Actions that may be left unassigned (Keys.None) without triggering a validation error.
         public static readonly HashSet<HotkeyAction> OptionalActions = new HashSet<HotkeyAction>
         {
+            HotkeyAction.AnalyzeSlot,
             HotkeyAction.NavAdvTx1,
             HotkeyAction.NavAdvTx2,
             HotkeyAction.NavAdvRaw,
+            HotkeyAction.Band160m,
+            HotkeyAction.Band80m,
+            HotkeyAction.Band60m,
+            HotkeyAction.Band40m,
+            HotkeyAction.Band30m,
+            HotkeyAction.Band20m,
+            HotkeyAction.Band17m,
+            HotkeyAction.Band15m,
+            HotkeyAction.Band12m,
+            HotkeyAction.Band10m,
+            HotkeyAction.Band6m,
         };
 
         private static readonly HashSet<Keys> ReservedKeys = new HashSet<Keys>

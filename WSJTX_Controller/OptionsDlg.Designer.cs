@@ -24,7 +24,6 @@ namespace WSJTX_Controller
             this.rcvCallingGroupBox = new System.Windows.Forms.GroupBox();
             this.rcvReplyingGroupBox = new System.Windows.Forms.GroupBox();
             this.rcvDirectedCqGroupBox = new System.Windows.Forms.GroupBox();
-            this.rcvNewDxccGroupBox = new System.Windows.Forms.GroupBox();
             this.rcvReplyBehaviorGroupBox = new System.Windows.Forms.GroupBox();
             this.rcvBlockListGroupBox = new System.Windows.Forms.GroupBox();
             this.transmitTabPage = new System.Windows.Forms.TabPage();
@@ -33,7 +32,6 @@ namespace WSJTX_Controller
             this.basicTabPage = new System.Windows.Forms.TabPage();
             this.hotkeysTabPage = new System.Windows.Forms.TabPage();
             this.hotkeysPanel = new System.Windows.Forms.Panel();
-            this.advancedTabPage = new System.Windows.Forms.TabPage();
             this.advUiTabPage = new System.Windows.Forms.TabPage();
             this.advUiPanel = new System.Windows.Forms.Panel();
             this.wantedCallsTabPage = new System.Windows.Forms.TabPage();
@@ -41,7 +39,6 @@ namespace WSJTX_Controller
             this.soundsTabPage = new System.Windows.Forms.TabPage();
             this.soundsPanel = new System.Windows.Forms.Panel();
             this.udpTabPage = new System.Windows.Forms.TabPage();
-            this.advancedPanel = new System.Windows.Forms.Panel();
             this.udpPanel = new System.Windows.Forms.Panel();
             this.udpGroupBox = new System.Windows.Forms.GroupBox();
             this.udpOverrideCheckBox = new System.Windows.Forms.CheckBox();
@@ -55,10 +52,6 @@ namespace WSJTX_Controller
             this.udpMulticastCheckBox = new System.Windows.Forms.CheckBox();
             this.udpOnTopCheckBox = new System.Windows.Forms.CheckBox();
             this.udpDiagLogCheckBox = new System.Windows.Forms.CheckBox();
-            this.callingGroupBox = new System.Windows.Forms.GroupBox();
-            this.replyingGroupBox = new System.Windows.Forms.GroupBox();
-            this.transmitGroupBox = new System.Windows.Forms.GroupBox();
-            this.soundGroupBox = new System.Windows.Forms.GroupBox();
             this.filterGroupBox = new System.Windows.Forms.GroupBox();
             this.subtitleLabel = new System.Windows.Forms.TextBox();
             this.modeLabel = new System.Windows.Forms.TextBox();
@@ -88,8 +81,6 @@ namespace WSJTX_Controller
             this.transmitPanel.SuspendLayout();
             this.basicTabPage.SuspendLayout();
             this.hotkeysTabPage.SuspendLayout();
-            this.advancedTabPage.SuspendLayout();
-            this.advancedPanel.SuspendLayout();
             this.advUiTabPage.SuspendLayout();
             this.advUiPanel.SuspendLayout();
             this.wantedCallsTabPage.SuspendLayout();
@@ -109,10 +100,9 @@ namespace WSJTX_Controller
             this.tabControl1.Controls.Add(this.transmitTabPage);      // index 3
             this.tabControl1.Controls.Add(this.hotkeysTabPage);       // index 4
             this.tabControl1.Controls.Add(this.advUiTabPage);         // index 5
-            this.tabControl1.Controls.Add(this.advancedTabPage);      // index 6
-            this.tabControl1.Controls.Add(this.wantedCallsTabPage);   // index 7
-            this.tabControl1.Controls.Add(this.soundsTabPage);        // index 8
-            this.tabControl1.Controls.Add(this.udpTabPage);           // index 9
+            this.tabControl1.Controls.Add(this.wantedCallsTabPage);   // index 6
+            this.tabControl1.Controls.Add(this.soundsTabPage);        // index 7
+            this.tabControl1.Controls.Add(this.udpTabPage);           // index 8
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
@@ -146,7 +136,6 @@ namespace WSJTX_Controller
             this.receiveReplyPanel.Controls.Add(this.rcvCallingGroupBox);
             this.receiveReplyPanel.Controls.Add(this.rcvReplyingGroupBox);
             this.receiveReplyPanel.Controls.Add(this.rcvDirectedCqGroupBox);
-            this.receiveReplyPanel.Controls.Add(this.rcvNewDxccGroupBox);
             this.receiveReplyPanel.Controls.Add(this.rcvReplyBehaviorGroupBox);
             this.receiveReplyPanel.Controls.Add(this.rcvBlockListGroupBox);
             this.receiveReplyPanel.Dock = System.Windows.Forms.DockStyle.Fill;
@@ -181,16 +170,6 @@ namespace WSJTX_Controller
             this.rcvDirectedCqGroupBox.Size = new System.Drawing.Size(650, 55);
             this.rcvDirectedCqGroupBox.TabStop = false;
             this.rcvDirectedCqGroupBox.Text = "Directed CQ Alert";
-            //
-            // rcvNewDxccGroupBox
-            //
-            this.rcvNewDxccGroupBox.AccessibleName = "New DXCC options";
-            this.rcvNewDxccGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
-            this.rcvNewDxccGroupBox.Location = new System.Drawing.Point(5, 295);
-            this.rcvNewDxccGroupBox.Name = "rcvNewDxccGroupBox";
-            this.rcvNewDxccGroupBox.Size = new System.Drawing.Size(650, 70);
-            this.rcvNewDxccGroupBox.TabStop = false;
-            this.rcvNewDxccGroupBox.Text = "New DXCC";
             //
             // rcvReplyBehaviorGroupBox
             //
@@ -273,10 +252,6 @@ namespace WSJTX_Controller
             //
             // advancedTabPage
             //
-            this.advancedTabPage.Controls.Add(this.advancedPanel);
-            this.advancedTabPage.Text = "Advanced";
-            this.advancedTabPage.Name = "advancedTabPage";
-            //
             // advUiTabPage
             //
             this.advUiTabPage.Controls.Add(this.advUiPanel);
@@ -321,16 +296,6 @@ namespace WSJTX_Controller
             this.udpTabPage.Controls.Add(this.udpPanel);
             this.udpTabPage.Text = "UDP / Connection";
             this.udpTabPage.Name = "udpTabPage";
-            //
-            // advancedPanel
-            //
-            this.advancedPanel.AutoScroll = true;
-            this.advancedPanel.Controls.Add(this.callingGroupBox);
-            this.advancedPanel.Controls.Add(this.replyingGroupBox);
-            this.advancedPanel.Controls.Add(this.transmitGroupBox);
-            this.advancedPanel.Controls.Add(this.soundGroupBox);
-            this.advancedPanel.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.advancedPanel.Name = "advancedPanel";
             //
             // udpPanel
             //
@@ -456,46 +421,6 @@ namespace WSJTX_Controller
             this.udpDiagLogCheckBox.TabIndex = 4;
             this.udpDiagLogCheckBox.Text = "Log diagnostic info";
             this.udpDiagLogCheckBox.UseVisualStyleBackColor = true;
-            //
-            // callingGroupBox  (remains on Advanced tab; receives no reparented controls after Phase 2)
-            //
-            this.callingGroupBox.AccessibleName = "Calling options";
-            this.callingGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
-            this.callingGroupBox.Location = new System.Drawing.Point(5, 5);
-            this.callingGroupBox.Name = "callingGroupBox";
-            this.callingGroupBox.Size = new System.Drawing.Size(320, 120);
-            this.callingGroupBox.TabStop = false;
-            this.callingGroupBox.Text = "Calling";
-            //
-            // replyingGroupBox  (remains on Advanced tab; receives no reparented controls after Phase 2)
-            //
-            this.replyingGroupBox.AccessibleName = "Replying options";
-            this.replyingGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
-            this.replyingGroupBox.Location = new System.Drawing.Point(330, 5);
-            this.replyingGroupBox.Name = "replyingGroupBox";
-            this.replyingGroupBox.Size = new System.Drawing.Size(335, 130);
-            this.replyingGroupBox.TabStop = false;
-            this.replyingGroupBox.Text = "Replying";
-            //
-            // transmitGroupBox  (remains on Advanced tab; receives no reparented controls after Phase 2)
-            //
-            this.transmitGroupBox.AccessibleName = "Transmit options";
-            this.transmitGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
-            this.transmitGroupBox.Location = new System.Drawing.Point(5, 130);
-            this.transmitGroupBox.Name = "transmitGroupBox";
-            this.transmitGroupBox.Size = new System.Drawing.Size(320, 165);
-            this.transmitGroupBox.TabStop = false;
-            this.transmitGroupBox.Text = "Transmit";
-            //
-            // soundGroupBox  (remains on Advanced tab; still receives sound controls)
-            //
-            this.soundGroupBox.AccessibleName = "Sound options";
-            this.soundGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
-            this.soundGroupBox.Location = new System.Drawing.Point(330, 140);
-            this.soundGroupBox.Name = "soundGroupBox";
-            this.soundGroupBox.Size = new System.Drawing.Size(335, 55);
-            this.soundGroupBox.TabStop = false;
-            this.soundGroupBox.Text = "Sound";
             //
             // filterGroupBox  (remains on Basic tab; receives no reparented controls after Phase 2)
             //
@@ -683,6 +608,7 @@ namespace WSJTX_Controller
             // allButton
             //
             this.allButton.AccessibleName = "reply in call order";
+            this.allButton.AccessibleRole = System.Windows.Forms.AccessibleRole.RadioButton;
             this.allButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F);
             this.allButton.Location = new System.Drawing.Point(460, 182);
             this.allButton.Name = "allButton";
@@ -695,6 +621,7 @@ namespace WSJTX_Controller
             // recentButton
             //
             this.recentButton.AccessibleName = "Reply to most recent first";
+            this.recentButton.AccessibleRole = System.Windows.Forms.AccessibleRole.RadioButton;
             this.recentButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F);
             this.recentButton.Location = new System.Drawing.Point(565, 182);
             this.recentButton.Name = "recentButton";
@@ -770,8 +697,6 @@ namespace WSJTX_Controller
             this.basicTabPage.ResumeLayout(false);
             this.basicTabPage.PerformLayout();
             this.hotkeysTabPage.ResumeLayout(false);
-            this.advancedTabPage.ResumeLayout(false);
-            this.advancedPanel.ResumeLayout(false);
             this.advUiTabPage.ResumeLayout(false);
             this.advUiPanel.ResumeLayout(false);
             this.wantedCallsTabPage.ResumeLayout(false);
@@ -796,7 +721,6 @@ namespace WSJTX_Controller
         public System.Windows.Forms.GroupBox rcvCallingGroupBox;
         public System.Windows.Forms.GroupBox rcvReplyingGroupBox;
         public System.Windows.Forms.GroupBox rcvDirectedCqGroupBox;
-        public System.Windows.Forms.GroupBox rcvNewDxccGroupBox;
         public System.Windows.Forms.GroupBox rcvReplyBehaviorGroupBox;
         public System.Windows.Forms.GroupBox rcvBlockListGroupBox;
         private System.Windows.Forms.TabPage transmitTabPage;
@@ -805,9 +729,7 @@ namespace WSJTX_Controller
         private System.Windows.Forms.TabPage basicTabPage;
         private System.Windows.Forms.TabPage hotkeysTabPage;
         private System.Windows.Forms.Panel hotkeysPanel;
-        private System.Windows.Forms.TabPage advancedTabPage;
         private System.Windows.Forms.TabPage udpTabPage;
-        private System.Windows.Forms.Panel advancedPanel;
         private System.Windows.Forms.Panel udpPanel;
         private System.Windows.Forms.GroupBox udpGroupBox;
         private System.Windows.Forms.CheckBox udpOverrideCheckBox;
@@ -821,10 +743,6 @@ namespace WSJTX_Controller
         private System.Windows.Forms.CheckBox udpMulticastCheckBox;
         private System.Windows.Forms.CheckBox udpOnTopCheckBox;
         private System.Windows.Forms.CheckBox udpDiagLogCheckBox;
-        public System.Windows.Forms.GroupBox callingGroupBox;
-        public System.Windows.Forms.GroupBox replyingGroupBox;
-        public System.Windows.Forms.GroupBox transmitGroupBox;
-        public System.Windows.Forms.GroupBox soundGroupBox;
         public System.Windows.Forms.GroupBox filterGroupBox;
         private System.Windows.Forms.TextBox subtitleLabel;
         private System.Windows.Forms.TextBox modeLabel;

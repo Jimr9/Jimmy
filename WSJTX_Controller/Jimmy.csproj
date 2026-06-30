@@ -63,6 +63,7 @@
     <Reference Include="System.Data" />
     <Reference Include="System.Deployment" />
     <Reference Include="System.Drawing" />
+    <Reference Include="System.IO.Compression" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
@@ -83,6 +84,8 @@
     <Compile Include="HotkeyConfig.cs" />
     <Compile Include="HotkeyCaptureBox.cs" />
     <Compile Include="ManualCallDlg.cs" />
+    <Compile Include="SupportReportDlg.cs" />
+    <Compile Include="SupportReportBuilder.cs" />
     <Compile Include="IniFile.cs" />
     <Compile Include="ExtensionMethods.cs" />
     <Compile Include="ConfirmDlg.cs">

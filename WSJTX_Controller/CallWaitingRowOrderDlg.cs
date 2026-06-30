@@ -62,7 +62,7 @@ namespace WSJTX_Controller
             this.instructionsLabel.Size = new Size(314, 13);
             this.instructionsLabel.TabIndex = 0;
             this.instructionsLabel.Text = "Checked fields are shown; use Move Up/Move Down to change display order.";
-            this.instructionsLabel.AccessibleName = "Call waiting row editor instructions";
+            this.instructionsLabel.AccessibleName = "Stations available row editor instructions";
             this.instructionsLabel.AccessibleDescription = "Explains that checked fields are visible and that items can be reordered with Move Up and Move Down.";
             // 
             // checkedListBox
@@ -73,8 +73,8 @@ namespace WSJTX_Controller
             this.checkedListBox.Size = new Size(336, 220);
             this.checkedListBox.TabIndex = 1;
             this.checkedListBox.CheckOnClick = true;
-            this.checkedListBox.AccessibleName = "Call waiting row fields";
-            this.checkedListBox.AccessibleDescription = "List of possible fields for call waiting rows. Check fields to show them and uncheck fields to hide them. Select an item and use Move Up or Move Down to reorder.";
+            this.checkedListBox.AccessibleName = "Stations Available Row Fields List Box";
+            this.checkedListBox.AccessibleDescription = "List of possible fields for stations available rows. Check fields to show them and uncheck fields to hide them. Select an item and use Move Up or Move Down to reorder.";
             this.checkedListBox.SelectedIndexChanged += new EventHandler(this.CheckedListBox_SelectedIndexChanged);
             // 
             // moveUpButton
@@ -110,7 +110,7 @@ namespace WSJTX_Controller
             this.restoreDefaultButton.Text = "Restore Default";
             this.restoreDefaultButton.UseVisualStyleBackColor = true;
             this.restoreDefaultButton.AccessibleName = "Restore default order";
-            this.restoreDefaultButton.AccessibleDescription = "Resets the list to the default call waiting row order and shows all fields.";
+            this.restoreDefaultButton.AccessibleDescription = "Resets the list to the default stations available row order and shows all fields.";
             this.restoreDefaultButton.Click += new EventHandler(this.RestoreDefaultButton_Click);
             // 
             // okButton
@@ -155,8 +155,8 @@ namespace WSJTX_Controller
             this.Name = "CallWaitingRowOrderDlg";
             this.Padding = new Padding(9);
             this.StartPosition = FormStartPosition.CenterParent;
-            this.Text = "Change Row Order";
-            this.AccessibleName = "Change Row Order";
+            this.Text = "Stations Available Row Fields";
+            this.AccessibleName = "Stations Available Row Fields";
             this.ShowInTaskbar = false;
             this.ResumeLayout(false);
             this.PerformLayout();
@@ -261,7 +261,7 @@ namespace WSJTX_Controller
 
             if (selectedFields.Count == 0)
             {
-                MessageBox.Show(this, "Select at least one field to show in call waiting rows.", "Selection Required", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, "Select at least one field to show in stations available rows.", "Selection Required", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 

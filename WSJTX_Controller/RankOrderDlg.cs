@@ -21,8 +21,10 @@ namespace WSJTX_Controller
         private Button           listMoveDownButton;
         private Button           restoreListDefaultsButton;
 
-        // ── Tab 2 – Alt+N Filter ──────────────────────────────────────────────────
+        // ── Tab 2 – Call Filters ──────────────────────────────────────────────────
         private CheckedListBox   callingCheckedListBox;
+        private Button           callingMoveUpButton;
+        private Button           callingMoveDownButton;
         private Button           restoreCallingDefaultsButton;
 
         // ── Tab 3 – Normal Sort Order ──────────────────────────────────────────
@@ -44,7 +46,7 @@ namespace WSJTX_Controller
         public List<WsjtxClient.RankMethods>              SelectedOrder              { get; private set; }
         public WsjtxClient.RankMethods?                   SelectedBeam               { get; private set; }
         public Dictionary<WsjtxClient.CallCategory, int>  SelectedCategoryWeights    { get; private set; }
-        public HashSet<WsjtxClient.CallCategory>          SelectedCallingPriorities  { get; private set; }
+        public List<WsjtxClient.CallCategory>              SelectedCallingPriorities  { get; private set; }
 
         // ── Static data ────────────────────────────────────────────────────────
         private static readonly SortEntry[] DefaultSortEntries = new SortEntry[]
@@ -79,7 +81,7 @@ namespace WSJTX_Controller
             { WsjtxClient.CallCategory.TO_MYCALL,           "Calling me" },
             { WsjtxClient.CallCategory.MANUAL_SEL,          "Manual selection" },
             { WsjtxClient.CallCategory.WANTED_CQ,           "Directed CQ" },
-            { WsjtxClient.CallCategory.DEFAULT,             "Default" },
+            { WsjtxClient.CallCategory.DEFAULT,             "Ordinary CQ" },
         };
 
         // POTA, SOTA, and MANUAL_SEL are hidden from user-facing lists.
@@ -104,8 +106,8 @@ namespace WSJTX_Controller
             { WsjtxClient.CallCategory.DEFAULT,             0 },
         };
 
-        private static readonly HashSet<WsjtxClient.CallCategory> DefaultCallingPriorities =
-            new HashSet<WsjtxClient.CallCategory>
+        private static readonly List<WsjtxClient.CallCategory> DefaultCallingPriorities =
+            new List<WsjtxClient.CallCategory>
         {
             WsjtxClient.CallCategory.NEW_COUNTRY,
             WsjtxClient.CallCategory.NEW_COUNTRY_ON_BAND,
@@ -119,7 +121,7 @@ namespace WSJTX_Controller
             List<WsjtxClient.RankMethods> currentOrder,
             WsjtxClient.RankMethods? currentBeam,
             Dictionary<WsjtxClient.CallCategory, int> currentCategoryWeights,
-            HashSet<WsjtxClient.CallCategory> currentCallingPriorities)
+            List<WsjtxClient.CallCategory> currentCallingPriorities)
         {
             InitializeComponent();
             PopulateListPriorities(currentCategoryWeights);
@@ -145,6 +147,8 @@ namespace WSJTX_Controller
             this.restoreListDefaultsButton = new Button();
 
             this.callingCheckedListBox        = new CheckedListBox();
+            this.callingMoveUpButton          = new Button();
+            this.callingMoveDownButton        = new Button();
             this.restoreCallingDefaultsButton = new Button();
 
             this.sortCheckedListBox        = new CheckedListBox();
@@ -175,7 +179,7 @@ namespace WSJTX_Controller
             this.tabControl.SelectedIndex = 0;
             this.tabControl.Size          = new Size(406, 306);
             this.tabControl.TabIndex      = 0;
-            this.tabControl.AccessibleName = "Call Waiting Sort Order";
+            this.tabControl.AccessibleName = "Stations Available Sort Order";
 
             // ══ TAB 1 – LIST PRIORITIES ════════════════════════════════════════
             this.listPrioritiesTabPage.Controls.Add(this.listPriorityListBox);
@@ -231,13 +235,15 @@ namespace WSJTX_Controller
             this.restoreListDefaultsButton.AccessibleName        = "Restore Defaults";
             this.restoreListDefaultsButton.Click                += new EventHandler(this.RestoreListDefaultsButton_Click);
 
-            // ══ TAB 2 – ALT+N FILTER ═══════════════════════════════════════════
+            // ══ TAB 2 – CALL FILTERS ══════════════════════════════════════════════
             this.callingPrioritiesTabPage.Controls.Add(this.callingCheckedListBox);
+            this.callingPrioritiesTabPage.Controls.Add(this.callingMoveUpButton);
+            this.callingPrioritiesTabPage.Controls.Add(this.callingMoveDownButton);
             this.callingPrioritiesTabPage.Controls.Add(this.restoreCallingDefaultsButton);
             this.callingPrioritiesTabPage.Name    = "callingPrioritiesTabPage";
-            this.callingPrioritiesTabPage.Text    = "Alt+N Filter";
+            this.callingPrioritiesTabPage.Text    = "Call Filters";
             this.callingPrioritiesTabPage.Padding = new Padding(6);
-            this.callingPrioritiesTabPage.AccessibleName = "Alt N Filter";
+            this.callingPrioritiesTabPage.AccessibleName = "Call Filters";
 
             // CheckedListBox – TabIndex 0
             this.callingCheckedListBox.CheckOnClick          = true;
@@ -245,16 +251,39 @@ namespace WSJTX_Controller
             this.callingCheckedListBox.FormattingEnabled     = true;
             this.callingCheckedListBox.Location              = new Point(8, 8);
             this.callingCheckedListBox.Name                  = "callingCheckedListBox";
-            this.callingCheckedListBox.Size                  = new Size(384, 196);
+            this.callingCheckedListBox.Size                  = new Size(384, 160);
             this.callingCheckedListBox.TabIndex              = 0;
-            this.callingCheckedListBox.AccessibleName        = "Alt N eligible categories";
+            this.callingCheckedListBox.AccessibleName        = "Call filter categories";
+            this.callingCheckedListBox.SelectedIndexChanged += new EventHandler(this.CallingCheckedListBox_SelectedIndexChanged);
 
-            // Restore Defaults – TabIndex 1
+            // Move Up – TabIndex 1
+            this.callingMoveUpButton.Font                  = font;
+            this.callingMoveUpButton.Location              = new Point(8, 176);
+            this.callingMoveUpButton.Name                  = "callingMoveUpButton";
+            this.callingMoveUpButton.Size                  = new Size(182, 26);
+            this.callingMoveUpButton.TabIndex              = 1;
+            this.callingMoveUpButton.Text                  = "Move Up";
+            this.callingMoveUpButton.UseVisualStyleBackColor = true;
+            this.callingMoveUpButton.AccessibleName        = "Move Up";
+            this.callingMoveUpButton.Click                += new EventHandler(this.CallingMoveUpButton_Click);
+
+            // Move Down – TabIndex 2
+            this.callingMoveDownButton.Font                  = font;
+            this.callingMoveDownButton.Location              = new Point(198, 176);
+            this.callingMoveDownButton.Name                  = "callingMoveDownButton";
+            this.callingMoveDownButton.Size                  = new Size(182, 26);
+            this.callingMoveDownButton.TabIndex              = 2;
+            this.callingMoveDownButton.Text                  = "Move Down";
+            this.callingMoveDownButton.UseVisualStyleBackColor = true;
+            this.callingMoveDownButton.AccessibleName        = "Move Down";
+            this.callingMoveDownButton.Click                += new EventHandler(this.CallingMoveDownButton_Click);
+
+            // Restore Defaults – TabIndex 3
             this.restoreCallingDefaultsButton.Font                  = font;
-            this.restoreCallingDefaultsButton.Location              = new Point(8, 212);
+            this.restoreCallingDefaultsButton.Location              = new Point(8, 210);
             this.restoreCallingDefaultsButton.Name                  = "restoreCallingDefaultsButton";
             this.restoreCallingDefaultsButton.Size                  = new Size(182, 26);
-            this.restoreCallingDefaultsButton.TabIndex              = 1;
+            this.restoreCallingDefaultsButton.TabIndex              = 3;
             this.restoreCallingDefaultsButton.Text                  = "Restore Defaults";
             this.restoreCallingDefaultsButton.UseVisualStyleBackColor = true;
             this.restoreCallingDefaultsButton.AccessibleName        = "Restore Defaults";
@@ -357,7 +386,7 @@ namespace WSJTX_Controller
             this.helpTextBox.Text =
                 "List Priorities\r\n" +
                 "───────────────\r\n" +
-                "Promotes special categories above others in the call waiting list.\r\n" +
+                "Promotes special categories above others in the stations available list.\r\n" +
                 "Check a category to elevate it above unchecked categories.\r\n" +
                 "Unchecked categories are not promoted above checked categories,\r\n" +
                 "but may still rank above ordinary default calls depending on\r\n" +
@@ -371,24 +400,28 @@ namespace WSJTX_Controller
                 "The order here also determines which category Alt+N prefers\r\n" +
                 "when multiple types of priority calls are waiting.\r\n" +
                 "\r\n" +
-                "Alt+N Filter\r\n" +
+                "Call Filters\r\n" +
                 "────────────\r\n" +
-                "Controls which categories Alt+N is allowed to call.\r\n" +
-                "Checked = Alt+N may jump to this category.\r\n" +
-                "Unchecked = Alt+N skips this category.\r\n" +
-                "Unchecked calls still appear in the list and can be called\r\n" +
-                "manually with Space or Enter.\r\n" +
+                "Controls which call categories enter the waiting queue.\r\n" +
+                "Checked = calls of this type are admitted to the queue.\r\n" +
+                "Unchecked = calls of this type are decoded and classified\r\n" +
+                "but never admitted to TX1/TX2/RX1/RX2.\r\n" +
                 "\r\n" +
-                "Alt+N always picks the highest-ranked eligible call based on\r\n" +
-                "the List Priorities order above.\r\n" +
+                "Every decoded station is always fully classified before the\r\n" +
+                "filter is applied — Jimmy never misses a decode.\r\n" +
                 "\r\n" +
-                "Note — Directed CQ queue admission:\r\n" +
-                "Whether directed CQ calls appear in the list at all is\r\n" +
-                "controlled by the \"Queue directed CQ calls for:\" field on\r\n" +
-                "the Receive tab, not by this filter. The \"Directed CQ\" entry\r\n" +
-                "here only controls whether Alt+N will jump to those calls.\r\n" +
-                "To queue POTA, SOTA, DX, or other directed CQ calls, enter\r\n" +
-                "those targets in the \"Queue directed CQ calls for:\" field.\r\n" +
+                "Directed CQ: also requires a matching entry in the\r\n" +
+                "\"Queue directed CQ calls for:\" text field (e.g. POTA SOTA).\r\n" +
+                "\r\n" +
+                "Ordinary CQ: also subject to the DX / Local origin filter\r\n" +
+                "and band-scope setting on the Receive tab.\r\n" +
+                "\r\n" +
+                "Calling Me: always enters the waiting queue regardless of\r\n" +
+                "this checkbox — Jimmy never hides a station calling you.\r\n" +
+                "The checkbox controls only whether Alt+N will jump to a\r\n" +
+                "station that is calling you.\r\n" +
+                "\r\n" +
+                "Alt+N picks the highest-ranked eligible admitted call.\r\n" +
                 "\r\n" +
                 "Normal Sort Order\r\n" +
                 "─────────────────\r\n" +
@@ -437,8 +470,8 @@ namespace WSJTX_Controller
             this.MinimizeBox     = false;
             this.Name            = "RankOrderDlg";
             this.StartPosition   = FormStartPosition.CenterParent;
-            this.Text            = "Call Waiting Sort Order";
-            this.AccessibleName  = "Call Waiting Sort Order";
+            this.Text            = "Stations Available Sort Order";
+            this.AccessibleName  = "Stations Available Sort Order";
             this.ShowInTaskbar   = false;
 
             this.helpTabPage.ResumeLayout(false);
@@ -551,33 +584,107 @@ namespace WSJTX_Controller
             PopulateListPriorities(DefaultCategoryWeights);
         }
 
-        // ── Tab 2: Alt+N Filter logic ──────────────────────────────────────────
+        // ── Tab 2: Call Filters logic ─────────────────────────────────────────
 
-        private void PopulateCallingList(HashSet<WsjtxClient.CallCategory> currentCallingPriorities)
+        // All categories that can appear in the Call Filters list, in fallback order.
+        private static readonly WsjtxClient.CallCategory[] AllFilterCategories =
         {
-            var calling = (currentCallingPriorities != null)
+            WsjtxClient.CallCategory.NEW_COUNTRY,
+            WsjtxClient.CallCategory.NEW_COUNTRY_ON_BAND,
+            WsjtxClient.CallCategory.ALWAYS_WANTED,
+            WsjtxClient.CallCategory.TO_MYCALL,
+            WsjtxClient.CallCategory.WANTED_CQ,
+            WsjtxClient.CallCategory.DEFAULT,
+        };
+
+        private void PopulateCallingList(List<WsjtxClient.CallCategory> currentCallingPriorities)
+        {
+            var calling = (currentCallingPriorities != null && currentCallingPriorities.Count > 0)
                 ? currentCallingPriorities
                 : DefaultCallingPriorities;
 
-            var ordered = new List<WsjtxClient.CallCategory>
-            {
-                WsjtxClient.CallCategory.NEW_COUNTRY,
-                WsjtxClient.CallCategory.NEW_COUNTRY_ON_BAND,
-                WsjtxClient.CallCategory.ALWAYS_WANTED,
-                WsjtxClient.CallCategory.TO_MYCALL,
-                WsjtxClient.CallCategory.WANTED_CQ,
-            };
-
             callingCheckedListBox.Items.Clear();
-            foreach (var cat in ordered)
+
+            // 1. Checked (enabled) items in their saved order — this order drives Alt+N.
+            foreach (var cat in calling)
             {
-                string label   = CategoryLabels.ContainsKey(cat) ? CategoryLabels[cat] : cat.ToString();
-                bool   enabled = calling.Contains(cat);
-                callingCheckedListBox.Items.Add(new CategoryEntry(cat, label), enabled);
+                if (HiddenCategories.Contains(cat)) continue;
+                string label = CategoryLabels.ContainsKey(cat) ? CategoryLabels[cat] : cat.ToString();
+                callingCheckedListBox.Items.Add(new CategoryEntry(cat, label), true);
+            }
+
+            // 2. Unchecked items: categories not in the enabled list, in fallback order.
+            foreach (var cat in AllFilterCategories)
+            {
+                if (HiddenCategories.Contains(cat)) continue;
+                if (calling.Contains(cat)) continue;
+                string label = CategoryLabels.ContainsKey(cat) ? CategoryLabels[cat] : cat.ToString();
+                callingCheckedListBox.Items.Add(new CategoryEntry(cat, label), false);
             }
 
             if (callingCheckedListBox.Items.Count > 0)
                 callingCheckedListBox.SelectedIndex = 0;
+
+            UpdateCallingMoveButtons();
+        }
+
+        private void CallingMoveUpButton_Click(object sender, EventArgs e)
+        {
+            MoveCallingItem(-1);
+            BeginInvoke((Action)(() =>
+            {
+                if (callingMoveUpButton.Enabled) callingMoveUpButton.Focus();
+                else callingCheckedListBox.Focus();
+            }));
+        }
+
+        private void CallingMoveDownButton_Click(object sender, EventArgs e)
+        {
+            MoveCallingItem(1);
+            BeginInvoke((Action)(() =>
+            {
+                if (callingMoveDownButton.Enabled) callingMoveDownButton.Focus();
+                else callingCheckedListBox.Focus();
+            }));
+        }
+
+        private void MoveCallingItem(int direction)
+        {
+            int index = callingCheckedListBox.SelectedIndex;
+            if (index < 0) return;
+
+            int target = index + direction;
+            if (target < 0 || target >= callingCheckedListBox.Items.Count) return;
+
+            bool   currentChk  = callingCheckedListBox.GetItemChecked(index);
+            bool   targetChk   = callingCheckedListBox.GetItemChecked(target);
+            object currentItem = callingCheckedListBox.Items[index];
+            object targetItem  = callingCheckedListBox.Items[target];
+
+            callingCheckedListBox.Items[target] = currentItem;
+            callingCheckedListBox.Items[index]  = targetItem;
+            callingCheckedListBox.SetItemChecked(target, currentChk);
+            callingCheckedListBox.SetItemChecked(index,  targetChk);
+            callingCheckedListBox.SelectedIndex = target;
+            UpdateCallingMoveButtons();
+        }
+
+        private void CallingCheckedListBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            UpdateCallingMoveButtons();
+        }
+
+        private void UpdateCallingMoveButtons()
+        {
+            int index = callingCheckedListBox.SelectedIndex;
+            int count = callingCheckedListBox.Items.Count;
+            if (index < 0 || count == 0)
+            {
+                callingMoveUpButton.Enabled = callingMoveDownButton.Enabled = false;
+                return;
+            }
+            callingMoveUpButton.Enabled   = index > 0;
+            callingMoveDownButton.Enabled = index < count - 1;
         }
 
         private void RestoreCallingDefaultsButton_Click(object sender, EventArgs e)
@@ -706,7 +813,7 @@ namespace WSJTX_Controller
                 tabControl.SelectedTab = sortTabPage;
                 MessageBox.Show(this,
                     "At least one sort option must be checked.",
-                    "Call Waiting Sort Order",
+                    "Stations Available Sort Order",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
                 sortCheckedListBox.Focus();
@@ -738,14 +845,15 @@ namespace WSJTX_Controller
             weights[WsjtxClient.CallCategory.DEFAULT] = 0;
             SelectedCategoryWeights = weights;
 
-            // Build calling priorities from checked items
-            var callingSet = new HashSet<WsjtxClient.CallCategory>();
+            // Build calling priorities from checked items in display order.
+            // Display order IS Alt+N selection order: first checked entry = first Alt+N category.
+            var callingList = new List<WsjtxClient.CallCategory>();
             for (int i = 0; i < callingCheckedListBox.Items.Count; i++)
             {
                 if (callingCheckedListBox.GetItemChecked(i))
-                    callingSet.Add(((CategoryEntry)callingCheckedListBox.Items[i]).Category);
+                    callingList.Add(((CategoryEntry)callingCheckedListBox.Items[i]).Category);
             }
-            SelectedCallingPriorities = callingSet;
+            SelectedCallingPriorities = callingList;
 
             this.DialogResult = DialogResult.OK;
             this.Close();

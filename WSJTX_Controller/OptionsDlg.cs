@@ -32,9 +32,9 @@ namespace WSJTX_Controller
 
         private const int HotkeysTabIndex      = 4;
         private const int AdvUiTabIndex        = 5;
-        private const int WantedCallsTabIndex  = 7;
-        private const int SoundsTabIndex       = 8;
-        private const int UdpTabIndex          = 9;
+        private const int WantedCallsTabIndex  = 6;
+        private const int SoundsTabIndex       = 7;
+        private const int UdpTabIndex          = 8;
 
         // Advanced UI tab — controls created dynamically in BuildAdvancedUiTab()
         private System.Windows.Forms.CheckBox advCallLayoutCheckBox;
@@ -42,6 +42,7 @@ namespace WSJTX_Controller
         private System.Windows.Forms.CheckBox advShowTx2CheckBox;
         private System.Windows.Forms.CheckBox advShowRawCheckBox;
         private System.Windows.Forms.NumericUpDown rawMaxRowsNumeric;
+        private System.Windows.Forms.NumericUpDown _maxQueuedCallsNumeric;
         private System.Windows.Forms.CheckBox rawShowCqCheckBox;
         private System.Windows.Forms.CheckBox rawShowDirectedCheckBox;
         private System.Windows.Forms.CheckBox rawShowReportsCheckBox;
@@ -82,7 +83,8 @@ namespace WSJTX_Controller
         private ListBox                         _actionListBox;
 
         // Wanted Calls tab
-        private System.Windows.Forms.TextBox wantedCallsTextBox;
+        private System.Windows.Forms.TextBox    wantedCallsTextBox;
+        private System.Windows.Forms.CheckBox   _wantedCallAnywhereCheckBox;
 
         // General tab
         private System.Windows.Forms.CheckBox pskReporterCheckBox;
@@ -141,11 +143,7 @@ namespace WSJTX_Controller
             ReparentControlsToDialog();
 
             UpdateAllButtons();
-            dxccButtonEnabled =
-                wsjtxClient.txMode == WsjtxClient.TxModes.LISTEN &&
-                ctrl.periodComboBox.SelectedIndex == (int)WsjtxClient.ListenModeTxPeriods.ANY &&
-                ctrl.replyNewDxccCheckBox.Checked &&
-                ctrl.replyNewOnlyCheckBox.Checked;
+            dxccButtonEnabled = false;  // Phase 3: New DXCC exclusive mode removed
             UpdateAllButtons();
 
             if (startOnUdpTab)
@@ -197,11 +195,6 @@ namespace WSJTX_Controller
 
         private void OptionsDlg_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (dxButtonEnabled || nonDxButtonEnabled)
-            {
-                ctrl.cqOnlyRadioButton.Checked = true;
-                ctrl.bandComboBox.SelectedIndex = (int)WsjtxClient.NewCallBands.ANY;
-            }
         }
 
         private void OptionsDlg_FormClosed(object sender, FormClosedEventArgs e)
@@ -350,18 +343,18 @@ namespace WSJTX_Controller
             // ── Group: Advanced call waiting layout ──────────────────────────────
             var layoutGroup = new System.Windows.Forms.GroupBox
             {
-                Text = "Advanced call waiting layout",
+                Text = "Advanced stations available layout",
                 Location = new System.Drawing.Point(left, y),
-                Size = new System.Drawing.Size(fullW, 132),
+                Size = new System.Drawing.Size(fullW, 157),
                 Font = font,
                 TabStop = false,
-                AccessibleName = "Advanced call waiting layout options"
+                AccessibleName = "Advanced stations available layout options"
             };
 
             advCallLayoutCheckBox = new System.Windows.Forms.CheckBox
             {
-                Text = "Enable advanced call waiting layout",
-                AccessibleName = "Enable advanced call waiting layout",
+                Text = "Enable advanced stations available layout",
+                AccessibleName = "Enable advanced stations available layout",
                 AutoSize = true,
                 Location = new System.Drawing.Point(8, 20),
                 TabIndex = 0,
@@ -371,8 +364,8 @@ namespace WSJTX_Controller
             advCallLayoutCheckBox.CheckedChanged += (s, e) => UpdateAdvUiDependentEnabled();
             layoutGroup.Controls.Add(advCallLayoutCheckBox);
 
-            advShowTx1CheckBox = MakeCheck(layoutGroup, "Show TX1 calls waiting", "Show TX1 calls waiting", 8, 44, 1, ctrl.advShowTx1, font);
-            advShowTx2CheckBox = MakeCheck(layoutGroup, "Show TX2 calls waiting", "Show TX2 calls waiting", 210, 44, 2, ctrl.advShowTx2, font);
+            advShowTx1CheckBox = MakeCheck(layoutGroup, "Show TX1 available stations", "Show TX1 available stations", 8, 44, 1, ctrl.advShowTx1, font);
+            advShowTx2CheckBox = MakeCheck(layoutGroup, "Show TX2 available stations", "Show TX2 available stations", 210, 44, 2, ctrl.advShowTx2, font);
             advShowRawCheckBox = MakeCheck(layoutGroup, "Show raw decodes", "Show raw decodes", 8, 66, 3, ctrl.advShowRaw, font);
             keepTransmitListDuringTxCheckBox = MakeCheck(layoutGroup, "Keep transmit list during transmit", "Keep transmit list during transmit", 8, 88, 4, ctrl.keepTransmitListDuringTx, font);
             var maxLabel = new System.Windows.Forms.Label
@@ -400,8 +393,34 @@ namespace WSJTX_Controller
             _advUiDependentControls.Add(maxLabel);
             _advUiDependentControls.Add(rawMaxRowsNumeric);
 
+            var maxQueuedLabel = new System.Windows.Forms.Label
+            {
+                Text = "Max queued calls:",
+                AutoSize = true,
+                Location = new System.Drawing.Point(8, 136),
+                Font = font,
+                TabStop = false
+            };
+            layoutGroup.Controls.Add(maxQueuedLabel);
+
+            _maxQueuedCallsNumeric = new System.Windows.Forms.NumericUpDown
+            {
+                AccessibleName = "Max queued calls",
+                AccessibleDescription = "Maximum number of calls held in the waiting queue across TX1 and TX2 combined. Increase to see more callers in the advanced TX1/TX2 lists.",
+                Location = new System.Drawing.Point(195, 133),
+                Size = new System.Drawing.Size(70, 20),
+                TabIndex = 6,
+                Minimum = 4,
+                Maximum = 100,
+                Value = Math.Max(4, Math.Min(100, ctrl.maxQueuedCallsBase)),
+                Font = font
+            };
+            layoutGroup.Controls.Add(_maxQueuedCallsNumeric);
+            _advUiDependentControls.Add(maxQueuedLabel);
+            _advUiDependentControls.Add(_maxQueuedCallsNumeric);
+
             advUiPanel.Controls.Add(layoutGroup);
-            y += 140;
+            y += 165;
 
             keepListPositionDuringRefreshCheckBox = new System.Windows.Forms.CheckBox
             {
@@ -540,6 +559,8 @@ namespace WSJTX_Controller
             ctrl.keepListPositionDuringRefresh = keepListPositionDuringRefreshCheckBox?.Checked ?? false;
             int rawMax = (int)(rawMaxRowsNumeric?.Value ?? 100);
             ctrl.rawMaxRows = Math.Max(10, Math.Min(5000, rawMax));
+            int maxQueued = (int)(_maxQueuedCallsNumeric?.Value ?? 4);
+            ctrl.maxQueuedCallsBase = Math.Max(4, Math.Min(100, maxQueued));
         }
 
         // ===== WANTED CALLS TAB =====
@@ -603,6 +624,21 @@ namespace WSJTX_Controller
             sorted.Sort(StringComparer.OrdinalIgnoreCase);
             wantedCallsTextBox.Text = string.Join(Environment.NewLine, sorted);
             wantedCallsPanel.Controls.Add(wantedCallsTextBox);
+            y += 228;
+
+            // Checkbox: alert when wanted call heard anywhere
+            _wantedCallAnywhereCheckBox = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Alert when wanted call is heard anywhere",
+                Checked        = ctrl.wantedCallAnywhereEnabled,
+                Location       = new System.Drawing.Point(left, y),
+                AutoSize       = true,
+                TabIndex       = 1,
+                Font           = font,
+                AccessibleName = "Alert when wanted call is heard anywhere",
+                AccessibleDescription = "When checked, plays the Wanted Call Heard Anywhere sound whenever a callsign from your Wanted Calls list appears in any decode, even if they are working someone else or not eligible for your queue.",
+            };
+            wantedCallsPanel.Controls.Add(_wantedCallAnywhereCheckBox);
         }
 
         private void SaveWantedCallsTab()
@@ -619,6 +655,7 @@ namespace WSJTX_Controller
                     normalized.Add(call);
             }
             ctrl.ApplyAndSaveWantedCalls(normalized);
+            ctrl.wantedCallAnywhereEnabled = _wantedCallAnywhereCheckBox?.Checked ?? false;
         }
 
         // ===== SOUNDS TAB =====
@@ -682,7 +719,9 @@ namespace WSJTX_Controller
                 new { Key = "AlwaysWanted",   Label = "Always Wanted",       Enabled = ctrl.soundEnabled_AlwaysWanted, File = ctrl.soundFile_AlwaysWanted, EnabledEditable = true },
                 new { Key = "DirectedCq",     Label = "Directed CQ",         Enabled = ctrl.soundEnabled_DirectedCq,   File = ctrl.soundFile_DirectedCq,   EnabledEditable = true },
                 new { Key = "Pota",           Label = "POTA",                Enabled = ctrl.soundEnabled_Pota,         File = ctrl.soundFile_Pota,         EnabledEditable = true },
-                new { Key = "Sota",           Label = "SOTA",                Enabled = ctrl.soundEnabled_Sota,         File = ctrl.soundFile_Sota,         EnabledEditable = true },
+                new { Key = "Sota",           Label = "SOTA",                            Enabled = ctrl.soundEnabled_Sota,           File = ctrl.soundFile_Sota,           EnabledEditable = true },
+                new { Key = "WantedAnywhere", Label = "Wanted call heard anywhere",       Enabled = ctrl.soundEnabled_WantedAnywhere, File = ctrl.soundFile_WantedAnywhere, EnabledEditable = true },
+                new { Key = "OppositePeriod", Label = "Interesting call opposite period", Enabled = ctrl.soundEnabled_OppositePeriod, File = ctrl.soundFile_OppositePeriod, EnabledEditable = true },
             };
 
             int y = 84;
@@ -842,6 +881,14 @@ namespace WSJTX_Controller
                         ctrl.soundEnabled_Sota = enabled;
                         ctrl.soundFile_Sota = file;
                         break;
+                    case "WantedAnywhere":
+                        ctrl.soundEnabled_WantedAnywhere = enabled;
+                        ctrl.soundFile_WantedAnywhere = file;
+                        break;
+                    case "OppositePeriod":
+                        ctrl.soundEnabled_OppositePeriod = enabled;
+                        ctrl.soundFile_OppositePeriod = file;
+                        break;
                 }
             }
         }
@@ -877,11 +924,6 @@ namespace WSJTX_Controller
             ReparentTo(ctrl.alertTextBox,           rcvDirectedCqGroupBox, new Point(180, 16));
             ReparentTo(ctrl.AlertDirectedHelpLabel, rcvDirectedCqGroupBox, new Point(300, 19));
 
-            // New DXCC → Receive / Auto Reply tab
-            ReparentTo(ctrl.replyNewDxccCheckBox, rcvNewDxccGroupBox, new Point(10, 20));
-            ReparentTo(ctrl.replyNewOnlyCheckBox, rcvNewDxccGroupBox, new Point(30, 44));
-            ReparentTo(ctrl.ReplyNewHelpLabel,    rcvNewDxccGroupBox, new Point(280, 46));
-
             // Reply Behavior → Receive / Auto Reply tab
             ReparentTo(ctrl.replyRR73CheckBox,  rcvReplyBehaviorGroupBox, new Point(10, 18));
             ReparentTo(ctrl.ReplyRR73HelpLabel, rcvReplyBehaviorGroupBox, new Point(200, 20));
@@ -908,15 +950,6 @@ namespace WSJTX_Controller
             ReparentTo(ctrl.periodLabel,        rcvTransmitGroupBox, new Point(10, 132));
             ReparentTo(ctrl.periodComboBox,     rcvTransmitGroupBox, new Point(67, 129));
             ReparentTo(ctrl.PeriodHelpLabel,    rcvTransmitGroupBox, new Point(127, 132));
-
-            // Sound group (remains on Advanced tab for now)
-            ReparentTo(ctrl.playSoundLabel,    soundGroupBox, new Point(10, 22));
-            ReparentTo(ctrl.callAddedCheckBox, soundGroupBox, new Point(79, 20));
-            ReparentTo(ctrl.mycallCheckBox,    soundGroupBox, new Point(161, 20));
-            ReparentTo(ctrl.loggedCheckBox,    soundGroupBox, new Point(222, 20));
-            ctrl.callAddedCheckBox.TabStop = true;
-            ctrl.mycallCheckBox.TabStop    = true;
-            ctrl.loggedCheckBox.TabStop    = true;
 
             // General tab
             ReparentTo(ctrl.showUsStateCheckBox, generalPanel, new Point(10, 61));
@@ -1231,6 +1264,7 @@ namespace WSJTX_Controller
                 HotkeyAction.UploadLotw,
                 HotkeyAction.SortOrder,
                 HotkeyAction.RowOrder,
+                HotkeyAction.AnalyzeSlot,
             };
 
             var navActions = new HotkeyAction[]
@@ -1260,6 +1294,31 @@ namespace WSJTX_Controller
             _listActionMap.Add(null);
 
             foreach (var a in navActions)
+            {
+                _actionListBox.Items.Add("  " + HotkeyConfig.DisplayNames[a]);
+                _listActionMap.Add(a);
+            }
+
+            var bandActions = new HotkeyAction[]
+            {
+                HotkeyAction.Band160m,
+                HotkeyAction.Band80m,
+                HotkeyAction.Band60m,
+                HotkeyAction.Band40m,
+                HotkeyAction.Band30m,
+                HotkeyAction.Band20m,
+                HotkeyAction.Band17m,
+                HotkeyAction.Band15m,
+                HotkeyAction.Band12m,
+                HotkeyAction.Band10m,
+                HotkeyAction.Band6m,
+            };
+
+            // Group header: Direct Band Selection
+            _actionListBox.Items.Add("Direct Band Selection");
+            _listActionMap.Add(null);
+
+            foreach (var a in bandActions)
             {
                 _actionListBox.Items.Add("  " + HotkeyConfig.DisplayNames[a]);
                 _listActionMap.Add(a);

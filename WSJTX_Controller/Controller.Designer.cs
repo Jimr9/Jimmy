@@ -68,7 +68,6 @@
             this.LimitTxHelpLabel = new System.Windows.Forms.Label();
             this.label26 = new System.Windows.Forms.Label();
             this.label27 = new System.Windows.Forms.Label();
-            this.ReplyNewHelpLabel = new System.Windows.Forms.Label();
             this.exceptTextBox = new System.Windows.Forms.TextBox();
             this.label1 = new System.Windows.Forms.Label();
             this.replyDxCheckBox = new System.Windows.Forms.CheckBox();
@@ -80,14 +79,11 @@
             this.optimizeCheckBox = new System.Windows.Forms.CheckBox();
             this.replyLocalCheckBox = new System.Windows.Forms.CheckBox();
             this.holdCheckBox = new System.Windows.Forms.CheckBox();
-            this.replyNewDxccCheckBox = new System.Windows.Forms.CheckBox();
-            this.playSoundLabel = new System.Windows.Forms.Label();
             this.callAddedCheckBox = new System.Windows.Forms.CheckBox();
             this.mycallCheckBox = new System.Windows.Forms.CheckBox();
             this.loggedCheckBox = new System.Windows.Forms.CheckBox();
             this.callCqDxCheckBox = new System.Windows.Forms.CheckBox();
             this.ignoreNonDxCheckBox = new System.Windows.Forms.CheckBox();
-            this.replyNewOnlyCheckBox = new System.Windows.Forms.CheckBox();
             this.callNonDirCqCheckBox = new System.Windows.Forms.CheckBox();
             this.exceptLabel = new System.Windows.Forms.Label();
             this.logListBox = new System.Windows.Forms.ListBox();
@@ -136,6 +132,7 @@
             this.advTx2ListBox = new System.Windows.Forms.ListBox();
             this.advRawLabel = new System.Windows.Forms.Label();
             this.advRawListBox = new System.Windows.Forms.ListBox();
+            this.statusHeadingLabel = new System.Windows.Forms.Label();
             ((System.ComponentModel.ISupportInitialize)(this.timeoutNumUpDown)).BeginInit();
             this.modeGroupBox.SuspendLayout();
             this.hiddenModePanel.SuspendLayout();
@@ -157,7 +154,17 @@
             this.statusText.TabIndex = 1;
             this.statusText.TextChanged += new System.EventHandler(this.statusText_TextChanged);
             this.statusText.Enter += new System.EventHandler(this.statusText_Enter);
-            // 
+            //
+            // statusHeadingLabel
+            //
+            this.statusHeadingLabel.AutoSize = false;
+            this.statusHeadingLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.statusHeadingLabel.Location = new System.Drawing.Point(14, 200);
+            this.statusHeadingLabel.Name = "statusHeadingLabel";
+            this.statusHeadingLabel.Size = new System.Drawing.Size(200, 13);
+            this.statusHeadingLabel.TabIndex = 0;
+            this.statusHeadingLabel.Text = "Status:";
+            //
             // loggedLabel
             // 
             this.loggedLabel.AutoSize = true;
@@ -577,22 +584,7 @@
             this.label27.Size = new System.Drawing.Size(34, 12);
             this.label27.TabIndex = 65;
             this.label27.Text = "label27";
-            // 
-            // ReplyNewHelpLabel
-            // 
-            this.ReplyNewHelpLabel.AutoSize = true;
-            this.ReplyNewHelpLabel.BackColor = System.Drawing.SystemColors.Control;
-            this.ReplyNewHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.ReplyNewHelpLabel.ForeColor = System.Drawing.Color.Blue;
-            this.ReplyNewHelpLabel.Location = new System.Drawing.Point(277, 327);
-            this.ReplyNewHelpLabel.AccessibleName = "Help for New DXCC reply setting";
-            this.ReplyNewHelpLabel.Name = "ReplyNewHelpLabel";
-            this.ReplyNewHelpLabel.Size = new System.Drawing.Size(14, 13);
-            this.ReplyNewHelpLabel.TabIndex = 66;
-            this.ReplyNewHelpLabel.Text = "?";
-            this.ReplyNewHelpLabel.Visible = false;
-            this.ReplyNewHelpLabel.Click += new System.EventHandler(this.ReplyNewLabel_Click);
-            // 
+            //
             // exceptTextBox
             // 
             this.exceptTextBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
@@ -734,31 +726,7 @@
             this.holdCheckBox.UseVisualStyleBackColor = true;
             this.holdCheckBox.Visible = false;
             this.holdCheckBox.CheckedChanged += new System.EventHandler(this.holdCheckBox_CheckedChanged);
-            // 
-            // replyNewDxccCheckBox
-            // 
-            this.replyNewDxccCheckBox.AutoSize = true;
-            this.replyNewDxccCheckBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.replyNewDxccCheckBox.Location = new System.Drawing.Point(20, 326);
-            this.replyNewDxccCheckBox.Name = "replyNewDxccCheckBox";
-            this.replyNewDxccCheckBox.Size = new System.Drawing.Size(188, 17);
-            this.replyNewDxccCheckBox.TabIndex = 49;
-            this.replyNewDxccCheckBox.Text = "Reply to new DXCC (w/ long hold)";
-            this.replyNewDxccCheckBox.UseVisualStyleBackColor = true;
-            this.replyNewDxccCheckBox.Visible = false;
-            this.replyNewDxccCheckBox.CheckedChanged += new System.EventHandler(this.replyNewDxccCheckBox_CheckedChanged);
-            // 
-            // playSoundLabel
-            // 
-            this.playSoundLabel.AutoSize = true;
-            this.playSoundLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.playSoundLabel.Location = new System.Drawing.Point(17, 460);
-            this.playSoundLabel.Name = "playSoundLabel";
-            this.playSoundLabel.Size = new System.Drawing.Size(62, 13);
-            this.playSoundLabel.TabIndex = 50;
-            this.playSoundLabel.Text = "Play sound:";
-            this.playSoundLabel.Visible = false;
-            // 
+            //
             // callAddedCheckBox
             //
             this.callAddedCheckBox.AutoSize = true;
@@ -826,21 +794,7 @@
             this.ignoreNonDxCheckBox.UseVisualStyleBackColor = true;
             this.ignoreNonDxCheckBox.Visible = false;
             this.ignoreNonDxCheckBox.CheckedChanged += new System.EventHandler(this.ignoreNonDxCheckBox_CheckedChanged);
-            // 
-            // replyNewOnlyCheckBox
-            // 
-            this.replyNewOnlyCheckBox.AutoSize = true;
-            this.replyNewOnlyCheckBox.Enabled = false;
-            this.replyNewOnlyCheckBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.replyNewOnlyCheckBox.Location = new System.Drawing.Point(207, 326);
-            this.replyNewOnlyCheckBox.Name = "replyNewOnlyCheckBox";
-            this.replyNewOnlyCheckBox.Size = new System.Drawing.Size(77, 17);
-            this.replyNewOnlyCheckBox.TabIndex = 59;
-            this.replyNewOnlyCheckBox.Text = "New DXCC only";
-            this.replyNewOnlyCheckBox.UseVisualStyleBackColor = true;
-            this.replyNewOnlyCheckBox.Visible = false;
-            this.replyNewOnlyCheckBox.CheckedChanged += new System.EventHandler(this.replyNewOnlyCheckBox_CheckedChanged);
-            // 
+            //
             // callNonDirCqCheckBox
             // 
             this.callNonDirCqCheckBox.AutoSize = true;
@@ -881,7 +835,7 @@
             // callListBox
             // 
             this.callListBox.AccessibleDescription = "";
-            this.callListBox.AccessibleName = "calls waiting reply:";
+            this.callListBox.AccessibleName = "stations calling:";
             this.callListBox.BackColor = System.Drawing.SystemColors.Control;
             this.callListBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.callListBox.Font = new System.Drawing.Font("Consolas", 10F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
@@ -969,7 +923,7 @@
             this.replyListLabel.Name = "replyListLabel";
             this.replyListLabel.Size = new System.Drawing.Size(93, 13);
             this.replyListLabel.TabIndex = 85;
-            this.replyListLabel.Text = "Calls waiting reply:";
+            this.replyListLabel.Text = "Stations calling:";
             // 
             // IgnoreNonDxHelpLabel
             // 
@@ -1175,14 +1129,14 @@
             //
             // sortOrderButton
             //
-            this.sortOrderButton.AccessibleName = "Call Waiting Sort Order, Alt S";
+            this.sortOrderButton.AccessibleName = "Stations Available Sort Order, Alt S Button";
             this.sortOrderButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.sortOrderButton.Location = new System.Drawing.Point(10, 309);
             this.sortOrderButton.Name = "sortOrderButton";
             this.sortOrderButton.Size = new System.Drawing.Size(280, 25);
             this.sortOrderButton.TabIndex = 106;
             this.sortOrderButton.TabStop = true;
-            this.sortOrderButton.Text = "Call Waiting Sort Order...";
+            this.sortOrderButton.Text = "Stations Available Sort Order...";
             this.sortOrderButton.UseVisualStyleBackColor = true;
             this.sortOrderButton.Click += new System.EventHandler(this.sortOrderButton_Click);
             //
@@ -1367,7 +1321,7 @@
             // showUsStateCheckBox
             //
             this.showUsStateCheckBox.AccessibleName = "Show U.S. state instead of USA";
-            this.showUsStateCheckBox.AccessibleDescription = "When checked, shows the U.S. state abbreviation in the calls waiting list instead of USA.";
+            this.showUsStateCheckBox.AccessibleDescription = "When checked, shows the U.S. state abbreviation in the available stations list instead of USA.";
             this.showUsStateCheckBox.AutoSize = true;
             this.showUsStateCheckBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.showUsStateCheckBox.Location = new System.Drawing.Point(21, 455);
@@ -1384,12 +1338,12 @@
             this.advTx1Label.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold);
             this.advTx1Label.Location = new System.Drawing.Point(10, 376);
             this.advTx1Label.Name = "advTx1Label";
-            this.advTx1Label.Text = "TX1 calls waiting:";
+            this.advTx1Label.Text = "TX1 available stations:";
             this.advTx1Label.Visible = false;
             //
             // advTx1ListBox
             //
-            this.advTx1ListBox.AccessibleName = "TX1 calls waiting";
+            this.advTx1ListBox.AccessibleName = "TX1 available stations";
             this.advTx1ListBox.BackColor = System.Drawing.SystemColors.Control;
             this.advTx1ListBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.advTx1ListBox.Font = new System.Drawing.Font("Consolas", 10F, System.Drawing.FontStyle.Bold);
@@ -1409,12 +1363,12 @@
             this.advTx2Label.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold);
             this.advTx2Label.Location = new System.Drawing.Point(10, 476);
             this.advTx2Label.Name = "advTx2Label";
-            this.advTx2Label.Text = "TX2 calls waiting:";
+            this.advTx2Label.Text = "TX2 available stations:";
             this.advTx2Label.Visible = false;
             //
             // advTx2ListBox
             //
-            this.advTx2ListBox.AccessibleName = "TX2 calls waiting";
+            this.advTx2ListBox.AccessibleName = "TX2 available stations";
             this.advTx2ListBox.BackColor = System.Drawing.SystemColors.Control;
             this.advTx2ListBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.advTx2ListBox.Font = new System.Drawing.Font("Consolas", 10F, System.Drawing.FontStyle.Bold);
@@ -1466,7 +1420,6 @@
             this.Controls.Add(this.advTx1ListBox);
             this.Controls.Add(this.advTx1Label);
             this.Controls.Add(this.blockHelpLabel);
-            this.Controls.Add(this.replyNewOnlyCheckBox);
             this.Controls.Add(this.optionsButton);
             this.Controls.Add(this.rowOrderButton);
             this.Controls.Add(this.sortOrderButton);
@@ -1480,7 +1433,6 @@
             this.Controls.Add(this.label34);
             this.Controls.Add(this.label33);
             this.Controls.Add(this.replyLocalCheckBox);
-            this.Controls.Add(this.ReplyNewHelpLabel);
             this.Controls.Add(this.label32);
             this.Controls.Add(this.label31);
             this.Controls.Add(this.replyDxCheckBox);
@@ -1510,8 +1462,6 @@
             this.Controls.Add(this.LimitTxHelpLabel);
             this.Controls.Add(this.callAddedCheckBox);
             this.Controls.Add(this.label27);
-            this.Controls.Add(this.playSoundLabel);
-            this.Controls.Add(this.replyNewDxccCheckBox);
             this.Controls.Add(this.label26);
             this.Controls.Add(this.holdCheckBox);
             this.Controls.Add(this.optimizeCheckBox);
@@ -1550,6 +1500,7 @@
             this.Controls.Add(this.limitLabel);
             this.Controls.Add(this.timeoutNumUpDown);
             this.Controls.Add(this.loggedLabel);
+            this.Controls.Add(this.statusHeadingLabel);
             this.Controls.Add(this.statusText);
             this.Controls.Add(this.verLabel);
             this.Controls.Add(this.exceptLabel);
@@ -1586,6 +1537,7 @@
 
 
         public System.Windows.Forms.TextBox statusText;
+        public System.Windows.Forms.Label statusHeadingLabel;
         public System.Windows.Forms.Label loggedLabel;
         public System.Windows.Forms.Label verLabel;
         public System.Windows.Forms.Label label5;
@@ -1624,7 +1576,6 @@
         public System.Windows.Forms.Label LimitTxHelpLabel;
         public System.Windows.Forms.Label label26;
         public System.Windows.Forms.Label label27;
-        public System.Windows.Forms.Label ReplyNewHelpLabel;
         public System.Windows.Forms.TextBox exceptTextBox;
         public System.Windows.Forms.Label label1;
         public System.Windows.Forms.CheckBox replyDxCheckBox;
@@ -1636,8 +1587,6 @@
         public System.Windows.Forms.CheckBox optimizeCheckBox;
         public System.Windows.Forms.CheckBox replyLocalCheckBox;
         public System.Windows.Forms.CheckBox holdCheckBox;
-        public System.Windows.Forms.CheckBox replyNewDxccCheckBox;
-        public System.Windows.Forms.Label playSoundLabel;
         public System.Windows.Forms.CheckBox callAddedCheckBox;
         public System.Windows.Forms.CheckBox mycallCheckBox;
         public System.Windows.Forms.CheckBox loggedCheckBox;
@@ -1645,7 +1594,6 @@
         public System.Windows.Forms.CheckBox ignoreNonDxCheckBox;
         public System.Windows.Forms.CheckBox callNonDirCqCheckBox;
         public System.Windows.Forms.Label exceptLabel;
-        public System.Windows.Forms.CheckBox replyNewOnlyCheckBox;
         public System.Windows.Forms.ListBox logListBox;
         public System.Windows.Forms.ListBox callListBox;
         public System.Windows.Forms.Label replyNormCqLabel;

@@ -3,7 +3,7 @@
   <Profiles />
   <Settings>
     <Setting Name="timeout" Type="System.Int32" Scope="User">
-      <Value Profile="(Default)">3</Value>
+      <Value Profile="(Default)">5</Value>
     </Setting>
     <Setting Name="useDirected" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">False</Value>
@@ -12,10 +12,10 @@
       <Value Profile="(Default)" />
     </Setting>
     <Setting Name="useAlertDirected" Type="System.Boolean" Scope="User">
-      <Value Profile="(Default)">False</Value>
+      <Value Profile="(Default)">True</Value>
     </Setting>
     <Setting Name="alertDirecteds" Type="System.String" Scope="User">
-      <Value Profile="(Default)" />
+      <Value Profile="(Default)">POTA</Value>
     </Setting>
     <Setting Name="playMyCall" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">True</Value>
@@ -45,7 +45,7 @@
       <Value Profile="(Default)">True</Value>
     </Setting>
     <Setting Name="useRR73" Type="System.Boolean" Scope="User">
-      <Value Profile="(Default)">False</Value>
+      <Value Profile="(Default)">True</Value>
     </Setting>
     <Setting Name="skipGrid" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">False</Value>

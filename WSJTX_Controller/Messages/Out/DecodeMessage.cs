@@ -193,6 +193,11 @@ namespace WsjtxUdpLib.Messages.Out
             return WsjtxMessage.IsCQ(Message) && WsjtxMessage.IsSota(Message);
         }
 
+        public bool IsFoxHound()
+        {
+            return WsjtxMessage.IsFoxHound(Message);
+        }
+
         public string DeCall()
         {
             return WsjtxMessage.DeCall(Message);
@@ -261,6 +266,16 @@ namespace WsjtxUdpLib.Messages.Out
             if (idx != -1)
             {
                 decodeMessage.Message = decodeMessage.Message.Substring(0, idx).TrimEnd();
+            }
+
+            //WSJT-X 3.0 drops the "?" and appends only the AP suffix, e.g. " a35" or " a3"
+            //'KI4QMB KE9DMW -15 a35'  -> strip to 'KI4QMB KE9DMW -15'
+            {
+                string m = decodeMessage.Message;
+                int i = m.Length - 1;
+                while (i >= 0 && char.IsDigit(m[i])) i--;
+                if (i < m.Length - 1 && i >= 1 && m[i] == 'a' && m[i - 1] == ' ')
+                    decodeMessage.Message = m.Substring(0, i - 1).TrimEnd();
             }
 
             //hashed message case, brackets and only two words:
@@ -413,6 +428,16 @@ namespace WsjtxUdpLib.Messages.Out
                 enqueueDecodeMessage.Message = enqueueDecodeMessage.Message.Substring(0, idx).TrimEnd();
             }
 
+            //WSJT-X 3.0 drops the "?" and appends only the AP suffix, e.g. " a35" or " a3"
+            //'KI4QMB KE9DMW -15 a35'  -> strip to 'KI4QMB KE9DMW -15'
+            {
+                string m = enqueueDecodeMessage.Message;
+                int i = m.Length - 1;
+                while (i >= 0 && char.IsDigit(m[i])) i--;
+                if (i < m.Length - 1 && i >= 1 && m[i] == 'a' && m[i - 1] == ' ')
+                    enqueueDecodeMessage.Message = m.Substring(0, i - 1).TrimEnd();
+            }
+
             //hashed message case, brackets and only two words:
             // <K1JT> KG6EMU/AG
             enqueueDecodeMessage.Message = RemoveAngleBrackets(enqueueDecodeMessage.Message);
@@ -463,6 +488,7 @@ namespace WsjtxUdpLib.Messages.Out
             enqueueDecodeMessage.Distance = Distance;
             enqueueDecodeMessage.SequenceNumber = SequenceNumber;
             enqueueDecodeMessage.Quality = Quality;
+            enqueueDecodeMessage.Rank = Rank;
 
             return enqueueDecodeMessage;
         }

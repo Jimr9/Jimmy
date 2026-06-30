@@ -217,7 +217,7 @@
         private System.Windows.Forms.TextBox portTextBox;
         private System.Windows.Forms.TextBox addrTextBox;
         private System.Windows.Forms.Button OkButton;
-        private System.Windows.Forms.Button CancelButton;
+        private new System.Windows.Forms.Button CancelButton;
         private System.Windows.Forms.CheckBox multicastcheckBox;
         private System.Windows.Forms.CheckBox onTopCheckBox;
         private System.Windows.Forms.Label label4;

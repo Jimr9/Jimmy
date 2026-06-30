@@ -31,6 +31,7 @@ namespace WSJTX_Controller
         {
             this.helpLabel = new System.Windows.Forms.TextBox();
             this.closeButton = new System.Windows.Forms.Button();
+            this.supportReportButton = new System.Windows.Forms.Button();
             this.SuspendLayout();
             // 
             // helpLabel
@@ -43,9 +44,9 @@ namespace WSJTX_Controller
             this.helpLabel.ReadOnly = true;
             this.helpLabel.Size = new System.Drawing.Size(444, 249);
             this.helpLabel.TabIndex = 0;
-            // 
+            //
             // closeButton
-            // 
+            //
             this.closeButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.closeButton.Location = new System.Drawing.Point(466, 231);
             this.closeButton.Name = "closeButton";
@@ -54,6 +55,16 @@ namespace WSJTX_Controller
             this.closeButton.Text = "Close";
             this.closeButton.UseVisualStyleBackColor = true;
             this.closeButton.Click += new System.EventHandler(this.closeButton_Click);
+            //
+            // supportReportButton
+            //
+            this.supportReportButton.Location = new System.Drawing.Point(15, 231);
+            this.supportReportButton.Name = "supportReportButton";
+            this.supportReportButton.Size = new System.Drawing.Size(175, 26);
+            this.supportReportButton.TabIndex = 2;
+            this.supportReportButton.Text = "Create Support Report...";
+            this.supportReportButton.UseVisualStyleBackColor = true;
+            this.supportReportButton.Click += new System.EventHandler(this.supportReportButton_Click);
             // 
             // HelpDlg
             // 
@@ -62,6 +73,7 @@ namespace WSJTX_Controller
             this.BackColor = System.Drawing.Color.White;
             this.ClientSize = new System.Drawing.Size(549, 273);
             this.Controls.Add(this.closeButton);
+            this.Controls.Add(this.supportReportButton);
             this.Controls.Add(this.helpLabel);
             this.MaximizeBox = false;
             this.MinimizeBox = false;
@@ -79,5 +91,6 @@ namespace WSJTX_Controller
 
         private System.Windows.Forms.TextBox helpLabel;
         private System.Windows.Forms.Button closeButton;
+        private System.Windows.Forms.Button supportReportButton;
     }
 }

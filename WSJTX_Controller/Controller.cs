@@ -27,7 +27,7 @@ namespace WSJTX_Controller
         public OptionsDlg optionsDlg;
         public bool alwaysOnTop = false;
         public bool skipLevelPrompt = false;
-        public bool advancedCallLayout = false;
+        public bool advancedCallLayout = true;
         public bool advShowTx1 = true;
         public bool advShowTx2 = true;
         public bool advShowRaw = true;
@@ -50,6 +50,7 @@ namespace WSJTX_Controller
         public bool rawPriorityTags = false;
         public bool rawNewestFirst = false;
         public int rawMaxRows = 100;
+        public int maxQueuedCallsBase = 5;
         public bool keepTransmitListDuringTx = false;
         public bool keepListPositionDuringRefresh = false;
 
@@ -75,6 +76,13 @@ namespace WSJTX_Controller
         public string soundFile_Pota              = "";
         public bool   soundEnabled_Sota           = false;
         public string soundFile_Sota              = "";
+        public bool   soundEnabled_WantedAnywhere = false;
+        public string soundFile_WantedAnywhere    = "";
+        public bool   soundEnabled_OppositePeriod = false;
+        public string soundFile_OppositePeriod    = "";
+
+        // Feature flags
+        public bool   wantedCallAnywhereEnabled   = true;
 
         private bool formLoaded = false;
         private bool openOptionsOnUdpTab = false;
@@ -103,7 +111,6 @@ namespace WSJTX_Controller
         public System.Windows.Forms.Timer helpTimer;
 
         private string nl = Environment.NewLine;
-        private static string alphanumericOnly = "[^0-9A-Za-z]";  //match if any non-alphanumeric
         private static string alphaOnly = "[^A-Za-z]";         //match if any numeric
         private static string numericOnly = "[^0-9]";          //match if any alpha
 
@@ -256,6 +263,9 @@ namespace WSJTX_Controller
                 cmdPrompts = Properties.Settings.Default.cmdPrompts;
                 bandComboBox.SelectedIndex = newOnBand ? 1 : 0;
                 usePskReporter = Properties.Settings.Default.usePskReporter;
+                optimizeCheckBox.Checked = true;
+                callNonDirCqCheckBox.Checked = true;
+                showUsStateCheckBox.Checked = true;
 
             }
             else        //read settings from .ini file (avoid .Net config file mess)
@@ -296,7 +306,7 @@ namespace WSJTX_Controller
                     ipAddress = IPAddress.Parse(ipAddrStr);
                     port = int.Parse(iniFile.Read("port"));
                 }
-                catch (Exception err)
+                catch (Exception)
                 {
                     ipAddrStr = Properties.Settings.Default.ipAddress;
                     port = Properties.Settings.Default.port;
@@ -316,7 +326,6 @@ namespace WSJTX_Controller
                 alwaysOnTop = iniFile.Read("alwaysOnTop") == "True";
                 useRR73 = iniFile.Read("useRR73") == "True";
                 skipGridCheckBox.Checked = iniFile.Read("skipGrid") == "True";
-                replyNewDxccCheckBox.Checked = iniFile.Read("autoReplyNewCq") != "False";     //default: true
                 replyDxCheckBox.Checked = iniFile.Read("enableReplyDx") != "False";     //default: true
                 diagLog = iniFile.Read("diagLog") == "True";
                 freqCheckBox.Checked = iniFile.Read("bestOffset") == "True";
@@ -324,13 +333,12 @@ namespace WSJTX_Controller
                 cmdPrompts = iniFile.Read("cmdPrompts") != "False";     //default: true
 
                 //start of .ini-file-only settings (not in .Net config)
-                mode = iniFile.Read("replyAndQuit") == "True";
+                // mode (txMode startup) always defaults to LISTEN; not persisted across sessions
                 if (iniFile.KeyExists("offsetHiLimit")) int.TryParse(iniFile.Read("offsetHiLimit"), out offsetHiLimit);
                 if (iniFile.KeyExists("offsetLoLimit")) int.TryParse(iniFile.Read("offsetLoLimit"), out offsetLoLimit);
                 replyLocalCheckBox.Checked = iniFile.Read("enableReplyLocal") != "False";     //default
                 optimizeCheckBox.Checked = iniFile.Read("optimizeTx") == "True";
                 exceptTextBox.Text = iniFile.Read("exceptCalls");
-                replyNewOnlyCheckBox.Checked = iniFile.Read("replyOnlyDxcc") == "True";
                 callCqDxCheckBox.Checked = iniFile.Read("callCqDx") == "True";
                 ignoreNonDxCheckBox.Checked = iniFile.Read("ignoreNonDx") == "True";
                 callNonDirCqCheckBox.Checked = iniFile.Read("callNonDirCq") == "True";
@@ -347,6 +355,7 @@ namespace WSJTX_Controller
                 if (iniFile.KeyExists("callingPriorities")) callingPrioritiesStr = iniFile.Read("callingPriorities");
                 else if (iniFile.KeyExists("categoryDisabled")) categoryDisabledStr = iniFile.Read("categoryDisabled"); // migrate from old setting
                 if (iniFile.KeyExists("wantedCalls"))       wantedCallsStr       = iniFile.Read("wantedCalls");
+                if (iniFile.KeyExists("wantedCallAnywhereEnabled")) wantedCallAnywhereEnabled = iniFile.Read("wantedCallAnywhereEnabled") == "True";
                 rawPriorityTags = iniFile.Read("rawPriorityTags") == "True";
                 cqGridRadioButton.Checked = iniFile.Read("cqGrid") == "True";
                 anyMsgRadioButton.Checked = iniFile.Read("anyMsg") == "True";
@@ -381,6 +390,9 @@ namespace WSJTX_Controller
                 int rawMax;
                 if (iniFile.KeyExists("rawMaxRows") && int.TryParse(iniFile.Read("rawMaxRows"), out rawMax) && rawMax >= 10 && rawMax <= 5000)
                     rawMaxRows = rawMax;
+                int maxQueued;
+                if (iniFile.KeyExists("maxQueuedCalls") && int.TryParse(iniFile.Read("maxQueuedCalls"), out maxQueued) && maxQueued >= 4 && maxQueued <= 100)
+                    maxQueuedCallsBase = maxQueued;
                 keepTransmitListDuringTx = iniFile.Read("keepTransmitListDuringTx") == "True";
                 keepListPositionDuringRefresh = iniFile.Read("keepListPositionDuringRefresh") == "True";
 
@@ -403,9 +415,13 @@ namespace WSJTX_Controller
                 if (iniFile.KeyExists("soundFile_DirectedCq"))       soundFile_DirectedCq       = iniFile.Read("soundFile_DirectedCq");
                 if (iniFile.KeyExists("soundEnabled_Pota"))          soundEnabled_Pota          = iniFile.Read("soundEnabled_Pota") == "True";
                 if (iniFile.KeyExists("soundFile_Pota"))             soundFile_Pota             = iniFile.Read("soundFile_Pota");
-                if (iniFile.KeyExists("soundEnabled_Sota"))          soundEnabled_Sota          = iniFile.Read("soundEnabled_Sota") == "True";
-                if (iniFile.KeyExists("soundFile_Sota"))             soundFile_Sota             = iniFile.Read("soundFile_Sota");
-                if (iniFile.KeyExists("soundsEnabled"))              soundsEnabled              = iniFile.Read("soundsEnabled") != "False";
+                if (iniFile.KeyExists("soundEnabled_Sota"))           soundEnabled_Sota           = iniFile.Read("soundEnabled_Sota") == "True";
+                if (iniFile.KeyExists("soundFile_Sota"))              soundFile_Sota              = iniFile.Read("soundFile_Sota");
+                if (iniFile.KeyExists("soundEnabled_WantedAnywhere")) soundEnabled_WantedAnywhere = iniFile.Read("soundEnabled_WantedAnywhere") == "True";
+                if (iniFile.KeyExists("soundFile_WantedAnywhere"))    soundFile_WantedAnywhere    = iniFile.Read("soundFile_WantedAnywhere");
+                if (iniFile.KeyExists("soundEnabled_OppositePeriod")) soundEnabled_OppositePeriod = iniFile.Read("soundEnabled_OppositePeriod") == "True";
+                if (iniFile.KeyExists("soundFile_OppositePeriod"))    soundFile_OppositePeriod    = iniFile.Read("soundFile_OppositePeriod");
+                if (iniFile.KeyExists("soundsEnabled"))               soundsEnabled               = iniFile.Read("soundsEnabled") != "False";
             }
 
             txMode = mode ? WsjtxClient.TxModes.LISTEN : WsjtxClient.TxModes.CALL_CQ;
@@ -470,6 +486,16 @@ namespace WSJTX_Controller
                 ParseRankBeam(rankBeamStr, rankMethodIdx));
             wsjtxClient.ApplyCategoryWeights(ParseCategoryWeights(categoryWeightsStr));
             wsjtxClient.ApplyCallingPriorities(ParseCallingPriorities(callingPrioritiesStr, categoryDisabledStr));
+            // Migration (Phase 1): if this config pre-dates Call Filters and the operator had
+            // replyDxCheckBox or replyLocalCheckBox enabled, ordinary CQ calls were being admitted.
+            // Add DEFAULT to callingEnabled so that admission behaviour is preserved after upgrade.
+            if (!wsjtxClient.callingEnabled.Contains(WsjtxClient.CallCategory.DEFAULT)
+                && (replyDxCheckBox.Checked || replyLocalCheckBox.Checked))
+            {
+                wsjtxClient.callingEnabled.Add(WsjtxClient.CallCategory.DEFAULT);
+                iniFile.Write("callingPriorities",
+                    FormatCallingPriorities(wsjtxClient.callingEnabled));
+            }
             wsjtxClient.ApplyWantedCalls(ParseWantedCalls(wantedCallsStr));
             wsjtxClient.rawPriorityTags = rawPriorityTags;
             wsjtxClient.cmdPrompts = cmdPrompts;
@@ -486,10 +512,10 @@ namespace WSJTX_Controller
             UpdateDebug();
 
             wsjtxClient.UpdateModeSelection();
+            SyncCqIntentFromMode();     // force-sync after wsjtxClient is assigned
 
             formLoaded = true;
             ApplyAdvancedLayout();
-            updateReplyNewOnlyCheckBoxEnabled();
 
             if (!this.Focused)
             {
@@ -529,17 +555,14 @@ namespace WSJTX_Controller
                 iniFile.Write("useRR73", wsjtxClient.useRR73.ToString());
                 iniFile.Write("skipGrid", skipGridCheckBox.Checked.ToString());
                 iniFile.Write("firstRun", "False");
-                iniFile.Write("autoReplyNewCq", replyNewDxccCheckBox.Checked.ToString());
                 iniFile.Write("enableReplyDx", replyDxCheckBox.Checked.ToString());
                 iniFile.Write("enableReplyLocal", replyLocalCheckBox.Checked.ToString());
                 iniFile.Write("diagLog", wsjtxClient.diagLog.ToString());
-                bool mode = wsjtxClient.txMode == WsjtxClient.TxModes.LISTEN;
-                iniFile.Write("replyAndQuit", mode.ToString());
+                // txMode startup is always LISTEN; not persisted across sessions
                 iniFile.Write("bestOffset", freqCheckBox.Checked.ToString());
                 iniFile.Write("optimizeTx", optimizeCheckBox.Checked.ToString());
                 if (exceptTextBox.Text == separateBySpaces) exceptTextBox.Clear();
                 iniFile.Write("exceptCalls", exceptTextBox.Text.Trim());
-                iniFile.Write("replyOnlyDxcc", replyNewOnlyCheckBox.Checked.ToString());
                 iniFile.Write("callCqDx", callCqDxCheckBox.Checked.ToString());
                 iniFile.Write("ignoreNonDx", ignoreNonDxCheckBox.Checked.ToString());
                 iniFile.Write("callNonDirCq", callNonDirCqCheckBox.Checked.ToString());
@@ -551,8 +574,9 @@ namespace WSJTX_Controller
                 iniFile.Write("rankMethod", wsjtxClient.rankMethodIdx.ToString());
                 iniFile.Write("categoryWeights",   FormatCategoryWeights(wsjtxClient.categoryWeight));
                 iniFile.Write("callingPriorities", FormatCallingPriorities(wsjtxClient.callingEnabled));
-                iniFile.Write("wantedCalls",       FormatWantedCalls(wsjtxClient.wantedCalls));
-                iniFile.Write("rawPriorityTags",   rawPriorityTags.ToString());
+                iniFile.Write("wantedCalls",              FormatWantedCalls(wsjtxClient.wantedCalls));
+                iniFile.Write("wantedCallAnywhereEnabled", wantedCallAnywhereEnabled.ToString());
+                iniFile.Write("rawPriorityTags",          rawPriorityTags.ToString());
                 iniFile.Write("replyRR73", replyRR73CheckBox.Checked.ToString());
                 iniFile.Write("cqGrid", cqGridRadioButton.Checked.ToString());
                 iniFile.Write("anyMsg", anyMsgRadioButton.Checked.ToString());
@@ -583,6 +607,7 @@ namespace WSJTX_Controller
                 iniFile.Write("rawPriorityTags", rawPriorityTags.ToString());
                 iniFile.Write("rawNewestFirst", rawNewestFirst.ToString());
                 iniFile.Write("rawMaxRows", rawMaxRows.ToString());
+                iniFile.Write("maxQueuedCalls", maxQueuedCallsBase.ToString());
                 iniFile.Write("keepTransmitListDuringTx", keepTransmitListDuringTx.ToString());
                 iniFile.Write("keepListPositionDuringRefresh", keepListPositionDuringRefresh.ToString());
                 // Sound settings
@@ -603,11 +628,19 @@ namespace WSJTX_Controller
                 iniFile.Write("soundFile_DirectedCq",       soundFile_DirectedCq    ?? "");
                 iniFile.Write("soundEnabled_Pota",          soundEnabled_Pota.ToString());
                 iniFile.Write("soundFile_Pota",             soundFile_Pota          ?? "");
-                iniFile.Write("soundEnabled_Sota",          soundEnabled_Sota.ToString());
-                iniFile.Write("soundFile_Sota",             soundFile_Sota          ?? "");
-                iniFile.Write("soundsEnabled",              soundsEnabled.ToString());
+                iniFile.Write("soundEnabled_Sota",           soundEnabled_Sota.ToString());
+                iniFile.Write("soundFile_Sota",              soundFile_Sota              ?? "");
+                iniFile.Write("soundEnabled_WantedAnywhere", soundEnabled_WantedAnywhere.ToString());
+                iniFile.Write("soundFile_WantedAnywhere",    soundFile_WantedAnywhere    ?? "");
+                iniFile.Write("soundEnabled_OppositePeriod", soundEnabled_OppositePeriod.ToString());
+                iniFile.Write("soundFile_OppositePeriod",    soundFile_OppositePeriod    ?? "");
+                iniFile.Write("soundsEnabled",               soundsEnabled.ToString());
                 iniFile.Write("txOddOffset",  wsjtxClient.cachedOddOffset.ToString());
                 iniFile.Write("txEvenOffset", wsjtxClient.cachedEvenOffset.ToString());
+                // Phase 4: remove stale keys left by older versions.
+                iniFile.DeleteKey("autoReplyNewCq");
+                iniFile.DeleteKey("replyOnlyDxcc");
+                iniFile.DeleteKey("categoryDisabled");
                 hotkeyConfig?.SaveToIni(iniFile);
             }
 
@@ -681,6 +714,18 @@ namespace WSJTX_Controller
                 return wsjtxClient.BandDown();
             }
 
+            if (hotkeyConfig[HotkeyAction.Band160m] != Keys.None && keyData == hotkeyConfig[HotkeyAction.Band160m]) return wsjtxClient.SelectBand(0);
+            if (hotkeyConfig[HotkeyAction.Band80m]  != Keys.None && keyData == hotkeyConfig[HotkeyAction.Band80m])  return wsjtxClient.SelectBand(1);
+            if (hotkeyConfig[HotkeyAction.Band60m]  != Keys.None && keyData == hotkeyConfig[HotkeyAction.Band60m])  return wsjtxClient.SelectBand(2);
+            if (hotkeyConfig[HotkeyAction.Band40m]  != Keys.None && keyData == hotkeyConfig[HotkeyAction.Band40m])  return wsjtxClient.SelectBand(3);
+            if (hotkeyConfig[HotkeyAction.Band30m]  != Keys.None && keyData == hotkeyConfig[HotkeyAction.Band30m])  return wsjtxClient.SelectBand(4);
+            if (hotkeyConfig[HotkeyAction.Band20m]  != Keys.None && keyData == hotkeyConfig[HotkeyAction.Band20m])  return wsjtxClient.SelectBand(5);
+            if (hotkeyConfig[HotkeyAction.Band17m]  != Keys.None && keyData == hotkeyConfig[HotkeyAction.Band17m])  return wsjtxClient.SelectBand(6);
+            if (hotkeyConfig[HotkeyAction.Band15m]  != Keys.None && keyData == hotkeyConfig[HotkeyAction.Band15m])  return wsjtxClient.SelectBand(7);
+            if (hotkeyConfig[HotkeyAction.Band12m]  != Keys.None && keyData == hotkeyConfig[HotkeyAction.Band12m])  return wsjtxClient.SelectBand(8);
+            if (hotkeyConfig[HotkeyAction.Band10m]  != Keys.None && keyData == hotkeyConfig[HotkeyAction.Band10m])  return wsjtxClient.SelectBand(9);
+            if (hotkeyConfig[HotkeyAction.Band6m]   != Keys.None && keyData == hotkeyConfig[HotkeyAction.Band6m])   return wsjtxClient.SelectBand(10);
+
 
             if (!wsjtxClient.ConnectedToWsjtx()) return false;
 
@@ -713,7 +758,15 @@ namespace WSJTX_Controller
             if (keyData == hotkeyConfig[HotkeyAction.HaltTx])
             {
                 var focused = this.ActiveControl;
-                wsjtxClient.Pause(true, true);
+                if (wsjtxClient.ConnectedToWsjtx())
+                {
+                    wsjtxClient.RequeueAbortedCall();
+                    wsjtxClient.CancelQso();
+                    wsjtxClient.HaltAndDisableTx();
+                    wsjtxClient.ResetTxToCq();
+                    listenModeButton_Click(null, null);
+                    ShowMsg("Tx halted", true);
+                }
                 BeginInvoke((Action)(() => RestoreFocus(focused)));
                 return true;
             }
@@ -723,7 +776,30 @@ namespace WSJTX_Controller
                 if (modeGroupBox.Visible && cqIntentListenButton.Checked)
                     ShowMsg("Listen mode selected; CQ not started.", true);
                 else if (modeGroupBox.Visible)
-                    cqModeButton_Click(null, null);
+                {
+                    if (wsjtxClient.txMode == WsjtxClient.TxModes.LISTEN && wsjtxClient.AnalysisNeeded)
+                    {
+                        var confDlg = new ConfirmDlg();
+                        confDlg.text = "Transmit slot has not been analyzed.\nRun recommended analysis now?";
+                        confDlg.Owner = this;
+                        confDlg.ShowDialog();
+                        if (confDlg.DialogResult == DialogResult.Yes)
+                            wsjtxClient.StartSlotAnalysis(true);
+                        else
+                        {
+                            ShowMsg("Transmit slot analysis skipped.", true);
+                            cqModeButton_Click(null, null);
+                        }
+                    }
+                    else
+                        cqModeButton_Click(null, null);
+                }
+                return true;
+            }
+
+            if (keyData == hotkeyConfig[HotkeyAction.AnalyzeSlot] && hotkeyConfig[HotkeyAction.AnalyzeSlot] != Keys.None)
+            {
+                wsjtxClient.StartSlotAnalysis(false);
                 return true;
             }
 
@@ -881,27 +957,12 @@ namespace WSJTX_Controller
             CheckManualSelection();
 
             alertTextBox.Enabled = replyDirCqCheckBox.Checked;
-            if (replyDirCqCheckBox.Checked && replyNewDxccCheckBox.Checked) replyNewOnlyCheckBox.Checked = false;
-
             if (replyDirCqCheckBox.Checked && alertTextBox.Text == separateBySpaces)
             {
                 alertTextBox.Clear();
                 alertTextBox.ForeColor = System.Drawing.Color.Black;
             }
             if (!replyDirCqCheckBox.Checked && alertTextBox.Text == "") alertTextBox.Text = separateBySpaces;
-
-            optionsDlg?.UpdateView();
-        }
-
-        private void replyNewDxccCheckBox_CheckedChanged(object sender, EventArgs e)
-        {
-            updateReplyNewOnlyCheckBoxEnabled();
-
-            if (replyNewDxccCheckBox.Checked && (replyDxCheckBox.Checked || replyLocalCheckBox.Checked || replyDirCqCheckBox.Checked)) replyNewOnlyCheckBox.Checked = false;
-
-            if (!formLoaded) return;
-
-            CheckManualSelection();
 
             optionsDlg?.UpdateView();
         }
@@ -1058,7 +1119,7 @@ namespace WSJTX_Controller
 
         private void IncludeHelpLabel_Click(object sender, EventArgs e)
         {
-            ShowHelp($"The 'Reply to new calls' section allows you to choose which messages from new callers you want to add to the 'Calls waiting reply' list." +
+            ShowHelp($"The 'Reply to new calls' section allows you to choose which messages from new callers you want to add to the 'Stations calling' list." +
                 $"{nl}{nl}- Select 'CQ' if you want to reply only to CQ messages." +
                 $"{nl}- Select 'CQ/grid' if you want to reply only to messages with grid information, allowing you to prioritize calls based on distance or azimuth." +
                 $"{nl}- Select 'any' to reply to any message." +
@@ -1113,7 +1174,7 @@ namespace WSJTX_Controller
             wsjtxClient.UpdateMaxAutoGenEnqueue();
             string continent = wsjtxClient.myContinent == null ? "" : $" '{wsjtxClient.myContinent}'";
             string onBand = $"{bandComboBox.Items[1]}";
-            ShowHelp($"{friendlyName} will add up to {wsjtxClient.maxAutoGenEnqueue} calls to the 'Calls waiting reply' list that meet these conditions:" +
+            ShowHelp($"{friendlyName} will add up to {wsjtxClient.maxAutoGenEnqueue} calls to the 'Stations calling' list that meet these conditions:" +
                 $"{nl}{nl}- The call has not been worked before 'for 1 band' or '{onBand}'." +
                 $"{nl}- The call is 'DX' or originated in your continent{continent}." +
                 $"{nl}- The received message can be" +
@@ -1147,20 +1208,22 @@ namespace WSJTX_Controller
                 $"{friendlyName} {ver}" +
                 $"{nl}{nl}{friendlyName} processes 'QSO's by selecting one of two modes:" +
                 $"{nl}'Call CQ' mode, and 'Listen for calls' mode." +
-                $"{nl}Stations you haven't worked yet are added to the 'Calls waiting reply' list." +
+                $"{nl}Stations you haven't worked yet are added to the 'Stations calling' list." +
                 $"{nl}Stations calling you directly have priority on this list, and are moved to the top." +
                 $"{nl}{nl}You can leave this window open, for reference, as you run {friendlyName}." +
                 $"{nl}Important: Minimize WSJT-X and stay on the {friendlyName} window full-time!" +
 
                 $"{nl}{nl}Command keys:" +
-                $"{nl}{K(HotkeyAction.RowOrder)}: Open call waiting row order editor." +
+                $"{nl}{K(HotkeyAction.RowOrder)}: Open stations available row order editor." +
                 $"{nl}{K(HotkeyAction.Options)}: Review or set options for processing 'QSO's." +
                 $"{nl}{K(HotkeyAction.CallCqMode)}: Start selected CQ mode (CQ only / CQ DX only / CQ and CQ DX). Does nothing in Listen mode." +
                 $"{nl}{K(HotkeyAction.ListenMode)}: Select 'Listen for calls' mode." +
                 $"{nl}{K(HotkeyAction.EnableTx)}: Enable transmit, or re-enable timed out 'QSO'." +
                 $"{nl}{K(HotkeyAction.HaltTx)}: Halt transmit immediately." +
-                $"{nl}{K(HotkeyAction.NextCall)}: Skip to the next call waiting reply, very useful!" +
+                $"{nl}{K(HotkeyAction.NextCall)}: Skip to the next available station, very useful!" +
                 $"{nl}{K(HotkeyAction.ManualCall)}: Enter a callsign manually to call." +
+
+                $"{nl}{K(HotkeyAction.AnalyzeSlot)}: Analyze transmit slot (find quietest audio frequency for CQ; requires 'Use best Tx frequency' enabled)." +
 
                 $"{nl}{nl}Radio configuration keys:" +
                 $"{nl}{K(HotkeyAction.TuneMode)}: Toggle Tune mode, to determine correct audio output level to radio ({K(HotkeyAction.AudioUp)} and {K(HotkeyAction.AudioDown)} keys to adjust, {K(HotkeyAction.Prompts)} for fast or complete updates)." +
@@ -1171,8 +1234,8 @@ namespace WSJTX_Controller
                 $"{nl}{K(HotkeyAction.BandDown)}: Select next lower band." +
 
                 $"{nl}{nl}Optional command keys:" +
-                $"{nl}{K(HotkeyAction.DeleteAllCalls)}: Delete all 'Calls waiting reply'." +
-                $"{nl}Delete key: Delete selected call in 'Calls waiting reply'." +
+                $"{nl}{K(HotkeyAction.DeleteAllCalls)}: Delete all 'Stations calling'." +
+                $"{nl}Delete key: Delete selected call in 'Stations calling'." +
                 $"{nl}{K(HotkeyAction.TxPeriod)}: Toggle transmit period." +
                 $"{nl}{K(HotkeyAction.HoldTimeout)}: Toggle extended timeout." +
                 $"{nl}{K(HotkeyAction.UploadLotw)}: Upload to Logbook of the World." +
@@ -1181,17 +1244,17 @@ namespace WSJTX_Controller
                 $"{nl}Escape key: Halt transmit, cancel current 'QSO', switch to Listen mode." +
                 $"{nl}{K(HotkeyAction.UpdateCheck)}: Check for update to {friendlyName}." +
                 $"{nl}{K(HotkeyAction.PSKReporter)}: Toggle sending spots to PSKReporter (leave 'Enabled' to help other hams)" +
-                $"{nl}{K(HotkeyAction.SortOrder)}: Open call waiting sort order editor." +
+                $"{nl}{K(HotkeyAction.SortOrder)}: Open stations available sort order editor." +
                 $"{nl}{K(HotkeyAction.Help)}: Read the list of shortcut keys." +
 
                 $"{nl}{nl}Main navigation keys:" +
                 $"{nl}{K(HotkeyAction.NavStatus)}: Read QSO and radio status (Note that {K(HotkeyAction.NavStatus)} is the 'home' location!)." +
-                $"{nl}{K(HotkeyAction.NavCallList)}: Read and select from 'Calls waiting reply' list." +
+                $"{nl}{K(HotkeyAction.NavCallList)}: Read and select from 'Stations calling' list." +
 
                 $"{nl}{nl}Optional navigation keys:" +
                 $"{nl}{K(HotkeyAction.NavLoggedList)}: Read 'Auto-logged calls' list." +
                 $"{nl}{K(HotkeyAction.NavLoggedCount)}: Read total number of 'Auto-logged calls'." +
-                $"{nl}{K(HotkeyAction.NavPendingCount)}: Read number of pending 'Calls waiting reply'." +
+                $"{nl}{K(HotkeyAction.NavPendingCount)}: Read number of pending 'Stations calling'." +
                 $"{nl}Ctrl, Y: Play the 'New call', 'Call directed to {SpacifyMyCall()}', and 'Logged' alert sounds.";
         }
 
@@ -1294,7 +1357,7 @@ namespace WSJTX_Controller
             if (!formLoaded) return;
 
             string adv = wsjtxClient != null ? $"{nl}{nl}If 'Optimize throughput' is selected, the maximum number of replies and CQs for the current call is automatically adjusted lower than the specified limit (if possible), to help process the call queue faster." +
-                $"{nl}{nl}If 'Hold' is selected, the 'Repeated Tx' limit is ignored, and replies to the current call sign are transmitted a maximum of {wsjtxClient.holdMaxTxRepeat} times. 'Hold' is automatically enabled when processing a 'new DXCC', deselect 'Reply to new DXCC' to prevent this action." : "";
+                $"{nl}{nl}If 'Hold' is selected, the 'Repeated Tx' limit is ignored, and replies to the current call sign are transmitted a maximum of {wsjtxClient.holdMaxTxRepeat} times." : "";
             ShowHelp($"This will limit the number of times the same message is transmitted." +
                 $"{nl}{nl}For example, it will limit the number of repeated transmitted replies or CQs for the current call. If there is no response to your reply messages when the limit is reached, the next call in the queue is processed (or if the call queue is empty, CQing (or listening) will resume)." +
                 $"{nl}{nl}As the repeat limit is reduced, the number of times a call can be automatically re-added to the call queue is increased, to compensate.{adv}");
@@ -1330,19 +1393,6 @@ namespace WSJTX_Controller
             e.Handled = true;
         }
 
-        private void ReplyNewLabel_Click(object sender, EventArgs e)
-        {
-            if (!formLoaded) return;
-
-            string s = $"{nl}{nl}If you select 'Exclusively', only new countries will be replied to, and all other calls will be ignored. (This option is only available when using the 'Listen for calls' operating mode).";
-            ShowHelp($"Select 'Reply to new DXCC' to repeat replies more times than normal, for any message type, from new countries." +
-                $"{nl}{nl}This option is intended ONLY when replying to difficult stations that are likely to have many competing callers, like DXpeditions. It's NOT suitable at all for working the more common DX entities!" +
-                $"{nl}{nl}If a call sign is from a country never worked before on any band, {friendlyName} will sound an audio notification and 'hold' (repeat) transmissions to that call sign for a maximum of {wsjtxClient.holdMaxTxRepeat} times." +
-                $"{nl}{nl}If a call sign is from a country not worked before on the current band, {friendlyName} will sound an audio notification and 'hold' (repeat) transmissions to that call sign for a maximum of {wsjtxClient.holdMaxTxRepeatNewOnBand} times." +
-                $"{nl}{nl}If a station never replies or won't confirm QSOs conveniently, you can add that call sign to the 'Block any reply' list, and it will be ignored.{s}" +
-                $"{nl}{nl}If you don't select 'Reply to new DXCC', you will still be able to reply to messages from new countries, just with the normal number of Tx repeats.");
-        }
-
         private void ReplyRR73HelpLabel_Click(object sender, EventArgs e)
         {
             ShowHelp($"Select 'Reply to RR73 msg' if you want to reply '73' to an RR73 message received at the end of a QSO." +
@@ -1373,7 +1423,7 @@ namespace WSJTX_Controller
         private void blockHelpLabel_Click(object sender, EventArgs e)
         {
             ShowHelp($"To block replies to a specific call sign:" +
-                $"{nl}{nl}If the call sign is in the 'Calls waiting reply' list:" +
+                $"{nl}{nl}If the call sign is in the 'Stations calling' list:" +
                 $"{nl}- Hold the 'Ctrl' key down and click on the call sign." +
                 $"{nl}{nl}Otherwise," +
                 $"{nl}- Enter the call sign in the 'Block any reply' box, with each call sign separated by a space." +
@@ -1523,20 +1573,6 @@ namespace WSJTX_Controller
             alertTextBox.Text = corrText;
         }
 
-        private void replyNewOnlyCheckBox_CheckedChanged(object sender, EventArgs e)
-        {
-            if (replyNewOnlyCheckBox.Checked && replyNewDxccCheckBox.Checked)
-            {
-                replyDirCqCheckBox.Checked = false;
-                replyDxCheckBox.Checked = false;
-                replyLocalCheckBox.Checked = false;
-            }
-
-            if (formLoaded) wsjtxClient.ReplyNewOnlyChanged();
-
-            optionsDlg?.UpdateView();
-        }
-
         private void ValidateDirCqTextBox()
         {
             if (directedTextBox.Text == separateBySpaces) return;
@@ -1558,22 +1594,6 @@ namespace WSJTX_Controller
             if (corrText == "") callDirCqCheckBox.Checked = false;
         }
 
-        public void updateReplyNewOnlyCheckBoxEnabled()
-        {
-            if (formLoaded)
-            {
-                replyNewOnlyCheckBox.Visible = true;
-            }
-
-            if (!replyNewDxccCheckBox.Checked)
-            {
-                replyNewOnlyCheckBox.Enabled = false;
-                return;
-            }
-
-            if (formLoaded) replyNewOnlyCheckBox.Enabled = listenModeButton.Checked;
-        }
-
         private void useRR73CheckBox_Click(object sender, EventArgs e)
         {
             if (!formLoaded) return;
@@ -1584,8 +1604,6 @@ namespace WSJTX_Controller
         private void replyLocalCheckBox_CheckedChanged(object sender, EventArgs e)
         {
             if (replyLocalCheckBox.Checked) ignoreNonDxCheckBox.Checked = false;
-            if (replyLocalCheckBox.Checked && replyNewDxccCheckBox.Checked) replyNewOnlyCheckBox.Checked = false;
-
             UpdateCqNewOnBand();
             CheckManualSelection();
             optionsDlg?.UpdateView();
@@ -1593,7 +1611,7 @@ namespace WSJTX_Controller
 
         private void CheckManualSelection()
         {
-            if (formLoaded && listenModeButton.Checked && !replyDxCheckBox.Checked && !replyLocalCheckBox.Checked && !replyDirCqCheckBox.Checked && !replyNewDxccCheckBox.Checked && !replyDxCheckBox.Checked && !replyLocalCheckBox.Checked & !replyNewDxccCheckBox.Checked)
+            if (formLoaded && listenModeButton.Checked && !replyDxCheckBox.Checked && !replyLocalCheckBox.Checked && !replyDirCqCheckBox.Checked)
             {
                 ShowMsg($"Select calls manually in WSJT-X (alt/dbl-click)", true);
             }
@@ -1602,8 +1620,6 @@ namespace WSJTX_Controller
         private void replyDxCheckBox_CheckedChanged(object sender, EventArgs e)
         {
             if (replyDxCheckBox.Checked) ignoreNonDxCheckBox.Checked = false;
-            if (replyDxCheckBox.Checked && replyNewDxccCheckBox.Checked) replyNewOnlyCheckBox.Checked = false;
-
             UpdateCqNewOnBand();
             CheckManualSelection();
             optionsDlg?.UpdateView();
@@ -1639,7 +1655,7 @@ namespace WSJTX_Controller
                 {
                     statusText.Focus();
                 }
-                SendKeys.Send("{UP}");
+                BeginInvoke((Action)(() => SendKeys.Send("{UP}")));
             }
 
             //past this point all keys cause tuning to halt
@@ -1710,6 +1726,7 @@ namespace WSJTX_Controller
                     wsjtxClient.RequeueAbortedCall();   // must precede CancelQso (needs callInProg/replyDecode)
                     wsjtxClient.CancelQso();
                     wsjtxClient.HaltAndDisableTx();     // unconditional: works in both CQ and Listen mode
+                    wsjtxClient.ResetTxToCq();
                     listenModeButton_Click(null, null);
                     ShowMsg("Tx halted", true);
                 }
@@ -1763,13 +1780,11 @@ namespace WSJTX_Controller
 
         private void cqModeButton_CheckedChanged(object sender, EventArgs e)
         {
-            updateReplyNewOnlyCheckBoxEnabled();
             SyncCqIntentFromMode();
         }
 
         private void listenModeButton_CheckedChanged(object sender, EventArgs e)
         {
-            updateReplyNewOnlyCheckBoxEnabled();
             SyncCqIntentFromMode();
         }
 
@@ -1933,40 +1948,35 @@ namespace WSJTX_Controller
             return result;
         }
 
-        // Serialize callingEnabled to a comma-separated list of enabled category names.
-        private static string FormatCallingPriorities(HashSet<WsjtxClient.CallCategory> enabled)
+        // Serialize callingEnabled to a comma-separated string preserving list order.
+        private static string FormatCallingPriorities(List<WsjtxClient.CallCategory> enabled)
         {
             if (enabled == null) return string.Empty;
-            var parts = new List<string>();
-            foreach (WsjtxClient.CallCategory cat in System.Enum.GetValues(typeof(WsjtxClient.CallCategory)))
-            {
-                if (cat != WsjtxClient.CallCategory.DEFAULT && enabled.Contains(cat))
-                    parts.Add(cat.ToString());
-            }
-            return string.Join(",", parts);
+            return string.Join(",", enabled.Select(cat => cat.ToString()));
         }
 
-        // Parse a callingPriorities INI string into a HashSet of enabled categories.
-        // callingStr: new "callingPriorities" key (comma-separated enabled categories).
+        // Parse a callingPriorities INI string into an ordered List of enabled categories.
+        // INI token order is preserved — that order drives Alt+N category selection.
+        // callingStr: new "callingPriorities" key (comma-separated enabled categories in order).
         // legacyDisabledStr: old "categoryDisabled" key used for migration if callingStr absent.
-        // Returns all non-DEFAULT categories on missing/malformed input (safe default = all enabled).
-        private static HashSet<WsjtxClient.CallCategory> ParseCallingPriorities(
+        // Returns default priority order on missing/malformed input.
+        private static List<WsjtxClient.CallCategory> ParseCallingPriorities(
             string callingStr, string legacyDisabledStr = null)
         {
             if (!string.IsNullOrWhiteSpace(callingStr))
             {
-                var result = new HashSet<WsjtxClient.CallCategory>();
+                var result = new List<WsjtxClient.CallCategory>();
                 foreach (var tok in callingStr.Split(','))
                 {
                     WsjtxClient.CallCategory cat;
-                    if (System.Enum.TryParse(tok.Trim(), out cat) && cat != WsjtxClient.CallCategory.DEFAULT)
-                        result.Add(cat);
+                    if (System.Enum.TryParse(tok.Trim(), out cat) && !result.Contains(cat))
+                        result.Add(cat);   // order preserved; DEFAULT (Ordinary CQ) is permitted
                 }
                 if (result.Count > 0) return result;
             }
 
             // Migration: if old categoryDisabled exists, derive callingPriorities from it.
-            // Disabled categories become unchecked (not calling-enabled).
+            // Enabled categories go in default priority order; disabled ones are excluded.
             if (!string.IsNullOrWhiteSpace(legacyDisabledStr))
             {
                 var disabled = new HashSet<WsjtxClient.CallCategory>();
@@ -1976,23 +1986,28 @@ namespace WSJTX_Controller
                     if (System.Enum.TryParse(tok.Trim(), out cat) && cat != WsjtxClient.CallCategory.DEFAULT)
                         disabled.Add(cat);
                 }
-                var result = new HashSet<WsjtxClient.CallCategory>();
-                foreach (WsjtxClient.CallCategory cat in System.Enum.GetValues(typeof(WsjtxClient.CallCategory)))
+                var result = new List<WsjtxClient.CallCategory>();
+                foreach (WsjtxClient.CallCategory cat in DefaultCallingOrder)
                 {
-                    if (cat != WsjtxClient.CallCategory.DEFAULT && !disabled.Contains(cat))
-                        result.Add(cat);
+                    if (!disabled.Contains(cat)) result.Add(cat);
                 }
                 return result;
             }
 
-            // Default: all non-DEFAULT categories enabled for calling
-            var allEnabled = new HashSet<WsjtxClient.CallCategory>();
-            foreach (WsjtxClient.CallCategory cat in System.Enum.GetValues(typeof(WsjtxClient.CallCategory)))
-            {
-                if (cat != WsjtxClient.CallCategory.DEFAULT) allEnabled.Add(cat);
-            }
-            return allEnabled;
+            // Default: all non-DEFAULT categories in default priority order.
+            return new List<WsjtxClient.CallCategory>(DefaultCallingOrder);
         }
+
+        // Canonical default Alt+N priority order (highest → lowest).
+        private static readonly WsjtxClient.CallCategory[] DefaultCallingOrder =
+        {
+            WsjtxClient.CallCategory.TO_MYCALL,
+            WsjtxClient.CallCategory.NEW_COUNTRY_ON_BAND,
+            WsjtxClient.CallCategory.NEW_COUNTRY,
+            WsjtxClient.CallCategory.WANTED_CQ,
+            WsjtxClient.CallCategory.ALWAYS_WANTED,
+            WsjtxClient.CallCategory.DEFAULT,
+        };
 
         // Serialize wantedCalls to a comma-separated list of callsigns.
         private static string FormatWantedCalls(HashSet<string> calls)
@@ -2055,7 +2070,7 @@ namespace WSJTX_Controller
                 else   //right-click (no modifier)
                 {
                     if (idx >= 0 && idx < callListBox.Items.Count && callListBox.SelectionMode != SelectionMode.None) callListBox.SelectedIndex = idx;
-                    wsjtxClient.EditCallQueue(idx);
+                    wsjtxClient.EditCallQueue(wsjtxClient.MapNormalListIndex(idx));
                 }
             }
             else   //left-click
@@ -2063,7 +2078,7 @@ namespace WSJTX_Controller
                 if (dblClk)   //left-dbl-click (no modifier)
                 {
                     if (callListBox.SelectionMode == SelectionMode.None) return;
-                    wsjtxClient.NextCall(false, idx);
+                    wsjtxClient.NextCall(false, wsjtxClient.MapNormalListIndex(idx), operatorSelected: true);
                 }
                 else
                 {
@@ -2275,7 +2290,7 @@ namespace WSJTX_Controller
 
             e.Handled = true;   // prevent Win32 ListBox type-ahead after our handler
             int idx = callListBox.SelectedIndex;
-            wsjtxClient.NextCall(false, idx);
+            wsjtxClient.NextCall(false, wsjtxClient.MapNormalListIndex(idx), operatorSelected: true);
         }
 
         private void statusText_TextChanged(object sender, EventArgs e)
@@ -2328,7 +2343,7 @@ namespace WSJTX_Controller
                 if (callListBox.SelectionMode == SelectionMode.None) return;
                 int idx = callListBox.SelectedIndex;
                 if (idx < 0) return;
-                string call = wsjtxClient.GetCallAtIndex(idx);
+                string call = wsjtxClient.GetCallAtIndex(wsjtxClient.MapNormalListIndex(idx));
                 if (call != null)
                 {
                     try { Clipboard.SetText(call); }
@@ -2342,7 +2357,7 @@ namespace WSJTX_Controller
             if (e.KeyCode != Keys.Delete) return;
 
             int selIdx = callListBox.SelectedIndex;
-            wsjtxClient.EditCallQueue(selIdx);
+            wsjtxClient.EditCallQueue(wsjtxClient.MapNormalListIndex(selIdx));
         }
 
         private void OpenManualCallDialog()

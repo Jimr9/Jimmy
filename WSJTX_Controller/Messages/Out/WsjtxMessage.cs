@@ -77,7 +77,6 @@ namespace WsjtxUdpLib.Messages.Out
         public static int NegotiatedSchemaVersion = 2;
         public static NegoStates NegoState = NegoStates.INITIAL;
 
-        private static string alphanumericOnly = "[^0-9A-Za-z]";  //match if any non-alphanumeric
         private static string alphaOnly = "[^A-Za-z]";         //match if any numeric
         private static string numericOnly = "[^0-9]";          //match if any alpha
 
@@ -348,6 +347,23 @@ namespace WsjtxUdpLib.Messages.Out
             //known to be a CQ
             string dirTo = DirectedTo(msg);
             return dirTo != null && (dirTo == "SOTA");
+        }
+
+        // Heuristic: returns true if any word ends with /H.
+        // /H is the Hound callsign suffix in Fox/Hound mode, but may also appear
+        // in legitimate portable calls. Use SpecialOperationMode from StatusMessage
+        // for authoritative Fox/Hound detection. This method signals only
+        // "possible Fox/Hound" — never treat the result as definitive.
+        public static bool IsFoxHound(string msg)
+        {
+            if (msg == null) return false;
+            string[] words = msg.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string word in words)
+            {
+                if (word.EndsWith("/H", StringComparison.Ordinal))
+                    return true;
+            }
+            return false;
         }
 
         //return the "directed to" part of the CQ call (if exists) in a possible CQ msg

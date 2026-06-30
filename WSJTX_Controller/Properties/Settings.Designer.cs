@@ -25,7 +25,7 @@ namespace WSJTX_Controller.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("3")]
+        [global::System.Configuration.DefaultSettingValueAttribute("5")]
         public int timeout {
             get {
                 return ((int)(this["timeout"]));
@@ -61,7 +61,7 @@ namespace WSJTX_Controller.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
         public bool useAlertDirected {
             get {
                 return ((bool)(this["useAlertDirected"]));
@@ -73,7 +73,7 @@ namespace WSJTX_Controller.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        [global::System.Configuration.DefaultSettingValueAttribute("POTA")]
         public string alertDirecteds {
             get {
                 return ((string)(this["alertDirecteds"]));
@@ -193,7 +193,7 @@ namespace WSJTX_Controller.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
         public bool useRR73 {
             get {
                 return ((bool)(this["useRR73"]));
