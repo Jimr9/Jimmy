@@ -31,6 +31,22 @@
 - Preserve full keyboard accessibility; every action must be reachable without a mouse.
 - Accessibility is a first-class requirement, not an afterthought.
 
+## Release Versioning
+
+For every public Jimmy release, even a small beta or installer-only fix:
+- Increment AssemblyFileVersion.
+- Increment AssemblyInformationalVersion.
+- Increment WiX ProductVersion.
+- Rebuild Release with /t:Rebuild.
+- Rebuild the MSI.
+- Verify the MSI ProductVersion.
+- Verify the Jimmy.exe File table version inside the MSI.
+- Verify that MajorUpgrade will upgrade the previous public release.
+- Copy the fresh MSI to C:\claude\Jimmy\Jimmy.msi.
+- Verify SHA-256 before upload.
+
+AssemblyVersion may remain frozen unless project policy changes.
+
 ## Coding Philosophy
 
 - Prefer reusing existing logic over duplicating it.
