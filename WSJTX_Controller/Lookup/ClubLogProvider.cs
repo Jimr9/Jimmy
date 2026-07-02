@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Xml;
@@ -35,6 +36,7 @@ namespace WSJTX_Controller
         public string   LastError   { get; private set; }
         public DateTime LastUpdate  { get; private set; }
         public int      EntityCount => _entities.Count;
+        public IReadOnlyList<ClubLogEntity> AllEntities => _entities;
         private string _apiKey = "";
 
         public ClubLogProvider(string dataRoot)
@@ -69,7 +71,8 @@ namespace WSJTX_Controller
             var tmp = Path.Combine(_dir, "clublog_cty.tmp");
             try
             {
-                var data = await _http.GetStringAsync(url).ConfigureAwait(false);
+                var bytes = await _http.GetByteArrayAsync(url).ConfigureAwait(false);
+                var data = DecodeResponse(bytes);
                 if (data.TrimStart().StartsWith("Error") || data.Length < 200)
                 {
                     LastError = Redact(data.Length < 500 ? data.Trim() : "Club Log returned unexpected response.");
@@ -98,6 +101,22 @@ namespace WSJTX_Controller
             string.IsNullOrEmpty(text) || string.IsNullOrEmpty(_apiKey)
                 ? text
                 : text.Replace(_apiKey, "[REDACTED]");
+
+        // cty.php serves the file gzip-compressed (magic bytes 1F 8B) with the
+        // original filename ("cty.xml") embedded in the gzip header -- decompress
+        // before treating it as text. Falls back to plain UTF-8 decoding in case
+        // Club Log ever serves it uncompressed.
+        private static string DecodeResponse(byte[] bytes)
+        {
+            if (bytes.Length >= 2 && bytes[0] == 0x1F && bytes[1] == 0x8B)
+            {
+                using (var compressed = new MemoryStream(bytes))
+                using (var gzip = new GZipStream(compressed, CompressionMode.Decompress))
+                using (var reader = new StreamReader(gzip, System.Text.Encoding.UTF8))
+                    return reader.ReadToEnd();
+            }
+            return System.Text.Encoding.UTF8.GetString(bytes);
+        }
 
         public ClubLogEntity FindByPrefix(string prefix)
         {
@@ -153,8 +172,12 @@ namespace WSJTX_Controller
             doc.LoadXml(xml);
             var result = new List<ClubLogEntity>();
 
-            var entityNodes = doc.SelectNodes("//*[local-name()='ENTITY']")
-                           ?? doc.SelectNodes("//*[local-name()='entity']");
+            // SelectNodes returns an empty (non-null) list when nothing matches,
+            // never null -- so a plain "?? " fallback here would never trigger.
+            // Real Club Log data uses lower-case <entity> tags exclusively.
+            var entityNodes = doc.SelectNodes("//*[local-name()='ENTITY']");
+            if (entityNodes == null || entityNodes.Count == 0)
+                entityNodes = doc.SelectNodes("//*[local-name()='entity']");
             if (entityNodes != null)
             {
                 foreach (XmlNode n in entityNodes)

@@ -88,7 +88,6 @@ namespace WSJTX_Controller
         private System.Windows.Forms.Label           _lotwStatusLbl;
         private System.Windows.Forms.TextBox         _lotwLogbookUserTb;
         private System.Windows.Forms.TextBox         _lotwLogbookPassTb;
-        private System.Windows.Forms.CheckBox        _clubLogEnabledCb;
         private System.Windows.Forms.NumericUpDown   _clubLogRefreshDaysNum;
         private System.Windows.Forms.Button          _clubLogUpdateBtn;
         private System.Windows.Forms.Label           _clubLogStatusLbl;
@@ -1763,28 +1762,20 @@ namespace WSJTX_Controller
                 10, 87, font));
 
             // ── Club Log ─────────────────────────────────────────────────────────
-            var clBox = MakeGroupBox("Club Log Country Data  (no account or key needed — uses Jimmy's own registration)", 5, 646, pw, 96, font);
+            // Automatic Jimmy infrastructure, not a user-facing toggle -- country
+            // data downloads unconditionally using Jimmy's own application key
+            // (see ClubLogAppKey.cs), so Rule Definition awards (DXCC etc.) work
+            // out of the box with no configuration.
+            var clBox = MakeGroupBox("Club Log Country Data  (automatic — no account or key needed; uses Jimmy's own registration)", 5, 646, pw, 76, font);
             lookupPanel.Controls.Add(clBox);
 
-            _clubLogEnabledCb = new System.Windows.Forms.CheckBox
-            {
-                Text           = "Enable Club Log country/prefix data",
-                Checked        = ctrl.clubLogEnabled,
-                Location       = new System.Drawing.Point(10, 20),
-                AutoSize       = true,
-                TabIndex       = tabIdx++,
-                Font           = font,
-                AccessibleName = "Enable Club Log data",
-            };
-            clBox.Controls.Add(_clubLogEnabledCb);
-
-            clBox.Controls.Add(MakeLabel("Refresh (days):", 10, 46, font));
+            clBox.Controls.Add(MakeLabel("Refresh (days):", 10, 23, font));
             _clubLogRefreshDaysNum = new System.Windows.Forms.NumericUpDown
             {
                 Minimum        = 1,
                 Maximum        = 365,
                 Value          = Math.Max(1, Math.Min(365, ctrl.clubLogRefreshDays)),
-                Location       = new System.Drawing.Point(108, 43),
+                Location       = new System.Drawing.Point(108, 20),
                 Size           = new System.Drawing.Size(60, 20),
                 TabIndex       = tabIdx++,
                 Font           = font,
@@ -1795,7 +1786,7 @@ namespace WSJTX_Controller
             _clubLogUpdateBtn = new System.Windows.Forms.Button
             {
                 Text           = "Update Now",
-                Location       = new System.Drawing.Point(10, 66),
+                Location       = new System.Drawing.Point(10, 43),
                 Size           = new System.Drawing.Size(90, 24),
                 TabIndex       = tabIdx++,
                 Font           = font,
@@ -1807,7 +1798,7 @@ namespace WSJTX_Controller
             _clubLogStatusLbl = new System.Windows.Forms.Label
             {
                 Text      = ClubLogStatusText(),
-                Location  = new System.Drawing.Point(110, 70),
+                Location  = new System.Drawing.Point(110, 47),
                 Size      = new System.Drawing.Size(500, 18),
                 Font      = font,
                 TabStop   = false,
@@ -1861,8 +1852,13 @@ namespace WSJTX_Controller
         private string ClubLogStatusText()
         {
             var m = ctrl.lookupManager;
-            if (m == null || !m.ClubLog.IsEnabled) return "Club Log lookup disabled.";
-            if (m.ClubLog.EntityCount == 0) return "Not downloaded yet. Click Update Now.";
+            if (m == null) return "Not available yet.";
+            if (m.ClubLog.EntityCount == 0)
+            {
+                return string.IsNullOrEmpty(ClubLogAppKey.Resolve())
+                    ? "No application key available in this build — Club Log data unavailable."
+                    : "Not downloaded yet. Click Update Now.";
+            }
             var age = m.ClubLog.LastUpdate == DateTime.MinValue ? "never" : m.ClubLog.LastUpdate.ToLocalTime().ToString("g");
             return $"{m.ClubLog.EntityCount} entities, last updated {age}";
         }
@@ -1883,7 +1879,6 @@ namespace WSJTX_Controller
             ctrl.lotwRefreshDays         = (int)(_lotwRefreshDaysNum?.Value      ?? 30);
             ctrl.lotwLogbookUser         = _lotwLogbookUserTb?.Text.Trim()      ?? "";
             ctrl.lotwLogbookPass         = _lotwLogbookPassTb?.Text            ?? "";
-            ctrl.clubLogEnabled          = _clubLogEnabledCb?.Checked           ?? false;
             ctrl.clubLogRefreshDays      = (int)(_clubLogRefreshDaysNum?.Value   ?? 30);
         }
 

@@ -11,6 +11,12 @@ namespace WSJTX_Controller
         public static List<string>         LoadErrors  { get; private set; } = new List<string>();
         public static bool                 Loaded      { get; private set; }
 
+        // Set once at startup (Controller.cs) so RuleEngine can resolve
+        // Club Log-backed universes (DXCC_CURRENT etc.) without every caller
+        // having to thread a provider reference through. May be null (e.g. in
+        // unit tests) -- Club Log-backed universes just report "unavailable".
+        public static ClubLogProvider ClubLog { get; set; }
+
         public static void Load()
         {
             var result = RuleLoader.LoadAll();

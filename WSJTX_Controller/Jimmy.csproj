@@ -86,6 +86,11 @@
     <Compile Include="Awards\RuleLoader.cs" />
     <Compile Include="Awards\RuleEngine.cs" />
     <Compile Include="Awards\RuleLibrary.cs" />
+    <Compile Include="Awards\RuleWriter.cs" />
+    <Compile Include="Awards\RuleDefinitionManagerDlg.cs" />
+    <Compile Include="Awards\RuleDefinitionEditDlg.cs" />
+    <Compile Include="Awards\NewRuleWizardDlg.cs" />
+    <Compile Include="Awards\CompanionListEditorDlg.cs" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="OptionsDlg.cs">
@@ -103,6 +108,7 @@
     <Compile Include="HotkeyConfig.cs" />
     <Compile Include="HotkeyCaptureBox.cs" />
     <Compile Include="ManualCallDlg.cs" />
+    <Compile Include="TextPromptDlg.cs" />
     <Compile Include="SupportReportDlg.cs" />
     <Compile Include="SupportReportBuilder.cs" />
     <Compile Include="IniFile.cs" />
@@ -265,4 +271,64 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Import Project="..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.118.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets" Condition="Exists('..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.118.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets')" />
+  <!-- Jimmy's Club Log application key lives in a private file outside the
+       repo, never an environment variable and never source control. Only the
+       path and line number are recorded here (this is a personal machine path,
+       not the key itself). -->
+  <PropertyGroup>
+    <ClubLogKeyFile>C:\Users\Jim\Dropbox\amateur radio\Keys_private\Club Log API key for Jimmy.txt</ClubLogKeyFile>
+    <ClubLogKeyLineNumber>9</ClubLogKeyLineNumber>
+  </PropertyGroup>
+
+  <!-- Reads a single line out of ClubLogKeyFile without ever logging its
+       content. MSBuild has no built-in "read line N of a file" task, so this
+       is a small inline task via RoslynCodeTaskFactory. -->
+  <UsingTask TaskName="ReadClubLogKeyLine"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <FilePath ParameterType="System.String" Required="true" />
+      <LineNumber ParameterType="System.Int32" Required="true" />
+      <Key ParameterType="System.String" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        Key = "";
+        if (File.Exists(FilePath))
+        {
+            var lines = File.ReadAllLines(FilePath);
+            int idx = LineNumber - 1;
+            if (idx >= 0 && idx < lines.Length)
+                Key = (lines[idx] ?? "").Trim();
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <!-- Fails a Release build fast (before compiling) if the Club Log key file
+       is missing or the expected line is empty, so a Release build can never
+       silently ship without Jimmy's Club Log key. Debug builds are unaffected.
+       BeforeBuild/AfterBuild are recognized extension points that
+       Microsoft.Common.targets already calls as part of the Build target, no
+       AfterTargets/BeforeTargets wiring needed. -->
+  <Target Name="BeforeBuild" Condition="'$(Configuration)'=='Release'">
+    <Error Condition="!Exists('$(ClubLogKeyFile)')"
+           Text="Club Log key file not found: $(ClubLogKeyFile). Set up the key file before building Release." />
+    <ReadClubLogKeyLine Condition="Exists('$(ClubLogKeyFile)')"
+                         FilePath="$(ClubLogKeyFile)" LineNumber="$(ClubLogKeyLineNumber)">
+      <Output TaskParameter="Key" PropertyName="_ClubLogKey" />
+    </ReadClubLogKeyLine>
+    <Error Condition="Exists('$(ClubLogKeyFile)') and '$(_ClubLogKey)' == ''"
+           Text="Club Log key file exists but line $(ClubLogKeyLineNumber) is empty: $(ClubLogKeyFile). Fix the key file before building Release." />
+  </Target>
+
+  <!-- Embeds Jimmy's Club Log application key into the Release build output so
+       it ships to end users via the installer (see ClubLogAppKey.cs, resolution
+       option 3). $(_ClubLogKey) was already read and validated non-empty by
+       BeforeBuild above; MSBuild properties persist across targets within the
+       same build, so it isn't re-read here. -->
+  <Target Name="AfterBuild" Condition="'$(Configuration)'=='Release'">
+    <WriteLinesToFile File="$(OutDir)clublog_key.txt" Lines="$(_ClubLogKey)" Overwrite="true" />
+  </Target>
 </Project>

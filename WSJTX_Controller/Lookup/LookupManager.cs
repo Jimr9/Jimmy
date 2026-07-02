@@ -73,7 +73,7 @@ namespace WSJTX_Controller
             bool            lotwEnabled,     int    lotwDays,
             // clubLogAppKey is Jimmy's registered Club Log application key (see
             // ClubLogAppKey.Resolve()), not a per-user credential.
-            bool            clubLogEnabled,  string clubLogAppKey, int  clubLogDays,
+            string          clubLogAppKey,   int    clubLogDays,
             QrzLookupPolicy policy           = QrzLookupPolicy.Disabled,
             int             qrzMinIntervalSeconds = 10)
         {
@@ -83,24 +83,30 @@ namespace WSJTX_Controller
 
             Qrz.Configure(qrzEnabled,     qrzUser,     qrzPass,     qrzCacheDays);
             LoTW.Configure(lotwEnabled);
-            ClubLog.Configure(clubLogEnabled, clubLogAppKey);
+
+            // Club Log country data is Jimmy infrastructure, not a user-facing
+            // lookup feature -- it always loads/refreshes regardless of the
+            // "Use Lookup Data" master switch, since Rule Definition universes
+            // depend on it and have nothing to do with QRZ/LoTW live lookups.
+            ClubLog.Configure(true, clubLogAppKey);
+            ClubLog.Load();
 
             if (!useLookupData) { StopAutoTimer(); return; }
 
-            if (lotwEnabled)    LoTW.Load();
-            if (clubLogEnabled) ClubLog.Load();
-            if (qrzEnabled)     Qrz.PurgeOldEntries();
+            if (lotwEnabled) LoTW.Load();
+            if (qrzEnabled)  Qrz.PurgeOldEntries();
 
             StartAutoTimer();
         }
 
         public void StartBackgroundRefreshIfNeeded(int lotwDays, int clubLogDays)
         {
-            if (!_useLookupData) return;
-            if (LoTW.IsEnabled    && LoTW.NeedsRefresh(lotwDays))
-                _ = LoTW.RefreshAsync();
-            if (ClubLog.IsEnabled && ClubLog.NeedsRefresh(clubLogDays))
+            if (ClubLog.NeedsRefresh(clubLogDays))
                 _ = ClubLog.RefreshAsync();
+
+            if (!_useLookupData) return;
+            if (LoTW.IsEnabled && LoTW.NeedsRefresh(lotwDays))
+                _ = LoTW.RefreshAsync();
         }
 
         // ── Synchronous lookups (no network) ────────────────────────────────────
@@ -115,7 +121,7 @@ namespace WSJTX_Controller
             _useLookupData ? LoTW.LastActivity(call) : null;
 
         public ClubLogEntity GetClubLogEntity(string call) =>
-            (_useLookupData && ClubLog.IsEnabled) ? ClubLog.FindByCallsign(call) : null;
+            _useLookupData ? ClubLog.FindByCallsign(call) : null;
 
         // ── Lookup dialog aggregation ────────────────────────────────────────────
 

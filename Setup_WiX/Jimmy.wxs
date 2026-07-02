@@ -2,7 +2,7 @@
 <!--
   Jimmy installer - WiX 4 source
   Product  : Jimmy (WSJT-X Controller)
-  Version  : 1.61.1
+  Version  : 1.62.0
   Mfr      : KB0UZT
   Install  : C:\Program Files\KB0UZT\Jimmy\
   Shortcuts: Desktop + Start Menu (optional checkboxes, both on by default)
@@ -14,7 +14,7 @@
 
   <Package
     Name="Jimmy"
-    Version="1.61.1"
+    Version="1.62.0"
     Manufacturer="KB0UZT"
     Language="1033"
     Codepage="1252"
@@ -99,6 +99,15 @@
       <Component Id="JimmyConfig">
         <File Id="JimmyConfigFile"
               Source="..\WSJTX_Controller\bin\Release\Jimmy.exe.config" />
+      </Component>
+
+      <!-- Jimmy's Club Log application key; see Jimmy.csproj's EmbedClubLogKey
+           target (writes this file during Release build) and ClubLogAppKey.cs
+           (reads it at runtime). Not a user credential; always present (possibly
+           empty) so this component never fails to build. -->
+      <Component Id="ClubLogKey">
+        <File Id="ClubLogKeyFile"
+              Source="..\WSJTX_Controller\bin\Release\clublog_key.txt" />
       </Component>
 
       <Component Id="AppIcon">

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using WsjtxUdpLib.Messages.Out;
 using WSJTX_Controller;
 
@@ -74,6 +75,12 @@ static class JimmyTests
 
     static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--verify-clublog")
+        {
+            VerifyClubLogEquivalence();
+            return;
+        }
+
         Console.WriteLine("=== Jimmy Parser Unit Tests ===");
         Console.WriteLine($"  WsjtxMessage static classifiers + AP strip logic");
         Console.WriteLine($"  myCall in examples = {MY_CALL}");
@@ -92,6 +99,8 @@ static class JimmyTests
         FoxHoundTests();
         HrcEnumTests();
         HrcCacheTests();
+        RuleUniverseBuiltInTests();
+        RuleUniverseClubLogTests();
 
         Console.WriteLine();
         Console.WriteLine($"=== {passed} passed, {failed} failed ===");
@@ -455,5 +464,189 @@ static class JimmyTests
         Check("case 3: IsContest=true",           WsjtxMessage.IsContest(fd), true);
         Check("case 3: IsInvalidType=true (FD routes via contest branch, not normal path)",
                                                   WsjtxMessage.IsInvalidType(fd), true);
+    }
+
+    // ── TEMPORARY one-off verification, not part of the regular suite ─────────
+    // Compares the new Club Log-backed / built-in universes against the existing
+    // companion-file approach using REAL downloaded Club Log data (not a
+    // fixture). Requires network access, so it's gated behind --verify-clublog
+    // and is not called from Main()'s normal run. Delete after use.
+    // Persistent (not per-run) cache dir so repeat runs of this verification
+    // reuse the downloaded country file instead of re-downloading every time.
+    static readonly string ClubLogVerifyCacheDir =
+        Path.Combine(Path.GetTempPath(), "JimmyVerify_ClubLog_Cache");
+
+    static void VerifyClubLogEquivalence()
+    {
+        string listsFolder = @"C:\claude\Jimmy\WSJTX_Controller\bin\Debug\RuleDefinitions\Lists";
+        Directory.CreateDirectory(ClubLogVerifyCacheDir);
+
+        // CA_PROVINCES needs no Club Log data at all.
+        Console.WriteLine("=== CA_PROVINCES vs rac_provinces.txt ===");
+        CompareUniverses("CA_PROVINCES", "File:rac_provinces.txt", listsFolder, null);
+        Console.WriteLine();
+
+        // Real key lives in a private file outside the repo, never an env var
+        // or a build artifact -- read line 9 directly (same convention as
+        // Jimmy.csproj's ClubLogKeyFile/ClubLogKeyLineNumber properties).
+        string keyFilePath = @"C:\Users\Jim\Dropbox\amateur radio\Keys_private\Club Log API key for Jimmy.txt";
+        string key = "";
+        if (File.Exists(keyFilePath))
+        {
+            var lines = File.ReadAllLines(keyFilePath);
+            if (lines.Length >= 9) key = (lines[8] ?? "").Trim();
+        }
+        if (string.IsNullOrEmpty(key))
+        {
+            Console.WriteLine($"Could not read Club Log key from line 9 of {keyFilePath} -- DXCC_* comparisons skipped.");
+            return;
+        }
+
+        var provider = new ClubLogProvider(ClubLogVerifyCacheDir);
+        provider.Configure(true, key);
+        provider.Load();   // reuse cached clublog_cty.xml if one already exists
+        if (provider.EntityCount == 0)
+        {
+            Console.WriteLine("No cached Club Log data yet -- downloading once...");
+            bool ok = provider.RefreshAsync().GetAwaiter().GetResult();
+            Console.WriteLine($"  RefreshAsync() returned: {ok}, EntityCount={provider.EntityCount}, LastError={provider.LastError}");
+            if (!ok || provider.EntityCount == 0)
+            {
+                Console.WriteLine("Could not download real Club Log data -- DXCC_* comparisons skipped.");
+                return;
+            }
+        }
+        else
+        {
+            Console.WriteLine($"Reusing cached Club Log data: EntityCount={provider.EntityCount}, LastUpdate={provider.LastUpdate}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("=== DXCC_NORTH_AMERICA vs na_dxcc_entities.txt (as LimitTo) ===");
+        CompareUniverses("DXCC_NORTH_AMERICA", "File:na_dxcc_entities.txt", listsFolder, provider);
+
+        Console.WriteLine();
+        Console.WriteLine("=== Other Club Log-backed universes (no companion-file counterpart to compare) ===");
+        foreach (var token in new[] { "DXCC_CURRENT", "DXCC_DELETED", "DXCC_SOUTH_AMERICA", "DXCC_EUROPE", "DXCC_AFRICA", "DXCC_ASIA", "DXCC_OCEANIA" })
+        {
+            string err;
+            var set = RuleUniverse.Resolve(token, listsFolder, provider, out err);
+            Console.WriteLine(set == null
+                ? $"  {token}: ERROR {err}"
+                : $"  {token}: {set.Count} entities");
+        }
+    }
+
+    static void CompareUniverses(string newToken, string oldToken, string listsFolder, ClubLogProvider clubLog)
+    {
+        string err1, err2;
+        var a = RuleUniverse.Resolve(newToken, listsFolder, clubLog, out err1);
+        var b = RuleUniverse.Resolve(oldToken, listsFolder, clubLog, out err2);
+
+        if (a == null) { Console.WriteLine($"  {newToken}: ERROR {err1}"); return; }
+        if (b == null) { Console.WriteLine($"  {oldToken}: ERROR {err2}"); return; }
+
+        var onlyInNew = a.Except(b, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var onlyInOld = b.Except(a, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+
+        Console.WriteLine($"  {newToken}: {a.Count} entries   {oldToken}: {b.Count} entries");
+        if (onlyInNew.Count == 0 && onlyInOld.Count == 0)
+        {
+            Console.WriteLine("  IDENTICAL");
+        }
+        else
+        {
+            Console.WriteLine("  DIFFERENT");
+            if (onlyInNew.Count > 0) Console.WriteLine($"    Only in {newToken}: {string.Join(", ", onlyInNew)}");
+            if (onlyInOld.Count > 0) Console.WriteLine($"    Only in {oldToken}: {string.Join(", ", onlyInOld)}");
+        }
+    }
+
+    // ── RuleUniverse built-ins ────────────────────────────────────────────────
+    // CA_PROVINCES and the AN (Antarctica) continent code, added to replace the
+    // rac_provinces.txt companion file and fill a gap in the ADIF continent set.
+    static void RuleUniverseBuiltInTests()
+    {
+        Console.WriteLine("\n── RuleUniverse: Built-in Universes ──");
+
+        string err;
+        var caProvinces = RuleUniverse.Resolve("CA_PROVINCES", "", null, out err);
+        CheckStr("CA_PROVINCES: no error", err, null);
+        Check("CA_PROVINCES: count == 13", caProvinces != null && caProvinces.Count == 13, true);
+        foreach (var p in new[] { "AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT" })
+            Check($"CA_PROVINCES: contains {p}", caProvinces != null && caProvinces.Contains(p), true);
+
+        Check("Continents: includes AN (Antarctica)", RuleUniverse.Continents.Contains("AN"), true);
+        Check("Continents: has 7 entries",             RuleUniverse.Continents.Length == 7,   true);
+    }
+
+    // ── RuleUniverse Club Log-backed universes ─────────────────────────────────
+    // DXCC_CURRENT / DXCC_DELETED / continent-filtered DXCC universes, resolved
+    // from a fixture ClubLogProvider (no network access -- Load() reads a local
+    // XML file, same mechanism ClubLogProvider uses for its real cache).
+    static void RuleUniverseClubLogTests()
+    {
+        Console.WriteLine("\n── RuleUniverse: Club Log-backed Universes ──");
+
+        // Unavailable case: no provider at all (e.g. a caller that never wired one up).
+        string unavailErr;
+        var noProvider = RuleUniverse.Resolve("DXCC_CURRENT", "", null, out unavailErr);
+        Check("DXCC_CURRENT: null provider -> unresolved", noProvider == null, true);
+        Check("DXCC_CURRENT: null provider -> has error",  !string.IsNullOrEmpty(unavailErr), true);
+
+        string tmpRoot = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_ClubLog_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(tmpRoot, "ClubLog"));
+            // Entity node name must be upper-case ENTITY: ClubLogProvider.ParseXml
+            // looks for "ENTITY" first and only falls back to "entity" if that
+            // XPath query returns null, but SelectNodes returns an empty (non-null)
+            // list rather than null when nothing matches -- so lower-case entity
+            // elements would silently parse as zero entities.
+            string xml =
+                "<clublog><entities>" +
+                "<ENTITY><adif>6</adif><name>ALASKA</name><prefix>KL</prefix><deleted>FALSE</deleted><cqz>1</cqz><cont>NA</cont></ENTITY>" +
+                "<ENTITY><adif>291</adif><name>UNITED STATES OF AMERICA</name><prefix>K</prefix><deleted>FALSE</deleted><cqz>5</cqz><cont>NA</cont></ENTITY>" +
+                "<ENTITY><adif>100</adif><name>ARGENTINA</name><prefix>LU</prefix><deleted>FALSE</deleted><cqz>13</cqz><cont>SA</cont></ENTITY>" +
+                "<ENTITY><adif>999</adif><name>FICTIONAL DELETED ENTITY</name><prefix>ZZ</prefix><deleted>TRUE</deleted><cqz>1</cqz><cont>NA</cont></ENTITY>" +
+                "</entities></clublog>";
+            File.WriteAllText(Path.Combine(tmpRoot, "ClubLog", "clublog_cty.xml"), xml);
+
+            var provider = new ClubLogProvider(tmpRoot);
+            provider.Configure(true, "");
+            provider.Load();
+            Check("Fixture: 4 entities loaded", provider.EntityCount == 4, true);
+
+            string err;
+            var current = RuleUniverse.Resolve("DXCC_CURRENT", "", provider, out err);
+            Check("DXCC_CURRENT: resolved",            current != null,                     true);
+            Check("DXCC_CURRENT: count == 3",           current != null && current.Count == 3, true);
+            Check("DXCC_CURRENT: includes 6 (Alaska)",   current != null && current.Contains("6"),   true);
+            Check("DXCC_CURRENT: includes 291 (USA)",    current != null && current.Contains("291"), true);
+            Check("DXCC_CURRENT: includes 100 (Argentina)", current != null && current.Contains("100"), true);
+            Check("DXCC_CURRENT: excludes deleted 999",  current != null && !current.Contains("999"), true);
+
+            var deleted = RuleUniverse.Resolve("DXCC_DELETED", "", provider, out err);
+            Check("DXCC_DELETED: count == 1",     deleted != null && deleted.Count == 1,     true);
+            Check("DXCC_DELETED: contains 999",   deleted != null && deleted.Contains("999"), true);
+
+            var na = RuleUniverse.Resolve("DXCC_NORTH_AMERICA", "", provider, out err);
+            Check("DXCC_NORTH_AMERICA: count == 2",          na != null && na.Count == 2,          true);
+            Check("DXCC_NORTH_AMERICA: includes 6",          na != null && na.Contains("6"),        true);
+            Check("DXCC_NORTH_AMERICA: includes 291",        na != null && na.Contains("291"),      true);
+            Check("DXCC_NORTH_AMERICA: excludes deleted 999", na != null && !na.Contains("999"),     true);
+
+            var sa = RuleUniverse.Resolve("DXCC_SOUTH_AMERICA", "", provider, out err);
+            Check("DXCC_SOUTH_AMERICA: count == 1",   sa != null && sa.Count == 1,        true);
+            Check("DXCC_SOUTH_AMERICA: contains 100", sa != null && sa.Contains("100"),   true);
+
+            var eu = RuleUniverse.Resolve("DXCC_EUROPE", "", provider, out err);
+            Check("DXCC_EUROPE: count == 0 (none in fixture)", eu != null && eu.Count == 0, true);
+        }
+        finally
+        {
+            try { Directory.Delete(tmpRoot, true); } catch { }
+        }
     }
 }

@@ -348,12 +348,42 @@ namespace WSJTX_Controller
             };
             _awardsPanel.Controls.Add(_awardsProgressLbl);
 
+            var manageBtn = new Button
+            {
+                Text           = "Manage Rule Definitions...",
+                Font           = font,
+                Location       = new Point(8, 34),
+                Size           = new Size(180, 24),
+                TabIndex       = 2,
+                AccessibleName = "Manage Rule Definitions",
+            };
+            manageBtn.Click += (s, e) => OpenRuleDefinitionManager();
+            _awardsPanel.Controls.Add(manageBtn);
+
             _awardsLv = MakeListView(font);
-            _awardsLv.Location = new Point(8, 36);
+            _awardsLv.Location = new Point(8, 66);
             _awardsLv.Anchor   = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            _awardsLv.Size     = new Size(700, 380);
+            _awardsLv.Size     = new Size(700, 350);
             _awardsLv.AccessibleName = "Award detail list";
             _awardsPanel.Controls.Add(_awardsLv);
+        }
+
+        // Opens the Rule Definition Manager and, if anything changed, refreshes
+        // every view that reads RuleLibrary.Definitions: this window's Awards
+        // and Still Need combos, plus (via _onImportComplete) the Controller's
+        // HRC cache and Still Need live-tagging cache.
+        private void OpenRuleDefinitionManager()
+        {
+            using (var mgr = new RuleDefinitionManagerDlg())
+            {
+                mgr.ShowDialog(this);
+                if (mgr.RulesChanged)
+                {
+                    PopulateAwardsCombo();
+                    PopulateNeededCombo();
+                    _onImportComplete?.Invoke();
+                }
+            }
         }
 
         private void BuildStillNeedPage(Font font, Font hfont)

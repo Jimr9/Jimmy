@@ -107,9 +107,11 @@ namespace WSJTX_Controller
         public bool             lotwEnabled             = false;
         public bool             lotwBoostEnabled        = false;
         public int              lotwRefreshDays         = 30;
-        public bool             clubLogEnabled          = false;
-        // No clubLogApiKey field: the Club Log key is Jimmy's application key
-        // (ClubLogAppKey.Resolve()), never a per-user setting -- see that class.
+        // No clubLogEnabled/clubLogApiKey fields: Club Log country data is
+        // automatic Jimmy infrastructure, not a user-facing toggle or a
+        // per-user credential -- the key is Jimmy's application key
+        // (ClubLogAppKey.Resolve()) and downloads happen unconditionally,
+        // subject only to the refresh interval below. See RuleUniverse.cs.
         public int              clubLogRefreshDays      = 30;
 
         private bool formLoaded = false;
@@ -462,7 +464,6 @@ namespace WSJTX_Controller
                 if (iniFile.KeyExists("lotwEnabled"))        lotwEnabled        = iniFile.Read("lotwEnabled")    == "True";
                 if (iniFile.KeyExists("lotwBoostEnabled"))   lotwBoostEnabled   = iniFile.Read("lotwBoostEnabled") == "True";
                 int lotwd; if (iniFile.KeyExists("lotwRefreshDays") && int.TryParse(iniFile.Read("lotwRefreshDays"), out lotwd)   && lotwd   >= 1) lotwRefreshDays  = lotwd;
-                if (iniFile.KeyExists("clubLogEnabled"))     clubLogEnabled     = iniFile.Read("clubLogEnabled")  == "True";
                 int clgd; if (iniFile.KeyExists("clubLogRefreshDays") && int.TryParse(iniFile.Read("clubLogRefreshDays"), out clgd) && clgd >= 1) clubLogRefreshDays = clgd;
                 if (iniFile.KeyExists("qrzLogbookApiKey")) qrzLogbookApiKey = iniFile.Read("qrzLogbookApiKey") ?? "";
                 if (iniFile.KeyExists("lotwLogbookUser"))  lotwLogbookUser  = iniFile.Read("lotwLogbookUser")  ?? "";
@@ -563,7 +564,7 @@ namespace WSJTX_Controller
                 useLookupData,
                 qrzEnabled, qrzUsername, qrzPassword, qrzCacheDays,
                 lotwEnabled, lotwRefreshDays,
-                clubLogEnabled, ClubLogAppKey.Resolve(), clubLogRefreshDays,
+                ClubLogAppKey.Resolve(), clubLogRefreshDays,
                 qrzLookupPolicy, qrzMinIntervalSeconds);
             wsjtxClient.lookupManager     = lookupManager;
             wsjtxClient.lotwBoostEnabled  = lotwBoostEnabled;
@@ -574,6 +575,7 @@ namespace WSJTX_Controller
 
             // Loads every .ini file from the RuleDefinitions folder (awards engine).
             // A bad or missing folder must never block startup.
+            RuleLibrary.ClubLog = lookupManager.ClubLog;
             try { RuleLibrary.Load(); } catch { }
             RefreshStillNeedCache();   // must run after RuleLibrary.Load() so the saved selection resolves
 
@@ -737,7 +739,6 @@ namespace WSJTX_Controller
                 iniFile.Write("lotwEnabled",             lotwEnabled.ToString());
                 iniFile.Write("lotwBoostEnabled",        lotwBoostEnabled.ToString());
                 iniFile.Write("lotwRefreshDays",         lotwRefreshDays.ToString());
-                iniFile.Write("clubLogEnabled",          clubLogEnabled.ToString());
                 iniFile.Write("clubLogRefreshDays",      clubLogRefreshDays.ToString());
                 iniFile.Write("qrzLogbookApiKey",        qrzLogbookApiKey         ?? "");
                 iniFile.Write("lotwLogbookUser",         lotwLogbookUser          ?? "");
@@ -750,6 +751,9 @@ namespace WSJTX_Controller
                 // Club Log's key is an app key (ClubLogAppKey), never a per-user
                 // setting -- remove any value a pre-cleanup version stored here.
                 iniFile.DeleteKey("clubLogApiKey");
+                // Club Log is now always-on infrastructure, not a user toggle --
+                // remove the old per-user enabled flag left by earlier versions.
+                iniFile.DeleteKey("clubLogEnabled");
                 hotkeyConfig?.SaveToIni(iniFile);
             }
 
@@ -1320,7 +1324,7 @@ namespace WSJTX_Controller
                 useLookupData,
                 qrzEnabled, qrzUsername, qrzPassword, qrzCacheDays,
                 lotwEnabled, lotwRefreshDays,
-                clubLogEnabled, ClubLogAppKey.Resolve(), clubLogRefreshDays,
+                ClubLogAppKey.Resolve(), clubLogRefreshDays,
                 qrzLookupPolicy, qrzMinIntervalSeconds);
             wsjtxClient.SortCallsPublic();  // re-rank if LoTW boost changed
         }

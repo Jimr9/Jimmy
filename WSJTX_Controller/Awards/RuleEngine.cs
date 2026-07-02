@@ -73,51 +73,55 @@ namespace WSJTX_Controller
             return true;
         }
 
-        public static RuleResult Evaluate(RuleDefinition def, string dbPath = null)
+        // clubLog defaults to RuleLibrary.ClubLog (the live provider wired up at
+        // startup) when not supplied -- callers only need to pass one explicitly
+        // in tests or other contexts where the global isn't set up.
+        public static RuleResult Evaluate(RuleDefinition def, string dbPath = null, ClubLogProvider clubLog = null)
         {
             dbPath = dbPath ?? LogbookDb.DbPath;
             using (var conn = new SQLiteConnection($"Data Source={dbPath};Read Only=True;"))
             {
                 conn.Open();
-                return Evaluate(def, conn);
+                return Evaluate(def, conn, clubLog ?? RuleLibrary.ClubLog);
             }
         }
 
         // Evaluates a definition restricted to a single band (or all bands, if
         // band is null/blank) -- used by the Still Need tab's band filter.
         // Endorsements are not computed here since that view doesn't show them.
-        public static RuleResult EvaluateBand(RuleDefinition def, string band, string dbPath = null)
+        public static RuleResult EvaluateBand(RuleDefinition def, string band, string dbPath = null, ClubLogProvider clubLog = null)
         {
             dbPath = dbPath ?? LogbookDb.DbPath;
             using (var conn = new SQLiteConnection($"Data Source={dbPath};Read Only=True;"))
             {
                 conn.Open();
-                return EvaluateCore(def, conn, string.IsNullOrWhiteSpace(band) ? null : band, null);
+                return EvaluateCore(def, conn, string.IsNullOrWhiteSpace(band) ? null : band, null, clubLog ?? RuleLibrary.ClubLog);
             }
         }
 
-        public static List<RuleResult> EvaluateAll(IEnumerable<RuleDefinition> defs, string dbPath = null)
+        public static List<RuleResult> EvaluateAll(IEnumerable<RuleDefinition> defs, string dbPath = null, ClubLogProvider clubLog = null)
         {
             dbPath = dbPath ?? LogbookDb.DbPath;
+            clubLog = clubLog ?? RuleLibrary.ClubLog;
             var results = new List<RuleResult>();
             using (var conn = new SQLiteConnection($"Data Source={dbPath};Read Only=True;"))
             {
                 conn.Open();
                 foreach (var def in defs.Where(d => d.Enabled))
-                    results.Add(Evaluate(def, conn));
+                    results.Add(Evaluate(def, conn, clubLog));
             }
             return results;
         }
 
-        public static RuleResult Evaluate(RuleDefinition def, SQLiteConnection conn)
+        public static RuleResult Evaluate(RuleDefinition def, SQLiteConnection conn, ClubLogProvider clubLog = null)
         {
-            var main = EvaluateCore(def, conn, null, null);
+            var main = EvaluateCore(def, conn, null, null, clubLog);
 
             if (def.Endorsements != null)
             {
                 foreach (var band in def.Endorsements.Bands)
                 {
-                    var sub = EvaluateCore(def, conn, band, null);
+                    var sub = EvaluateCore(def, conn, band, null, clubLog);
                     main.Endorsements.Add(new RuleEndorsementResult
                     {
                         Kind = "Band", Value = band,
@@ -127,7 +131,7 @@ namespace WSJTX_Controller
                 }
                 foreach (var mode in def.Endorsements.Modes)
                 {
-                    var sub = EvaluateCore(def, conn, null, mode);
+                    var sub = EvaluateCore(def, conn, null, mode, clubLog);
                     main.Endorsements.Add(new RuleEndorsementResult
                     {
                         Kind = "Mode", Value = mode,
@@ -141,7 +145,7 @@ namespace WSJTX_Controller
         }
 
         private static RuleResult EvaluateCore(
-            RuleDefinition def, SQLiteConnection conn, string bandOverride, string modeOverride)
+            RuleDefinition def, SQLiteConnection conn, string bandOverride, string modeOverride, ClubLogProvider clubLog)
         {
             var result = new RuleResult { Definition = def };
 
@@ -149,7 +153,7 @@ namespace WSJTX_Controller
             if (def.Target == RuleTargetType.All)
             {
                 string uniError;
-                universe = RuleUniverse.Resolve(def.Universe, RuleLoader.ListsFolder, out uniError);
+                universe = RuleUniverse.Resolve(def.Universe, RuleLoader.ListsFolder, clubLog, out uniError);
                 if (universe == null)
                 {
                     result.EvaluationError = uniError ?? "Universe could not be resolved.";
@@ -163,7 +167,7 @@ namespace WSJTX_Controller
             if (!string.IsNullOrWhiteSpace(def.LimitTo))
             {
                 string limitError;
-                limitTo = RuleUniverse.Resolve(def.LimitTo, RuleLoader.ListsFolder, out limitError);
+                limitTo = RuleUniverse.Resolve(def.LimitTo, RuleLoader.ListsFolder, clubLog, out limitError);
                 if (limitTo == null)
                 {
                     result.EvaluationError = "Match.LimitTo: " + (limitError ?? "could not be resolved.");
