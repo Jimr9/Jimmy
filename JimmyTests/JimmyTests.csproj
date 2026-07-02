@@ -22,9 +22,18 @@
       <HintPath>..\WSJTX_Controller\bin\Debug\Jimmy.exe</HintPath>
       <Private>true</Private>
     </Reference>
+    <!-- SQLite managed DLL — needed for LogbookDb tests.
+         The targets import below handles native SQLite.Interop.dll copy. -->
+    <Reference Include="System.Data.SQLite">
+      <HintPath>..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.118.0\lib\net46\System.Data.SQLite.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="JimmyTests.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- Copy native SQLite.Interop.dll (x86/x64) to the test output directory. -->
+  <Import Project="..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.118.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets"
+          Condition="Exists('..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.118.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets')" />
 </Project>

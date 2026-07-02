@@ -1,0 +1,63 @@
+; Worked All North America -- ADIF DXCC entity numbers for all current North America
+; continent entities (50 total).
+;
+; Source: ARRL DXCC List, Current Entities, March 2016 edition (official ARRL
+; document, Cont/ITU/CQ/Entity Code columns). Entity numbers are permanent once
+; assigned to a current entity, so this list remains accurate even though the
+; source edition is from 2016 -- only the ADDITION of a brand-new NA entity
+; (rare; none since) or the DELETION of an existing one would require an update.
+; If ARRL ever adds/deletes a North America entity, update this file accordingly.
+;
+; Note: Hawaii (110) is DXCC continent OC (Oceania), not NA, despite being part
+; of the USA -- correctly excluded from this list. Trinidad & Tobago (90), Aruba
+; (91), Bonaire (420), and Curacao (417) are continent SA -- also excluded.
+1     ; Canada
+6     ; Alaska
+12    ; Anguilla
+17    ; Aves I.
+36    ; Clipperton I.
+37    ; Cocos I.
+43    ; Desecheo I.
+50    ; Mexico
+60    ; Bahamas
+62    ; Barbados
+64    ; Bermuda
+65    ; British Virgin Is.
+66    ; Belize
+69    ; Cayman Is.
+70    ; Cuba
+72    ; Dominican Republic
+74    ; El Salvador
+76    ; Guatemala
+77    ; Grenada
+78    ; Haiti
+79    ; Guadeloupe
+80    ; Honduras
+82    ; Jamaica
+84    ; Martinique
+86    ; Nicaragua
+88    ; Panama
+89    ; Turks & Caicos Is.
+94    ; Antigua & Barbuda
+95    ; Dominica
+96    ; Montserrat
+97    ; St. Lucia
+98    ; St. Vincent
+105   ; Guantanamo Bay
+182   ; Navassa I.
+202   ; Puerto Rico
+204   ; Revillagigedo
+211   ; Sable I.
+213   ; Saint Martin
+216   ; San Andres & Providencia
+237   ; Greenland
+249   ; St. Kitts & Nevis
+252   ; St. Paul I.
+277   ; St. Pierre & Miquelon
+285   ; US Virgin Islands
+289   ; United Nations HQ
+291   ; United States of America
+308   ; Costa Rica
+516   ; Saint Barthelemy
+518   ; St Maarten
+519   ; Saba & St. Eustatius

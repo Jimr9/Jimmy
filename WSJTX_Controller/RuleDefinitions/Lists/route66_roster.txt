@@ -1,0 +1,29 @@
+; Route 66 On The Air -- participating 1x1 event station callsigns.
+; PLACEHOLDER: the exact roster is published by w6jbt.org shortly before each
+; year's event and the count varies (roughly 23-24 stations historically).
+; Replace this file with that year's actual published list before the event --
+; do not rely on this placeholder range as authoritative.
+W6A
+W6B
+W6C
+W6D
+W6E
+W6F
+W6G
+W6H
+W6I
+W6J
+W6K
+W6L
+W6M
+W6N
+W6O
+W6P
+W6Q
+W6R
+W6S
+W6T
+W6U
+W6V
+W6W
+W6Y

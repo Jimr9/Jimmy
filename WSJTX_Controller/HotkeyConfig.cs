@@ -32,6 +32,7 @@ namespace WSJTX_Controller
         SortOrder,
         RowOrder,
         AnalyzeSlot,
+        LookupStation,
         // Accessibility Navigation
         NavStatus,
         NavCallList,
@@ -88,6 +89,7 @@ namespace WSJTX_Controller
             [HotkeyAction.SortOrder]       = Keys.Alt | Keys.S,
             [HotkeyAction.RowOrder]        = Keys.Alt | Keys.I,
             [HotkeyAction.AnalyzeSlot]     = Keys.None,
+            [HotkeyAction.LookupStation]   = Keys.None,
             [HotkeyAction.NavStatus]       = Keys.Control | Keys.S,
             [HotkeyAction.NavCallList]     = Keys.Control | Keys.W,
             [HotkeyAction.NavPendingCount] = Keys.Control | Keys.P,
@@ -137,6 +139,7 @@ namespace WSJTX_Controller
             [HotkeyAction.SortOrder]       = "Sort Order Editor",
             [HotkeyAction.RowOrder]        = "Row Order Editor",
             [HotkeyAction.AnalyzeSlot]     = "Analyze Transmit Slot",
+            [HotkeyAction.LookupStation]   = "Lookup Selected Station",
             [HotkeyAction.NavStatus]       = "Focus Status Area",
             [HotkeyAction.NavCallList]     = "Focus Available Stations List",
             [HotkeyAction.NavPendingCount] = "Focus Pending Count",
@@ -162,6 +165,7 @@ namespace WSJTX_Controller
         public static readonly HashSet<HotkeyAction> OptionalActions = new HashSet<HotkeyAction>
         {
             HotkeyAction.AnalyzeSlot,
+            HotkeyAction.LookupStation,
             HotkeyAction.NavAdvTx1,
             HotkeyAction.NavAdvTx2,
             HotkeyAction.NavAdvRaw,

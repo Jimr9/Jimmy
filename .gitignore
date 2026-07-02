@@ -12,6 +12,10 @@ packages/
 # MSI build outputs
 *.msi
 
+# Documentation ZIP (GitHub Release asset, built from the gitignored
+# "text files/jimmy_documentation/" folder -- never committed)
+Jimmy_Documentation_*.zip
+
 # VS installer build logs and outputs
 Setup1/Debug/
 Setup1/Release/
@@ -42,6 +46,10 @@ make_icon.py
 jimmy_icon_preview.png
 netfol_48x48.png
 dl.JPG
+
+# Python bytecode cache (JimmyReplay.py)
+__pycache__/
+*.pyc
 
 # Internal design / planning docs
 text files/

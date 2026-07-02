@@ -2,6 +2,10 @@
 
 Jimmy is a Windows companion application for WSJT-X, designed to make FT8 and FT4 operation accessible to blind amateur radio operators.
 
+## Project Status
+
+Jimmy is a hobby project under active development. Features, award definitions, and behavior may change as the project evolves.
+
 ## Background
 
 Jimmy began as **Tilly**, created by Andy WM8Q. Tilly provided the foundation for accessible FT8/FT4 operation with keyboard control, audio feedback, queue handling, and WSJT-X UDP integration. Jimmy is a modified and expanded continuation of that work, with substantial accessibility, UI, queue, and workflow changes.

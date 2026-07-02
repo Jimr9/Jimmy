@@ -234,6 +234,8 @@ namespace WSJTX_Controller
         public TxModes txMode;
         public bool usePskReporter = true;
         public bool rawPriorityTags = false;
+        public LookupManager lookupManager;
+        public bool lotwBoostEnabled = false;
         private TxModes lastTxModeDebug;
         private string discardCall = null;
         private string expiredCall = null;
@@ -327,6 +329,10 @@ namespace WSJTX_Controller
             POTA,                // 6 — DEFAULT priority + IsPotaCall
             SOTA,                // 7 — DEFAULT priority + IsSotaCall
             ALWAYS_WANTED,       // 8 — matches user-defined wanted callsign list
+            WAS_NEEDED,          // 9 — US state needed for WAS award (HRC database)
+            DXCC_UNCONFIRMED,    // 10 — DXCC entity worked but unconfirmed (HRC database)
+            ZONE_NEEDED,         // 11 — CQ zone needed for WAZ award (HRC database)
+            STILL_NEEDED,        // 12 — matches the Rule Definition selected in the Still Need tab
         }
 
         public enum RankMethods
@@ -366,6 +372,10 @@ namespace WSJTX_Controller
             { CallCategory.POTA,                0 },
             { CallCategory.SOTA,                0 },
             { CallCategory.ALWAYS_WANTED,       1 },
+            { CallCategory.WAS_NEEDED,          0 },
+            { CallCategory.DXCC_UNCONFIRMED,    0 },
+            { CallCategory.ZONE_NEEDED,         0 },
+            { CallCategory.STILL_NEEDED,        0 },
         };
 
         // Categories that Alt+N is allowed to call. DEFAULT is never callable by Alt+N.
@@ -384,6 +394,30 @@ namespace WSJTX_Controller
 
         // User-defined always-wanted callsigns. Calls matching this set get ALWAYS_WANTED category.
         public HashSet<string> wantedCalls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // HRC database caches — populated from the local Ham Radio Center database at startup,
+        // after each import, and after each band change.  All lookups are in-memory.
+        public HashSet<string> hrcNeededStates    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        public HashSet<int>    hrcUnconfirmedDxcc = new HashSet<int>();
+        public HashSet<int>    hrcNeededZones     = new HashSet<int>();
+
+        // Still Need live-tag cache -- built from whichever Rule Definition is
+        // currently selected in the Logbook window's Still Need tab (see
+        // Controller.RefreshStillNeedCache()). Independent of the fixed HRC sets
+        // above: this supports any enabled Rule Definition, not just WAS/DXCC/WAZ,
+        // but only GroupBy kinds with a fast decode-time field are usable (see
+        // Controller.StillNeedLiveTagGroupBys). stillNeedUsable is false (and the
+        // set empty) whenever no rule is selected, the selected rule's GroupBy
+        // isn't one of those kinds, or the rule has no fixed still-needed
+        // checklist (e.g. Target=COUNT/LEVELS awards never produce one).
+        public HashSet<string> stillNeedSet      = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        public RuleGroupBy     stillNeedGroupBy  = RuleGroupBy.None;
+        public string          stillNeedRuleName;
+        public bool            stillNeedUsable;
+
+        // Returns the ADIF-style band string for the current dial frequency (e.g. "20m"),
+        // or null when the frequency is unknown or off-band.
+        public string CurrentBandStr => FreqToBandStr(dialFrequency / 1e6);
 
         // Replace the entire categoryWeight table (loaded from INI or set by Phase 4 UI).
         // Validates that all entries are present and DEFAULT is 0.
@@ -737,6 +771,14 @@ namespace WSJTX_Controller
             {
                 cmp = RegularSortScore(method, existing).CompareTo(RegularSortScore(method, incoming));
                 if (cmp != 0) return cmp;
+            }
+            // LoTW boost tiebreaker: prefer LoTW users when all other criteria are equal.
+            // Only fires for DEFAULT-category calls (non-DEFAULT ranks differ by >= CATEGORY_TIER_RANGE).
+            if (lotwBoostEnabled && lookupManager != null && existing.Rank < NON_DEFAULT_TIER_BASE)
+            {
+                bool exLoTW = lookupManager.IsLoTWUser(existing.DeCall());
+                bool inLoTW = lookupManager.IsLoTWUser(incoming.DeCall());
+                if (exLoTW != inLoTW) return exLoTW ? 1 : -1;
             }
             // Final tiebreaker: CALL_ORDER (oldest first = lower SequenceNumber first).
             return incoming.SequenceNumber.CompareTo(existing.SequenceNumber);
@@ -1837,6 +1879,8 @@ namespace WSJTX_Controller
                             ClearCalls(true);
                             logList.Clear();        //can re-log on new mode/band or in new session
                             ShowLogged();
+                            ctrl.LoadHrcCache();    //reload HRC sets for the new band
+                            ctrl.RefreshStillNeedCache();    //reload Still Need live-tag cache for the new band
 
                             if (opMode == OpModes.ACTIVE)
                             {
@@ -2517,6 +2561,8 @@ namespace WSJTX_Controller
                 UpdateModeVisible();
                 UpdateBandComboBox();
                 UpdateCallListAccessibleName();
+                ctrl.LoadHrcCache();    //reload HRC sets now that the current band is known
+                ctrl.RefreshStillNeedCache();    //reload Still Need live-tag cache now that the current band is known
                 DebugOutput($"{spacer}CheckActive, opMode:{opMode}");
                 UpdateDebug();
                 return true;
@@ -3325,7 +3371,7 @@ namespace WSJTX_Controller
         //remove call from queue/dictionary;
         //call not required to be present
         //return false if failure
-        private bool RemoveCall(string call)
+        private bool RemoveCall(string call, bool updateSnapshots = true)
         {
             EnqueueDecodeMessage msg;
             if (call != null && callDict.TryGetValue(call, out msg))     //dictionary contains call data for this call sign
@@ -3347,10 +3393,8 @@ namespace WSJTX_Controller
                     return false;
                 }
 
-                // ShowQueue updates only callListBox. Advanced snapshots are intentionally
-                // NOT updated here: RemoveCall (including TrimCallQueue) must not erase
-                // the retained TX1/TX2 display. Snapshots update only via AddCall.
                 ShowQueue();
+                if (updateSnapshots && ctrl.advancedCallLayout) ShowAdvancedQueue(null);
                 if (debugDetail) DebugOutput($"{spacer}removed {call}{nl}{CallQueueString()}");
                 UpdateMaxTxRepeat();
                 return true;
@@ -3419,6 +3463,14 @@ namespace WSJTX_Controller
 
                 ShowQueue();
                 if (ctrl.advancedCallLayout) ShowAdvancedQueue(IsEvenCall(msg));
+                if (lookupManager != null && msg.Country.Length == 0 && lookupManager.CanAutoQueue(call))
+                    lookupManager.QueueAutoLookup(call);
+                else if (ctrl.showUsStateCheckBox.Checked &&
+                         msg.Country == "USA" &&
+                         lookupManager != null &&
+                         lookupManager.CanAutoQueue(call) &&
+                         GridToUsState(WsjtxMessage.Grid(msg.Message)) == null)
+                    lookupManager.QueueAutoLookup(call);
                 if (debugDetail) DebugOutput($"{spacer}enqueued {call}{nl}{CallQueueString()}");
                 UpdateMaxTxRepeat();
                 UpdateCallInProg();
@@ -3878,7 +3930,7 @@ namespace WSJTX_Controller
             return (DateTime.UtcNow - last).TotalSeconds >= cooldownSecs;
         }
 
-        private static string CategoryTag(EnqueueDecodeMessage d)
+        private string CategoryTag(EnqueueDecodeMessage d)
         {
             switch (d.Category)
             {
@@ -3889,6 +3941,10 @@ namespace WSJTX_Controller
                     return "";  // pri field already shows the directed-to target
                 case CallCategory.POTA:                return "POTA";
                 case CallCategory.SOTA:                return "SOTA";
+                case CallCategory.WAS_NEEDED:          return "WAS Needed";
+                case CallCategory.DXCC_UNCONFIRMED:    return "DXCC Unconf";
+                case CallCategory.ZONE_NEEDED:         return "Zone Needed";
+                case CallCategory.STILL_NEEDED:        return (stillNeedRuleName ?? "Still") + " Needed";
                 default:                               return "";
             }
         }
@@ -4064,7 +4120,13 @@ namespace WSJTX_Controller
         private string BuildCallWaitingRow(string call, EnqueueDecodeMessage d)
         {
             string snr = $", {d.Snr.ToString("+#;-#;0")}";
-            string country = d.Country.Length > 0 ? $", {d.Country}" : "";
+            string countryName = d.Country;
+            if (countryName.Length == 0 && lookupManager != null)
+            {
+                var clEntity = lookupManager.GetClubLogEntity(call);
+                if (clEntity != null) countryName = clEntity.Name;
+            }
+            string country = countryName.Length > 0 ? $", {countryName}" : "";
 
             string g = WsjtxMessage.Grid(d.Message);
             string grid = g == null ? "" : $", {SpacifyPayload(g)}";
@@ -4075,6 +4137,11 @@ namespace WSJTX_Controller
                 d.Priority != (int)CallPriority.NEW_COUNTRY)
             {
                 string state = GridToUsState(g);
+                if (state == null && lookupManager != null)
+                {
+                    var cached = lookupManager.GetCachedInfo(call);
+                    if (!string.IsNullOrEmpty(cached?.State)) state = cached.State;
+                }
                 if (state != null) country = $", {state}";
             }
 
@@ -4159,6 +4226,9 @@ namespace WSJTX_Controller
             { CallCategory.WANTED_CQ,           "Dir CQ" },
             { CallCategory.POTA,                "POTA" },
             { CallCategory.SOTA,                "SOTA" },
+            { CallCategory.WAS_NEEDED,          "WAS Needed" },
+            { CallCategory.DXCC_UNCONFIRMED,    "DXCC Unconf" },
+            { CallCategory.ZONE_NEEDED,         "Zone Needed" },
         };
 
         private void ShowRawDecodes()
@@ -4176,6 +4246,8 @@ namespace WSJTX_Controller
                     string tag;
                     if (d.Category == CallCategory.WANTED_CQ)
                         tag = WsjtxMessage.DirectedTo(d.Message) ?? "Dir CQ";
+                    else if (d.Category == CallCategory.STILL_NEEDED)
+                        tag = (stillNeedRuleName ?? "Still") + " Needed";
                     else
                         RawTagLabels.TryGetValue(d.Category, out tag);
                     if (!string.IsNullOrEmpty(tag))
@@ -5010,6 +5082,12 @@ namespace WSJTX_Controller
                         // Directed CQ: filter must be enabled AND the CQ must match the alert list.
                         isAdmitted = IsCallingEnabled(CallCategory.WANTED_CQ) && isWantedDirected;
                         break;
+                    case CallCategory.WAS_NEEDED:
+                    case CallCategory.DXCC_UNCONFIRMED:
+                    case CallCategory.ZONE_NEEDED:
+                    case CallCategory.STILL_NEEDED:
+                        isAdmitted = IsCallingEnabled(emsg.Category);
+                        break;
                     case CallCategory.DEFAULT:
                         // Ordinary CQ: filter must be enabled AND Receive-tab sub-filters must pass.
                         isAdmitted = IsCallingEnabled(CallCategory.DEFAULT) && isWantedCall;
@@ -5055,10 +5133,14 @@ namespace WSJTX_Controller
                     bool addedWantedCall = false;
                     bool emsgIsEven = IsEvenCall(emsg);
                     int periodCount = PeriodCallCount(emsgIsEven);
-                    // DXCC calls and admitted directed-CQ calls bypass the per-period queue limit.
+                    // Priority calls and admitted HRC-filter calls bypass the per-period queue limit.
                     if (periodCount < maxAutoGenEnqueue || isWantedDirected ||
                         emsg.Category == CallCategory.NEW_COUNTRY ||
                         emsg.Category == CallCategory.NEW_COUNTRY_ON_BAND ||
+                        emsg.Category == CallCategory.WAS_NEEDED ||
+                        emsg.Category == CallCategory.DXCC_UNCONFIRMED ||
+                        emsg.Category == CallCategory.ZONE_NEEDED ||
+                        emsg.Category == CallCategory.STILL_NEEDED ||
                         (addedWantedCall = CanAddWantedCall(deCall, emsg, isWantedCall, emsgIsEven)))
                     {
                         int prevTo = 0;
@@ -5698,6 +5780,10 @@ namespace WSJTX_Controller
             return IsBlocked(call);
         }
 
+        // Called from Controller after lookup or settings change to re-rank and refresh.
+        public void SortCallsPublic()  { SortCalls(); ShowQueue(); if (ctrl.advancedCallLayout) ShowAdvancedQueue(null); }
+        public void RefreshQueueDisplay() { ShowQueue(); if (ctrl.advancedCallLayout) ShowAdvancedQueue(null); }
+
         public bool ManualEnqueueCall(string callsign)
         {
             if (string.IsNullOrEmpty(callsign)) return false;
@@ -6228,7 +6314,7 @@ namespace WSJTX_Controller
             //delete keys to old decodes
             foreach (string key in keys)
             {
-                RemoveCall(key);
+                RemoveCall(key, updateSnapshots: false);
                 removed = true;
             }
 
@@ -7384,6 +7470,10 @@ namespace WSJTX_Controller
                         cat = CallCategory.ALWAYS_WANTED;
                     else if (IsPotaCall(d)) cat = CallCategory.POTA;
                     else if (IsSotaCall(d)) cat = CallCategory.SOTA;
+                    else if (IsHrcWasNeeded(d))       cat = CallCategory.WAS_NEEDED;
+                    else if (IsHrcDxccUnconfirmed(d)) cat = CallCategory.DXCC_UNCONFIRMED;
+                    else if (IsHrcZoneNeeded(d))      cat = CallCategory.ZONE_NEEDED;
+                    else if (IsRuleStillNeeded(d))    cat = CallCategory.STILL_NEEDED;
                     else cat = CallCategory.DEFAULT;
                     break;
             }
@@ -7398,6 +7488,83 @@ namespace WSJTX_Controller
             EnqueueDecodeMessage dmsg = CqMsg(emsg.DeCall());
             if (dmsg == null) return false;
             return dmsg.IsSota();
+        }
+
+        // ── HRC (Ham Radio Center) category helpers ─────────────────────────────────
+        // All three read only in-memory HashSets populated at startup / after import.
+        // If the HRC database is unavailable, the sets remain empty and these return false.
+
+        private bool IsHrcWasNeeded(EnqueueDecodeMessage d)
+        {
+            if (hrcNeededStates.Count == 0) return false;
+            string grid = WsjtxMessage.Grid(d.Message);
+            if (string.IsNullOrEmpty(grid)) return false;
+            string state = GridToUsState(grid);
+            return !string.IsNullOrEmpty(state) && hrcNeededStates.Contains(state);
+        }
+
+        private bool IsHrcDxccUnconfirmed(EnqueueDecodeMessage d)
+        {
+            if (hrcUnconfirmedDxcc.Count == 0) return false;
+            string call = d.DeCall();
+            if (string.IsNullOrEmpty(call)) return false;
+            var entity = lookupManager.GetClubLogEntity(call);
+            return entity != null && entity.Adif > 0 && hrcUnconfirmedDxcc.Contains(entity.Adif);
+        }
+
+        private bool IsHrcZoneNeeded(EnqueueDecodeMessage d)
+        {
+            if (hrcNeededZones.Count == 0) return false;
+            string call = d.DeCall();
+            if (string.IsNullOrEmpty(call)) return false;
+            var entity = lookupManager.GetClubLogEntity(call);
+            return entity != null && entity.CqZone > 0 && hrcNeededZones.Contains(entity.CqZone);
+        }
+
+        // Matches a decode against the Still Need live-tag cache (stillNeedSet), built by
+        // Controller.RefreshStillNeedCache() from the Rule Definition currently selected in
+        // the Still Need tab. Only a fast in-memory lookup happens here -- the RuleEngine
+        // evaluation itself already ran once, at selection/refresh time, not per decode.
+        // The field used to derive the match key depends on the rule's GroupBy; kinds not
+        // listed here are never marked usable by RefreshStillNeedCache (see that method for why).
+        private bool IsRuleStillNeeded(EnqueueDecodeMessage d)
+        {
+            if (!stillNeedUsable || stillNeedSet.Count == 0) return false;
+            string call = d.DeCall();
+            if (string.IsNullOrEmpty(call)) return false;
+
+            switch (stillNeedGroupBy)
+            {
+                case RuleGroupBy.Callsign:
+                    return stillNeedSet.Contains(call);
+
+                case RuleGroupBy.State:
+                    string grid = WsjtxMessage.Grid(d.Message);
+                    if (string.IsNullOrEmpty(grid)) return false;
+                    string state = GridToUsState(grid);
+                    return !string.IsNullOrEmpty(state) && stillNeedSet.Contains(state);
+
+                case RuleGroupBy.CqZone:
+                {
+                    var entity = lookupManager.GetClubLogEntity(call);
+                    return entity != null && entity.CqZone > 0 && stillNeedSet.Contains(entity.CqZone.ToString());
+                }
+
+                case RuleGroupBy.Continent:
+                    // d.Continent comes straight from WSJT-X's own decode message -- always
+                    // available, no Club Log dependency (unlike CqZone/Dxcc below, WSJT-X
+                    // doesn't supply those as decode fields, only country/continent).
+                    return !string.IsNullOrEmpty(d.Continent) && stillNeedSet.Contains(d.Continent);
+
+                case RuleGroupBy.Dxcc:
+                {
+                    var entity = lookupManager.GetClubLogEntity(call);
+                    return entity != null && entity.Adif > 0 && stillNeedSet.Contains(entity.Adif.ToString());
+                }
+
+                default:
+                    return false;
+            }
         }
 
         private void SetRank(EnqueueDecodeMessage d)
@@ -7512,6 +7679,13 @@ namespace WSJTX_Controller
                 {
                     cmp = RegularSortScore(method, q).CompareTo(RegularSortScore(method, p));
                     if (cmp != 0) return cmp;
+                }
+                // LoTW boost tiebreaker: prefer LoTW users when all other criteria are equal.
+                if (lotwBoostEnabled && lookupManager != null && q.Rank < NON_DEFAULT_TIER_BASE)
+                {
+                    bool qLoTW = lookupManager.IsLoTWUser(q.DeCall());
+                    bool pLoTW = lookupManager.IsLoTWUser(p.DeCall());
+                    if (qLoTW != pLoTW) return qLoTW ? 1 : -1;
                 }
                 // Final tiebreaker: CALL_ORDER (oldest first = lower SequenceNumber first).
                 return p.SequenceNumber.CompareTo(q.SequenceNumber);

@@ -1000,6 +1000,106 @@ def group11_fox_hound_detection(sock, v):
          ) if v.available else None)
 
 
+def group12_hrc_filter_baseline(sock, v):
+    """T25-T26: HRC filter plumbing — empty-database baseline.
+
+    WAS_NEEDED, DXCC_UNCONFIRMED, and ZONE_NEEDED depend on the Ham Radio
+    Center (HRC) database.  When the database has no QSOs, all three
+    HashSets are empty and the helper methods return false immediately —
+    every decode falls through to DEFAULT or an earlier category.
+
+    T25: CQ with a US grid (EM10 = Texas) — must queue as DEFAULT.
+         Verifies that IsHrcWasNeeded → false (empty set) causes no
+         rejection or crash.
+    T26: CQ with a DX grid (IO91 = England) — must queue as DEFAULT.
+         Verifies no regression in non-US decode handling with HRC enabled.
+
+    To test actual WAS/DXCC/Zone tagging:
+      1. Populate the HRC database (Ham Radio Center > Sync tab > Import ADIF).
+      2. Enable 'WAS Needed', 'DXCC Worked, Unconfirmed', or 'Zones Needed'
+         in Alt+S > Call Filters and give them a non-zero tier in List Priorities.
+      3. Hear a decode from a matching state/DXCC/zone — the queue row
+         should show the tag (e.g. 'WAS Needed', 'DXCC Unconf', 'Zone Needed').
+    """
+    print("  ─ Group 12: HRC filter plumbing — empty-DB baseline ─")
+    print("    T25-T26: Empty HRC HashSets must not break normal decode handling.")
+
+    HRC_US_CALL = "W5HRC"   # unique call — US grid (Texas EM10)
+    HRC_DX_CALL = "G3HRC"   # unique call — DX grid (England IO91)
+
+    send(sock,
+         f"US grid CQ: CQ {HRC_US_CALL} EM10  (Texas grid, HRC sets empty)",
+         "IsHrcWasNeeded=false (empty set) → DEFAULT → must queue normally",
+         build_enqueue(f"CQ {HRC_US_CALL} EM10",
+                       country="USA", continent="NA"),
+         verify_fn=lambda: (
+             v.check_queue_contains(HRC_US_CALL,
+                 f"T25: {HRC_US_CALL} queued (US grid, HRC empty → DEFAULT)"),
+         ) if v.available else None)
+
+    send(sock,
+         f"DX grid CQ: CQ {HRC_DX_CALL} IO91  (England grid, HRC sets empty)",
+         "All HRC helpers false → DEFAULT → must queue normally",
+         build_enqueue(f"CQ {HRC_DX_CALL} IO91",
+                       country="England", continent="EU"),
+         verify_fn=lambda: (
+             v.check_queue_contains(HRC_DX_CALL,
+                 f"T26: {HRC_DX_CALL} queued (DX grid, HRC empty → DEFAULT)"),
+         ) if v.available else None)
+
+
+def group13_still_need_live_tag_baseline(sock, v):
+    """T27-T28: Still Need live-tag plumbing — safety-net baseline.
+
+    STILL_NEEDED (WsjtxClient.IsRuleStillNeeded) tags a decode against
+    whichever Rule Definition is currently selected in the Logbook window's
+    Still Need tab (Controller.RefreshStillNeedCache / stillNeedSet). That
+    cache's state depends on UI selection and real logbook content, neither
+    of which this replay script controls — so, like Group 12, this only
+    verifies the code path never breaks normal decode handling, regardless
+    of whether a rule is currently selected/usable.
+
+    T27: CQ with an ordinary US grid — must queue without error whether or
+         not stillNeedUsable is true (IsRuleStillNeeded returning either
+         value must not prevent queuing).
+    T28: CQ with an ordinary DX grid/continent — same, for the Continent/
+         CqZone/Dxcc match paths that read d.Continent / a Club Log lookup
+         instead of grid.
+
+    To test actual live tagging:
+      1. Open Ham Radio Center > Still Need, select an award whose GroupBy
+         is Callsign, State, CqZone, Continent, or Dxcc (the tab's status
+         line reads "Live decode tagging: on." when usable).
+      2. Hear a decode that matches one of that award's still-needed items
+         — the queue row should show "<Award name> Needed".
+    """
+    print("  ─ Group 13: Still Need live-tag plumbing — baseline ─")
+    print("    T27-T28: STILL_NEEDED matching must not break normal decode handling.")
+
+    SNL_US_CALL = "K5SNL"   # unique call — US grid (Colorado DM79)
+    SNL_DX_CALL = "PY5SNL"  # unique call — DX grid (Brazil GG66), SA continent
+
+    send(sock,
+         f"US grid CQ: CQ {SNL_US_CALL} DM79",
+         "IsRuleStillNeeded must not raise or block queuing either way",
+         build_enqueue(f"CQ {SNL_US_CALL} DM79",
+                       country="USA", continent="NA"),
+         verify_fn=lambda: (
+             v.check_queue_contains(SNL_US_CALL,
+                 f"T27: {SNL_US_CALL} queued (US grid, Still Need cache in whatever state)"),
+         ) if v.available else None)
+
+    send(sock,
+         f"DX grid CQ: CQ {SNL_DX_CALL} GG66",
+         "IsRuleStillNeeded (Continent/CqZone/Dxcc paths) must not raise or block queuing",
+         build_enqueue(f"CQ {SNL_DX_CALL} GG66",
+                       country="Brazil", continent="SA"),
+         verify_fn=lambda: (
+             v.check_queue_contains(SNL_DX_CALL,
+                 f"T28: {SNL_DX_CALL} queued (DX grid, Still Need cache in whatever state)"),
+         ) if v.available else None)
+
+
 def run_tests(sock, v):
     print("──── Test Decode Messages ────")
     print(f"  Format: [DESTINATION] [SOURCE] [payload]")
@@ -1017,12 +1117,14 @@ def run_tests(sock, v):
     group9_short_ap_suffix(sock, v)
     group10_period_checks(sock, v)
     group11_fox_hound_detection(sock, v)
+    group12_hrc_filter_baseline(sock, v)
+    group13_still_need_live_tag_baseline(sock, v)
 
     # ── To add a new replay test group ──────────────────────────────────────
     # 1. Define a new function, e.g.:
-    #      def group11_your_scenario(sock, v):
+    #      def group14_your_scenario(sock, v):
     #          send(sock, "Label", "Description", build_enqueue("..."),
-    #               verify_fn=lambda: v.check_queue_contains("K4YT", "T21: ..."))
+    #               verify_fn=lambda: v.check_queue_contains("K4YT", "T29: ..."))
     # 2. Call it here, above this comment block.
     # Tests are auto-numbered by the global _test_num counter.
     # ────────────────────────────────────────────────────────────────────────
@@ -1068,6 +1170,8 @@ def main():
     print("  [4] Advanced Call Layout enabled (Options)")
     print("  [5] (optional) 'SOTA' in directed CQ alert text box → T17 PASS")
     print("      Without it, T17 prints WARNING instead of PASS or FAIL")
+    print("  [6] T25-T26 (Group 12) always pass regardless of HRC database state")
+    print("  [7] T27-T28 (Group 13) always pass regardless of Still Need selection")
     print()
 
     if not ensure_jimmy_udp_ready():

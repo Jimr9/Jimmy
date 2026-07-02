@@ -35,6 +35,7 @@ namespace WSJTX_Controller
         private const int WantedCallsTabIndex  = 6;
         private const int SoundsTabIndex       = 7;
         private const int UdpTabIndex          = 8;
+        private const int LookupTabIndex       = 9;
 
         // Advanced UI tab — controls created dynamically in BuildAdvancedUiTab()
         private System.Windows.Forms.CheckBox advCallLayoutCheckBox;
@@ -68,6 +69,29 @@ namespace WSJTX_Controller
         // Sounds tab state
         private List<SoundRow> _soundRows;
         private System.Windows.Forms.CheckBox _soundsEnabledCb;
+
+        // Lookup / Data tab state
+        private System.Windows.Forms.CheckBox        _useLookupDataCb;
+        private System.Windows.Forms.CheckBox        _qrzEnabledCb;
+        private System.Windows.Forms.TextBox         _qrzUsernameTb;
+        private System.Windows.Forms.TextBox         _qrzPasswordTb;
+        private System.Windows.Forms.NumericUpDown   _qrzCacheDaysNum;
+        private System.Windows.Forms.ComboBox        _qrzPolicyCb;
+        private System.Windows.Forms.NumericUpDown   _qrzIntervalNum;
+        private System.Windows.Forms.Button          _qrzTestBtn;
+        private System.Windows.Forms.Label           _qrzStatusLbl;
+        private System.Windows.Forms.TextBox         _qrzLogbookApiKeyTb;
+        private System.Windows.Forms.CheckBox        _lotwEnabledCb;
+        private System.Windows.Forms.CheckBox        _lotwBoostCb;
+        private System.Windows.Forms.NumericUpDown   _lotwRefreshDaysNum;
+        private System.Windows.Forms.Button          _lotwUpdateBtn;
+        private System.Windows.Forms.Label           _lotwStatusLbl;
+        private System.Windows.Forms.TextBox         _lotwLogbookUserTb;
+        private System.Windows.Forms.TextBox         _lotwLogbookPassTb;
+        private System.Windows.Forms.CheckBox        _clubLogEnabledCb;
+        private System.Windows.Forms.NumericUpDown   _clubLogRefreshDaysNum;
+        private System.Windows.Forms.Button          _clubLogUpdateBtn;
+        private System.Windows.Forms.Label           _clubLogStatusLbl;
 
         private sealed class SoundRow
         {
@@ -140,6 +164,7 @@ namespace WSJTX_Controller
             BuildAdvancedUiTab();
             BuildWantedCallsTab();
             BuildSoundsTab();
+            BuildLookupTab();
             ReparentControlsToDialog();
 
             UpdateAllButtons();
@@ -222,6 +247,7 @@ namespace WSJTX_Controller
             SaveAdvancedUiTab();
             SaveWantedCallsTab();
             SaveSoundsTab();
+            SaveLookupTab();
             ctrl.ApplyAdvancedLayout();
             Close();
         }
@@ -1459,6 +1485,461 @@ namespace WSJTX_Controller
 
             // Refresh the capture box for the currently selected action
             ActionListBox_SelectedIndexChanged(null, null);
+        }
+
+        // ===== LOOKUP / DATA TAB =====
+
+        private void BuildLookupTab()
+        {
+            lookupPanel.Controls.Clear();
+            var font  = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
+            int tabIdx = 0;
+            int pw    = 630;    // panel usable width
+
+            // ── General ──────────────────────────────────────────────────────────
+            var genBox = MakeGroupBox("General", 5, 5, pw, 48, font);
+            lookupPanel.Controls.Add(genBox);
+
+            _useLookupDataCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Use lookup data (master enable — uncheck to disable all lookups without losing settings)",
+                Checked        = ctrl.useLookupData,
+                Location       = new System.Drawing.Point(10, 18),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Use lookup data master enable",
+            };
+            genBox.Controls.Add(_useLookupDataCb);
+
+            // ── QRZ Callsign Lookup ──────────────────────────────────────────────
+            var qrzBox = MakeGroupBox("QRZ Callsign Lookup", 5, 60, pw, 230, font);
+            lookupPanel.Controls.Add(qrzBox);
+
+            _qrzEnabledCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Enable QRZ callsign lookup",
+                Checked        = ctrl.qrzEnabled,
+                Location       = new System.Drawing.Point(10, 20),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Enable QRZ lookup",
+            };
+            qrzBox.Controls.Add(_qrzEnabledCb);
+
+            qrzBox.Controls.Add(MakeLabel("Username:", 10, 46, font));
+            _qrzUsernameTb = new System.Windows.Forms.TextBox
+            {
+                Text           = ctrl.qrzUsername ?? "",
+                Location       = new System.Drawing.Point(90, 43),
+                Size           = new System.Drawing.Size(160, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "QRZ username",
+            };
+            qrzBox.Controls.Add(_qrzUsernameTb);
+
+            qrzBox.Controls.Add(MakeLabel("Password:", 10, 70, font));
+            _qrzPasswordTb = new System.Windows.Forms.TextBox
+            {
+                Text           = ctrl.qrzPassword ?? "",
+                Location       = new System.Drawing.Point(90, 67),
+                Size           = new System.Drawing.Size(160, 20),
+                PasswordChar   = '●',
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "QRZ password",
+            };
+            qrzBox.Controls.Add(_qrzPasswordTb);
+
+            qrzBox.Controls.Add(MakeLabel("Cache (days):", 10, 94, font));
+            _qrzCacheDaysNum = new System.Windows.Forms.NumericUpDown
+            {
+                Minimum        = 1,
+                Maximum        = 365,
+                Value          = Math.Max(1, Math.Min(365, ctrl.qrzCacheDays)),
+                Location       = new System.Drawing.Point(100, 91),
+                Size           = new System.Drawing.Size(60, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "QRZ cache lifetime in days",
+            };
+            qrzBox.Controls.Add(_qrzCacheDaysNum);
+
+            qrzBox.Controls.Add(MakeLabel("Automatic lookup:", 10, 118, font));
+            _qrzPolicyCb = new System.Windows.Forms.ComboBox
+            {
+                DropDownStyle  = System.Windows.Forms.ComboBoxStyle.DropDownList,
+                Location       = new System.Drawing.Point(126, 115),
+                Size           = new System.Drawing.Size(320, 21),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "QRZ automatic lookup policy",
+            };
+            _qrzPolicyCb.Items.AddRange(new object[]
+            {
+                "Disabled (default) — no automatic QRZ requests",
+                "Manual only — lookup dialog for focused call only",
+                "Supplement offline — queue entries offline data cannot identify",
+            });
+            _qrzPolicyCb.SelectedIndex = (int)ctrl.qrzLookupPolicy;
+            qrzBox.Controls.Add(_qrzPolicyCb);
+
+            qrzBox.Controls.Add(MakeLabel("Min interval (sec):", 10, 142, font));
+            _qrzIntervalNum = new System.Windows.Forms.NumericUpDown
+            {
+                Minimum        = 5,
+                Maximum        = 300,
+                Value          = Math.Max(5, Math.Min(300, ctrl.qrzMinIntervalSeconds)),
+                Location       = new System.Drawing.Point(138, 139),
+                Size           = new System.Drawing.Size(60, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Minimum seconds between automatic QRZ requests",
+            };
+            qrzBox.Controls.Add(_qrzIntervalNum);
+            qrzBox.Controls.Add(MakeLabel("(default 10 s — recommended for QRZ server courtesy)", 205, 142, font));
+
+            _qrzTestBtn = new System.Windows.Forms.Button
+            {
+                Text           = "Test Login",
+                Location       = new System.Drawing.Point(10, 167),
+                Size           = new System.Drawing.Size(90, 24),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Test QRZ login credentials",
+            };
+            _qrzTestBtn.Click += QrzTestBtn_Click;
+            qrzBox.Controls.Add(_qrzTestBtn);
+
+            _qrzStatusLbl = new System.Windows.Forms.Label
+            {
+                Text           = QrzStatusText(),
+                Location       = new System.Drawing.Point(110, 171),
+                Size           = new System.Drawing.Size(500, 18),
+                Font           = font,
+                TabStop        = false,
+                AccessibleName = "QRZ login status",
+            };
+            qrzBox.Controls.Add(_qrzStatusLbl);
+
+            qrzBox.Controls.Add(MakeLabel(
+                "Real-time station lookup by callsign (name, address, grid). This is your normal QRZ.com login.",
+                10, 194, font));
+            qrzBox.Controls.Add(MakeLabel(
+                "Full results require an active QRZ subscription (the same one used by Logbook Download, below);",
+                10, 210, font));
+            qrzBox.Controls.Add(MakeLabel(
+                "free accounts receive very limited data that QRZ intends only for testing.",
+                10, 226, font));
+
+            // ── QRZ Logbook Download ─────────────────────────────────────────────
+            var qrzLogbookBox = MakeGroupBox("QRZ Logbook Download", 5, 296, pw, 100, font);
+            lookupPanel.Controls.Add(qrzLogbookBox);
+
+            qrzLogbookBox.Controls.Add(MakeLabel("API key:", 10, 23, font));
+            _qrzLogbookApiKeyTb = new System.Windows.Forms.TextBox
+            {
+                Text           = ctrl.qrzLogbookApiKey ?? "",
+                Location       = new System.Drawing.Point(68, 20),
+                Size           = new System.Drawing.Size(300, 20),
+                PasswordChar   = '●',
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "QRZ Logbook API key",
+            };
+            qrzLogbookBox.Controls.Add(_qrzLogbookApiKeyTb);
+
+            qrzLogbookBox.Controls.Add(MakeLabel(
+                "Downloads QSOs you've already logged to your QRZ online logbook (Logbook > Sync tab). From",
+                10, 48, font));
+            qrzLogbookBox.Controls.Add(MakeLabel(
+                "qrz.com → Logbook → Settings → API Access. Requires the same subscription as Callsign Lookup,",
+                10, 64, font));
+            qrzLogbookBox.Controls.Add(MakeLabel(
+                "above -- this key only reaches your own logbook, it cannot look up other callsigns.",
+                10, 80, font));
+
+            // ── LoTW User Activity ───────────────────────────────────────────────
+            var lotwBox = MakeGroupBox("LoTW User Activity  (public download — no account required)", 5, 402, pw, 116, font);
+            lookupPanel.Controls.Add(lotwBox);
+
+            _lotwEnabledCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Enable LoTW user activity lookup",
+                Checked        = ctrl.lotwEnabled,
+                Location       = new System.Drawing.Point(10, 20),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Enable LoTW user lookup",
+            };
+            lotwBox.Controls.Add(_lotwEnabledCb);
+
+            _lotwBoostCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Boost LoTW users (tiebreaker preference for DEFAULT-tier calls)",
+                Checked        = ctrl.lotwBoostEnabled,
+                Location       = new System.Drawing.Point(10, 42),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Boost LoTW users in call queue ordering",
+            };
+            lotwBox.Controls.Add(_lotwBoostCb);
+
+            lotwBox.Controls.Add(MakeLabel("Refresh (days):", 10, 66, font));
+            _lotwRefreshDaysNum = new System.Windows.Forms.NumericUpDown
+            {
+                Minimum        = 1,
+                Maximum        = 365,
+                Value          = Math.Max(1, Math.Min(365, ctrl.lotwRefreshDays)),
+                Location       = new System.Drawing.Point(108, 63),
+                Size           = new System.Drawing.Size(60, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "LoTW refresh interval in days",
+            };
+            lotwBox.Controls.Add(_lotwRefreshDaysNum);
+
+            _lotwUpdateBtn = new System.Windows.Forms.Button
+            {
+                Text           = "Update Now",
+                Location       = new System.Drawing.Point(10, 87),
+                Size           = new System.Drawing.Size(90, 24),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Download LoTW user activity now",
+            };
+            _lotwUpdateBtn.Click += LoTWUpdateBtn_Click;
+            lotwBox.Controls.Add(_lotwUpdateBtn);
+
+            _lotwStatusLbl = new System.Windows.Forms.Label
+            {
+                Text      = LoTWStatusText(),
+                Location  = new System.Drawing.Point(110, 91),
+                Size      = new System.Drawing.Size(500, 18),
+                Font      = font,
+                TabStop   = false,
+                AccessibleName = "LoTW download status",
+            };
+            lotwBox.Controls.Add(_lotwStatusLbl);
+
+            // ── LoTW Logbook Download ────────────────────────────────────────────
+            var lotwLogbookBox = MakeGroupBox("LoTW Logbook Download", 5, 524, pw, 116, font);
+            lookupPanel.Controls.Add(lotwLogbookBox);
+
+            lotwLogbookBox.Controls.Add(MakeLabel("Username:", 10, 23, font));
+            _lotwLogbookUserTb = new System.Windows.Forms.TextBox
+            {
+                Text           = ctrl.lotwLogbookUser ?? "",
+                Location       = new System.Drawing.Point(90, 20),
+                Size           = new System.Drawing.Size(160, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "LoTW username for logbook download",
+            };
+            lotwLogbookBox.Controls.Add(_lotwLogbookUserTb);
+
+            lotwLogbookBox.Controls.Add(MakeLabel("Password:", 10, 47, font));
+            _lotwLogbookPassTb = new System.Windows.Forms.TextBox
+            {
+                Text           = ctrl.lotwLogbookPass ?? "",
+                Location       = new System.Drawing.Point(90, 44),
+                Size           = new System.Drawing.Size(160, 20),
+                PasswordChar   = '●',
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "LoTW password for logbook download",
+            };
+            lotwLogbookBox.Controls.Add(_lotwLogbookPassTb);
+
+            lotwLogbookBox.Controls.Add(MakeLabel(
+                "Downloads your confirmed QSOs from LoTW (Logbook > Sync tab). Separate feature from LoTW User",
+                10, 71, font));
+            lotwLogbookBox.Controls.Add(MakeLabel(
+                "Activity, above -- this is your standard LoTW.org login; no TQSL certificate is used here.",
+                10, 87, font));
+
+            // ── Club Log ─────────────────────────────────────────────────────────
+            var clBox = MakeGroupBox("Club Log Country Data  (no account or key needed — uses Jimmy's own registration)", 5, 646, pw, 96, font);
+            lookupPanel.Controls.Add(clBox);
+
+            _clubLogEnabledCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Enable Club Log country/prefix data",
+                Checked        = ctrl.clubLogEnabled,
+                Location       = new System.Drawing.Point(10, 20),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Enable Club Log data",
+            };
+            clBox.Controls.Add(_clubLogEnabledCb);
+
+            clBox.Controls.Add(MakeLabel("Refresh (days):", 10, 46, font));
+            _clubLogRefreshDaysNum = new System.Windows.Forms.NumericUpDown
+            {
+                Minimum        = 1,
+                Maximum        = 365,
+                Value          = Math.Max(1, Math.Min(365, ctrl.clubLogRefreshDays)),
+                Location       = new System.Drawing.Point(108, 43),
+                Size           = new System.Drawing.Size(60, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Club Log refresh interval in days",
+            };
+            clBox.Controls.Add(_clubLogRefreshDaysNum);
+
+            _clubLogUpdateBtn = new System.Windows.Forms.Button
+            {
+                Text           = "Update Now",
+                Location       = new System.Drawing.Point(10, 66),
+                Size           = new System.Drawing.Size(90, 24),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Download Club Log data now",
+            };
+            _clubLogUpdateBtn.Click += ClubLogUpdateBtn_Click;
+            clBox.Controls.Add(_clubLogUpdateBtn);
+
+            _clubLogStatusLbl = new System.Windows.Forms.Label
+            {
+                Text      = ClubLogStatusText(),
+                Location  = new System.Drawing.Point(110, 70),
+                Size      = new System.Drawing.Size(500, 18),
+                Font      = font,
+                TabStop   = false,
+                AccessibleName = "Club Log download status",
+            };
+            clBox.Controls.Add(_clubLogStatusLbl);
+        }
+
+        private static System.Windows.Forms.GroupBox MakeGroupBox(string text, int x, int y, int w, int h, System.Drawing.Font font)
+        {
+            return new System.Windows.Forms.GroupBox
+            {
+                Text     = text,
+                Location = new System.Drawing.Point(x, y),
+                Size     = new System.Drawing.Size(w, h),
+                TabStop  = false,
+                Font     = font,
+            };
+        }
+
+        private static System.Windows.Forms.Label MakeLabel(string text, int x, int y, System.Drawing.Font font)
+        {
+            return new System.Windows.Forms.Label
+            {
+                Text     = text,
+                Location = new System.Drawing.Point(x, y),
+                AutoSize = true,
+                TabStop  = false,
+                Font     = font,
+            };
+        }
+
+        private string QrzStatusText()
+        {
+            var m = ctrl.lookupManager;
+            if (m == null || !m.Qrz.IsEnabled) return "QRZ lookup disabled.";
+            if (!string.IsNullOrEmpty(m.Qrz.LastError)) return $"Error: {m.Qrz.LastError}";
+            string auth = !string.IsNullOrEmpty(m.Qrz.AuthCallsign) ? $" ({m.Qrz.AuthCallsign})" : "";
+            return $"Configured: {m.Qrz.Username}{auth}";
+        }
+
+        private string LoTWStatusText()
+        {
+            var m = ctrl.lookupManager;
+            if (m == null || !m.LoTW.IsEnabled) return "LoTW lookup disabled.";
+            if (m.LoTW.UserCount == 0) return "Not downloaded yet. Click Update Now.";
+            var age = m.LoTW.LastUpdate == DateTime.MinValue ? "never" : m.LoTW.LastUpdate.ToLocalTime().ToString("g");
+            return $"{m.LoTW.UserCount:N0} users, last updated {age}";
+        }
+
+        private string ClubLogStatusText()
+        {
+            var m = ctrl.lookupManager;
+            if (m == null || !m.ClubLog.IsEnabled) return "Club Log lookup disabled.";
+            if (m.ClubLog.EntityCount == 0) return "Not downloaded yet. Click Update Now.";
+            var age = m.ClubLog.LastUpdate == DateTime.MinValue ? "never" : m.ClubLog.LastUpdate.ToLocalTime().ToString("g");
+            return $"{m.ClubLog.EntityCount} entities, last updated {age}";
+        }
+
+        private void SaveLookupTab()
+        {
+            if (_useLookupDataCb == null) return;
+            ctrl.useLookupData           = _useLookupDataCb.Checked;
+            ctrl.qrzEnabled              = _qrzEnabledCb?.Checked              ?? false;
+            ctrl.qrzUsername             = _qrzUsernameTb?.Text                ?? "";
+            ctrl.qrzPassword             = _qrzPasswordTb?.Text                ?? "";
+            ctrl.qrzCacheDays            = (int)(_qrzCacheDaysNum?.Value        ?? 7);
+            ctrl.qrzLookupPolicy         = (QrzLookupPolicy)(_qrzPolicyCb?.SelectedIndex ?? 0);
+            ctrl.qrzMinIntervalSeconds   = (int)(_qrzIntervalNum?.Value         ?? 10);
+            ctrl.qrzLogbookApiKey        = _qrzLogbookApiKeyTb?.Text.Trim()     ?? "";
+            ctrl.lotwEnabled             = _lotwEnabledCb?.Checked              ?? false;
+            ctrl.lotwBoostEnabled        = _lotwBoostCb?.Checked                ?? false;
+            ctrl.lotwRefreshDays         = (int)(_lotwRefreshDaysNum?.Value      ?? 30);
+            ctrl.lotwLogbookUser         = _lotwLogbookUserTb?.Text.Trim()      ?? "";
+            ctrl.lotwLogbookPass         = _lotwLogbookPassTb?.Text            ?? "";
+            ctrl.clubLogEnabled          = _clubLogEnabledCb?.Checked           ?? false;
+            ctrl.clubLogRefreshDays      = (int)(_clubLogRefreshDaysNum?.Value   ?? 30);
+        }
+
+        private async void QrzTestBtn_Click(object sender, EventArgs e)
+        {
+            if (ctrl.lookupManager == null) return;
+            ctrl.lookupManager.Qrz.Configure(
+                true,
+                _qrzUsernameTb?.Text ?? "",
+                _qrzPasswordTb?.Text ?? "",
+                (int)(_qrzCacheDaysNum?.Value ?? 7));
+            _qrzTestBtn.Enabled  = false;
+            _qrzStatusLbl.Text   = "Testing login…";
+            bool ok = await ctrl.lookupManager.TestQrzAsync();
+            if (!IsDisposed)
+            {
+                if (ok)
+                {
+                    string callsign = ctrl.lookupManager.Qrz.AuthCallsign;
+                    _qrzStatusLbl.Text = string.IsNullOrEmpty(callsign)
+                        ? "Login successful!"
+                        : $"Login successful — authenticated as {callsign}";
+                }
+                else
+                {
+                    _qrzStatusLbl.Text = $"Error: {ctrl.lookupManager.Qrz.LastError}";
+                }
+                _qrzTestBtn.Enabled = true;
+            }
+        }
+
+        private async void LoTWUpdateBtn_Click(object sender, EventArgs e)
+        {
+            if (ctrl.lookupManager == null) return;
+            _lotwUpdateBtn.Enabled = false;
+            _lotwStatusLbl.Text   = "Downloading…";
+            bool ok = await ctrl.lookupManager.LoTW.RefreshAsync();
+            if (!IsDisposed)
+            {
+                _lotwStatusLbl.Text   = ok ? LoTWStatusText() : $"Error: {ctrl.lookupManager.LoTW.LastError}";
+                _lotwUpdateBtn.Enabled = true;
+            }
+        }
+
+        private async void ClubLogUpdateBtn_Click(object sender, EventArgs e)
+        {
+            if (ctrl.lookupManager == null) return;
+            ctrl.lookupManager.ClubLog.Configure(true, ClubLogAppKey.Resolve());
+            _clubLogUpdateBtn.Enabled = false;
+            _clubLogStatusLbl.Text   = "Downloading…";
+            bool ok = await ctrl.lookupManager.ClubLog.RefreshAsync();
+            if (!IsDisposed)
+            {
+                _clubLogStatusLbl.Text    = ok ? ClubLogStatusText() : $"Error: {ctrl.lookupManager.ClubLog.LastError}";
+                _clubLogUpdateBtn.Enabled = true;
+            }
         }
     }
 }

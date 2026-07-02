@@ -84,6 +84,34 @@ namespace WSJTX_Controller
         // Feature flags
         public bool   wantedCallAnywhereEnabled   = true;
 
+        // Logbook credentials (loaded from ini; set from Options > Lookup / Data tab)
+        public string qrzLogbookApiKey = "";
+        public string lotwLogbookUser  = "";
+        public string lotwLogbookPass  = "";
+        private LogbookWindow _logbookWindow;
+
+        // Id of the Rule Definition currently selected in the Logbook window's Still Need
+        // tab, persisted so live FT8 tagging (see RefreshStillNeedCache()) survives across
+        // sessions and works even before the Logbook window has been opened. Empty = none selected.
+        public string stillNeedLiveTagRuleId = "";
+
+        // Lookup / Data settings
+        public LookupManager    lookupManager;
+        public bool             useLookupData           = false;
+        public bool             qrzEnabled              = false;
+        public string           qrzUsername             = "";
+        public string           qrzPassword             = "";
+        public int              qrzCacheDays            = 7;
+        public QrzLookupPolicy  qrzLookupPolicy         = QrzLookupPolicy.Disabled;
+        public int              qrzMinIntervalSeconds   = 10;
+        public bool             lotwEnabled             = false;
+        public bool             lotwBoostEnabled        = false;
+        public int              lotwRefreshDays         = 30;
+        public bool             clubLogEnabled          = false;
+        // No clubLogApiKey field: the Club Log key is Jimmy's application key
+        // (ClubLogAppKey.Resolve()), never a per-user setting -- see that class.
+        public int              clubLogRefreshDays      = 30;
+
         private bool formLoaded = false;
         private bool openOptionsOnUdpTab = false;
         private HelpDlg helpDlg = null;
@@ -422,6 +450,24 @@ namespace WSJTX_Controller
                 if (iniFile.KeyExists("soundEnabled_OppositePeriod")) soundEnabled_OppositePeriod = iniFile.Read("soundEnabled_OppositePeriod") == "True";
                 if (iniFile.KeyExists("soundFile_OppositePeriod"))    soundFile_OppositePeriod    = iniFile.Read("soundFile_OppositePeriod");
                 if (iniFile.KeyExists("soundsEnabled"))               soundsEnabled               = iniFile.Read("soundsEnabled") != "False";
+
+                // Lookup / Data settings
+                if (iniFile.KeyExists("useLookupData"))      useLookupData      = iniFile.Read("useLookupData") == "True";
+                if (iniFile.KeyExists("qrzEnabled"))         qrzEnabled         = iniFile.Read("qrzEnabled")    == "True";
+                if (iniFile.KeyExists("qrzUsername"))        qrzUsername        = iniFile.Read("qrzUsername");
+                if (iniFile.KeyExists("qrzPassword"))        qrzPassword        = iniFile.Read("qrzPassword");
+                int qrzcd; if (iniFile.KeyExists("qrzCacheDays")    && int.TryParse(iniFile.Read("qrzCacheDays"),    out qrzcd)   && qrzcd   >= 1) qrzCacheDays    = qrzcd;
+                int qrzpol; if (iniFile.KeyExists("qrzLookupPolicy") && int.TryParse(iniFile.Read("qrzLookupPolicy"), out qrzpol)) qrzLookupPolicy = (QrzLookupPolicy)qrzpol;
+                int qrzint; if (iniFile.KeyExists("qrzMinIntervalSeconds") && int.TryParse(iniFile.Read("qrzMinIntervalSeconds"), out qrzint) && qrzint >= 5) qrzMinIntervalSeconds = qrzint;
+                if (iniFile.KeyExists("lotwEnabled"))        lotwEnabled        = iniFile.Read("lotwEnabled")    == "True";
+                if (iniFile.KeyExists("lotwBoostEnabled"))   lotwBoostEnabled   = iniFile.Read("lotwBoostEnabled") == "True";
+                int lotwd; if (iniFile.KeyExists("lotwRefreshDays") && int.TryParse(iniFile.Read("lotwRefreshDays"), out lotwd)   && lotwd   >= 1) lotwRefreshDays  = lotwd;
+                if (iniFile.KeyExists("clubLogEnabled"))     clubLogEnabled     = iniFile.Read("clubLogEnabled")  == "True";
+                int clgd; if (iniFile.KeyExists("clubLogRefreshDays") && int.TryParse(iniFile.Read("clubLogRefreshDays"), out clgd) && clgd >= 1) clubLogRefreshDays = clgd;
+                if (iniFile.KeyExists("qrzLogbookApiKey")) qrzLogbookApiKey = iniFile.Read("qrzLogbookApiKey") ?? "";
+                if (iniFile.KeyExists("lotwLogbookUser"))  lotwLogbookUser  = iniFile.Read("lotwLogbookUser")  ?? "";
+                if (iniFile.KeyExists("lotwLogbookPass"))  lotwLogbookPass  = iniFile.Read("lotwLogbookPass")  ?? "";
+                if (iniFile.KeyExists("stillNeedLiveTagRuleId")) stillNeedLiveTagRuleId = iniFile.Read("stillNeedLiveTagRuleId") ?? "";
             }
 
             txMode = mode ? WsjtxClient.TxModes.LISTEN : WsjtxClient.TxModes.CALL_CQ;
@@ -496,10 +542,40 @@ namespace WSJTX_Controller
                 iniFile.Write("callingPriorities",
                     FormatCallingPriorities(wsjtxClient.callingEnabled));
             }
+            // Migration: a config saved before STILL_NEEDED existed won't have it in its
+            // callingPriorities list, so Still Need live tagging would be silently disabled
+            // for existing installs (ParseCallingPriorities only fills in the new default for
+            // configs with no saved list at all). Add it once, same tier as WAS/DXCC/ZONE.
+            if (!string.IsNullOrWhiteSpace(callingPrioritiesStr)
+                && !wsjtxClient.callingEnabled.Contains(WsjtxClient.CallCategory.STILL_NEEDED))
+            {
+                wsjtxClient.callingEnabled.Add(WsjtxClient.CallCategory.STILL_NEEDED);
+                iniFile.Write("callingPriorities",
+                    FormatCallingPriorities(wsjtxClient.callingEnabled));
+            }
             wsjtxClient.ApplyWantedCalls(ParseWantedCalls(wantedCallsStr));
             wsjtxClient.rawPriorityTags = rawPriorityTags;
             wsjtxClient.cmdPrompts = cmdPrompts;
             wsjtxClient.usePskReporter = usePskReporter;
+
+            lookupManager = new LookupManager();
+            lookupManager.Initialize(
+                useLookupData,
+                qrzEnabled, qrzUsername, qrzPassword, qrzCacheDays,
+                lotwEnabled, lotwRefreshDays,
+                clubLogEnabled, ClubLogAppKey.Resolve(), clubLogRefreshDays,
+                qrzLookupPolicy, qrzMinIntervalSeconds);
+            wsjtxClient.lookupManager     = lookupManager;
+            wsjtxClient.lotwBoostEnabled  = lotwBoostEnabled;
+            LoadHrcCache();
+            lookupManager.OnLookupCompleted = () =>
+                BeginInvoke(new Action(() => wsjtxClient.RefreshQueueDisplay()));
+            lookupManager.StartBackgroundRefreshIfNeeded(lotwRefreshDays, clubLogRefreshDays);
+
+            // Loads every .ini file from the RuleDefinitions folder (awards engine).
+            // A bad or missing folder must never block startup.
+            try { RuleLibrary.Load(); } catch { }
+            RefreshStillNeedCache();   // must run after RuleLibrary.Load() so the saved selection resolves
 
 
             mainLoopTimer.Interval = 10;           //actual is 11-12 msec (due to OS limitations)
@@ -513,6 +589,19 @@ namespace WSJTX_Controller
 
             wsjtxClient.UpdateModeSelection();
             SyncCqIntentFromMode();     // force-sync after wsjtxClient is assigned
+
+            // Logbook button — added below sortOrderButton at y=309
+            var logbookButton = new System.Windows.Forms.Button
+            {
+                Text           = "Logbook",
+                AccessibleName = "Open Ham Radio Center Logbook",
+                Location       = new System.Drawing.Point(10, 339),
+                Size           = new System.Drawing.Size(130, 25),
+                TabIndex       = 50,
+            };
+            logbookButton.Click += (s2, e2) => OpenLogbookWindow();
+            this.Controls.Add(logbookButton);
+            logbookButton.BringToFront();
 
             formLoaded = true;
             ApplyAdvancedLayout();
@@ -637,16 +726,37 @@ namespace WSJTX_Controller
                 iniFile.Write("soundsEnabled",               soundsEnabled.ToString());
                 iniFile.Write("txOddOffset",  wsjtxClient.cachedOddOffset.ToString());
                 iniFile.Write("txEvenOffset", wsjtxClient.cachedEvenOffset.ToString());
+                // Lookup / Data settings
+                iniFile.Write("useLookupData",           useLookupData.ToString());
+                iniFile.Write("qrzEnabled",              qrzEnabled.ToString());
+                iniFile.Write("qrzUsername",             qrzUsername              ?? "");
+                iniFile.Write("qrzPassword",             qrzPassword              ?? "");
+                iniFile.Write("qrzCacheDays",            qrzCacheDays.ToString());
+                iniFile.Write("qrzLookupPolicy",         ((int)qrzLookupPolicy).ToString());
+                iniFile.Write("qrzMinIntervalSeconds",   qrzMinIntervalSeconds.ToString());
+                iniFile.Write("lotwEnabled",             lotwEnabled.ToString());
+                iniFile.Write("lotwBoostEnabled",        lotwBoostEnabled.ToString());
+                iniFile.Write("lotwRefreshDays",         lotwRefreshDays.ToString());
+                iniFile.Write("clubLogEnabled",          clubLogEnabled.ToString());
+                iniFile.Write("clubLogRefreshDays",      clubLogRefreshDays.ToString());
+                iniFile.Write("qrzLogbookApiKey",        qrzLogbookApiKey         ?? "");
+                iniFile.Write("lotwLogbookUser",         lotwLogbookUser          ?? "");
+                iniFile.Write("lotwLogbookPass",         lotwLogbookPass          ?? "");
+                iniFile.Write("stillNeedLiveTagRuleId",  stillNeedLiveTagRuleId   ?? "");
                 // Phase 4: remove stale keys left by older versions.
                 iniFile.DeleteKey("autoReplyNewCq");
                 iniFile.DeleteKey("replyOnlyDxcc");
                 iniFile.DeleteKey("categoryDisabled");
+                // Club Log's key is an app key (ClubLogAppKey), never a per-user
+                // setting -- remove any value a pre-cleanup version stored here.
+                iniFile.DeleteKey("clubLogApiKey");
                 hotkeyConfig?.SaveToIni(iniFile);
             }
 
             CloseComm();
             optionsDlg?.Close();
             if (helpDlg != null) helpDlg.Close();
+            _logbookWindow?.Close();
         }
 
         public void SaveHotkeyConfig()
@@ -800,6 +910,11 @@ namespace WSJTX_Controller
             if (keyData == hotkeyConfig[HotkeyAction.AnalyzeSlot] && hotkeyConfig[HotkeyAction.AnalyzeSlot] != Keys.None)
             {
                 wsjtxClient.StartSlotAnalysis(false);
+                return true;
+            }
+            if (keyData == hotkeyConfig[HotkeyAction.LookupStation] && hotkeyConfig[HotkeyAction.LookupStation] != Keys.None)
+            {
+                LookupFocusedCall();
                 return true;
             }
 
@@ -1066,6 +1181,111 @@ namespace WSJTX_Controller
             guideTimer.Start();
         }
 
+        // Loads the HRC database filter sets into WsjtxClient's in-memory caches.
+        // Scoped to the radio's current band so tags reflect per-band award status.
+        // Safe to call any time; silently skips if the DB is unavailable or empty.
+        public void LoadHrcCache()
+        {
+            if (wsjtxClient == null) return;
+            string band = wsjtxClient.CurrentBandStr;   // null when frequency is unknown
+            try
+            {
+                using (var db = new LogbookDb())
+                {
+                    HashSet<string> neededStates;
+                    HashSet<int>    unconfirmedDxcc;
+                    HashSet<int>    neededZones;
+                    db.LoadHrcCache(out neededStates, out unconfirmedDxcc, out neededZones, band);
+                    wsjtxClient.hrcNeededStates    = neededStates;
+                    wsjtxClient.hrcUnconfirmedDxcc = unconfirmedDxcc;
+                    wsjtxClient.hrcNeededZones     = neededZones;
+                }
+            }
+            catch { }
+        }
+
+        // Rebuilds WsjtxClient's Still Need live-tag cache from whichever Rule Definition is
+        // currently selected (stillNeedLiveTagRuleId), scoped to the radio's current band --
+        // mirrors LoadHrcCache()'s per-band semantics. Only evaluates the RuleEngine here, at
+        // selection/refresh time; decode-time matching (IsRuleStillNeeded) is a plain HashSet
+        // lookup. Safe to call any time; leaves the cache marked unusable (no live tagging) if
+        // no rule is selected, the rule can't be found, RuleEngine.SupportsLiveTag(def) is false,
+        // or it has no fixed still-needed checklist (e.g. a Target=COUNT/LEVELS award, which
+        // never produces a StillNeeded list).
+        public void RefreshStillNeedCache()
+        {
+            if (wsjtxClient == null) return;
+
+            var def = string.IsNullOrEmpty(stillNeedLiveTagRuleId)
+                ? null
+                : RuleLibrary.Definitions.FirstOrDefault(d => d.Enabled && d.Id == stillNeedLiveTagRuleId);
+
+            if (!RuleEngine.SupportsLiveTag(def))
+            {
+                wsjtxClient.stillNeedUsable = false;
+                wsjtxClient.stillNeedSet.Clear();
+                wsjtxClient.stillNeedRuleName = def?.Name;
+                return;
+            }
+
+            try
+            {
+                var result = RuleEngine.EvaluateBand(def, wsjtxClient.CurrentBandStr);
+                if (result.StillNeeded == null)
+                {
+                    // Target != ALL, or the universe couldn't be resolved -- no fixed
+                    // checklist to tag against (same condition the Still Need tab already
+                    // shows as "This rule does not have a fixed still-needed checklist.").
+                    wsjtxClient.stillNeedUsable = false;
+                    wsjtxClient.stillNeedSet.Clear();
+                    wsjtxClient.stillNeedRuleName = def.Name;
+                    return;
+                }
+
+                wsjtxClient.stillNeedSet     = new HashSet<string>(result.StillNeeded, StringComparer.OrdinalIgnoreCase);
+                wsjtxClient.stillNeedGroupBy = def.GroupBy;
+                wsjtxClient.stillNeedRuleName = def.Name;
+                wsjtxClient.stillNeedUsable  = true;
+            }
+            catch
+            {
+                wsjtxClient.stillNeedUsable = false;
+                wsjtxClient.stillNeedSet.Clear();
+            }
+        }
+
+        public void OpenLogbookWindow()
+        {
+            if (_logbookWindow != null && !_logbookWindow.IsDisposed)
+            {
+                _logbookWindow.Activate();
+                return;
+            }
+            try
+            {
+                _logbookWindow = new LogbookWindow(iniFile, qrzLogbookApiKey, lotwLogbookUser, lotwLogbookPass,
+                    () => BeginInvoke(new Action(() => { LoadHrcCache(); RefreshStillNeedCache(); })),
+                    stillNeedLiveTagRuleId,
+                    ruleId =>
+                    {
+                        stillNeedLiveTagRuleId = ruleId ?? "";
+                        iniFile?.Write("stillNeedLiveTagRuleId", stillNeedLiveTagRuleId);
+                        RefreshStillNeedCache();
+                    });
+                _logbookWindow.FormClosed += (s, e) => _logbookWindow = null;
+                _logbookWindow.Show();
+            }
+            catch (Exception ex)
+            {
+                _logbookWindow = null;
+                MessageBox.Show(
+                    ex.GetType().Name + ": " + ex.Message + "\r\n\r\n" + ex.StackTrace,
+                    "Logbook Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
         public void optionsButton_Click(object sender, EventArgs e)
         {
             if (!formLoaded) return;
@@ -1093,8 +1313,45 @@ namespace WSJTX_Controller
         {
             initialConnFaultTimer.Start();
             TopMost = alwaysOnTop;
-            wsjtxClient.suspendComm = false;
+            wsjtxClient.suspendComm   = false;
+            wsjtxClient.lotwBoostEnabled = lotwBoostEnabled;
             optionsDlg = null;
+            lookupManager?.Initialize(
+                useLookupData,
+                qrzEnabled, qrzUsername, qrzPassword, qrzCacheDays,
+                lotwEnabled, lotwRefreshDays,
+                clubLogEnabled, ClubLogAppKey.Resolve(), clubLogRefreshDays,
+                qrzLookupPolicy, qrzMinIntervalSeconds);
+            wsjtxClient.SortCallsPublic();  // re-rank if LoTW boost changed
+        }
+
+        public void LookupFocusedCall()
+        {
+            string call = null;
+            if (callListBox.Visible)
+            {
+                int idx = callListBox.SelectedIndex;
+                if (idx >= 0)
+                    call = wsjtxClient.GetCallAtIndex(wsjtxClient.MapNormalListIndex(idx));
+            }
+            else
+            {
+                // Advanced layout: try TX1 then TX2 selected index
+                int idx = advTx1ListBox.SelectedIndex;
+                if (idx >= 0) call = wsjtxClient.GetCallAtTx1Index(idx);
+                if (call == null)
+                {
+                    idx = advTx2ListBox.SelectedIndex;
+                    if (idx >= 0) call = wsjtxClient.GetCallAtTx2Index(idx);
+                }
+            }
+            if (string.IsNullOrEmpty(call)) return;
+            using (var dlg = new LookupInfoDlg(call, lookupManager))
+            {
+                dlg.ShowDialog(this);
+                if (dlg.QrzLookupOccurred)
+                    wsjtxClient?.DebugChanged();
+            }
         }
         public void HelpClosed()
         {
@@ -1224,6 +1481,7 @@ namespace WSJTX_Controller
                 $"{nl}{K(HotkeyAction.ManualCall)}: Enter a callsign manually to call." +
 
                 $"{nl}{K(HotkeyAction.AnalyzeSlot)}: Analyze transmit slot (find quietest audio frequency for CQ; requires 'Use best Tx frequency' enabled)." +
+                $"{nl}{K(HotkeyAction.LookupStation)}: Look up selected station (shows callsign, country, state, LoTW status, and more)." +
 
                 $"{nl}{nl}Radio configuration keys:" +
                 $"{nl}{K(HotkeyAction.TuneMode)}: Toggle Tune mode, to determine correct audio output level to radio ({K(HotkeyAction.AudioUp)} and {K(HotkeyAction.AudioDown)} keys to adjust, {K(HotkeyAction.Prompts)} for fast or complete updates)." +
@@ -2006,6 +2264,10 @@ namespace WSJTX_Controller
             WsjtxClient.CallCategory.NEW_COUNTRY,
             WsjtxClient.CallCategory.WANTED_CQ,
             WsjtxClient.CallCategory.ALWAYS_WANTED,
+            WsjtxClient.CallCategory.WAS_NEEDED,
+            WsjtxClient.CallCategory.DXCC_UNCONFIRMED,
+            WsjtxClient.CallCategory.ZONE_NEEDED,
+            WsjtxClient.CallCategory.STILL_NEEDED,
             WsjtxClient.CallCategory.DEFAULT,
         };
 

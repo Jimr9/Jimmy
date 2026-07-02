@@ -2,7 +2,7 @@
 <!--
   Jimmy installer - WiX 4 source
   Product  : Jimmy (WSJT-X Controller)
-  Version  : 1.60.1
+  Version  : 1.61.1
   Mfr      : KB0UZT
   Install  : C:\Program Files\KB0UZT\Jimmy\
   Shortcuts: Desktop + Start Menu (optional checkboxes, both on by default)
@@ -14,7 +14,7 @@
 
   <Package
     Name="Jimmy"
-    Version="1.60.1"
+    Version="1.61.1"
     Manufacturer="KB0UZT"
     Language="1033"
     Codepage="1252"
@@ -58,6 +58,9 @@
     <Feature Id="DefaultFeature" Title="Jimmy" Level="1">
       <ComponentGroupRef Id="MainComponents" />
       <ComponentGroupRef Id="ResourceComponents" />
+      <ComponentGroupRef Id="SQLiteInteropComponents" />
+      <ComponentGroupRef Id="RuleDefinitionsComponents" />
+      <ComponentGroupRef Id="RuleDefinitionsListsComponents" />
       <ComponentRef Id="DesktopShortcutComp" />
       <ComponentRef Id="StartMenuShortcutComp" />
     </Feature>
@@ -70,6 +73,11 @@
       <Directory Id="ManufacturerDir" Name="KB0UZT">
         <Directory Id="INSTALLFOLDER" Name="Jimmy">
           <Directory Id="ResourcesDir" Name="Resources" />
+          <Directory Id="X86Dir" Name="x86" />
+          <Directory Id="X64Dir" Name="x64" />
+          <Directory Id="RuleDefinitionsDir" Name="RuleDefinitions">
+            <Directory Id="RuleDefinitionsListsDir" Name="Lists" />
+          </Directory>
         </Directory>
       </Directory>
     </StandardDirectory>
@@ -96,6 +104,114 @@
       <Component Id="AppIcon">
         <File Id="AppIconFile"
               Source="..\WSJTX_Controller\Properties\netfol.ico" />
+      </Component>
+
+      <Component Id="SQLiteDll">
+        <File Id="SQLiteDllFile"
+              Source="..\WSJTX_Controller\bin\Release\System.Data.SQLite.dll"
+              KeyPath="yes" />
+      </Component>
+
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- ── SQLite native interop DLLs (per-architecture) ─────────────────── -->
+  <Fragment>
+    <ComponentGroup Id="SQLiteInteropComponents">
+
+      <Component Id="SQLiteInteropX86" Directory="X86Dir">
+        <File Id="SQLiteInteropX86File"
+              Source="..\WSJTX_Controller\bin\Release\x86\SQLite.Interop.dll"
+              KeyPath="yes" />
+      </Component>
+
+      <Component Id="SQLiteInteropX64" Directory="X64Dir">
+        <File Id="SQLiteInteropX64File"
+              Source="..\WSJTX_Controller\bin\Release\x64\SQLite.Interop.dll"
+              KeyPath="yes" />
+      </Component>
+
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- ── Rule Definitions starter library (Awards engine) ──────────────────
+       Seeded by RuleLoader into %LocalAppData%\Jimmy\Data\RuleDefinitions on
+       first run. The installed WiX 4.0.6 core schema has no wildcard file
+       harvesting (Files Include="glob" is WiX v5+), so each award/list
+       file is listed individually; add a new Component/File pair here
+       whenever a file is added under RuleDefinitions\. ────────────────────── -->
+  <Fragment>
+    <ComponentGroup Id="RuleDefinitionsComponents" Directory="RuleDefinitionsDir">
+
+      <Component Id="RuleDef_CQ_DX_Award">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\CQ_DX_Award.ini" />
+      </Component>
+      <Component Id="RuleDef_Colonies13">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\Colonies13.ini" />
+      </Component>
+      <Component Id="RuleDef_DXCC">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\DXCC.ini" />
+      </Component>
+      <Component Id="RuleDef_IOTA_100Islands">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\IOTA_100Islands.ini" />
+      </Component>
+      <Component Id="RuleDef_QRZ_DXWorld">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\QRZ_DXWorld.ini" />
+      </Component>
+      <Component Id="RuleDef_QRZ_GridSquared">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\QRZ_GridSquared.ini" />
+      </Component>
+      <Component Id="RuleDef_QRZ_USCounties">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\QRZ_USCounties.ini" />
+      </Component>
+      <Component Id="RuleDef_QRZ_US_Award">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\QRZ_US_Award.ini" />
+      </Component>
+      <Component Id="RuleDef_QRZ_WorldContinents">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\QRZ_WorldContinents.ini" />
+      </Component>
+      <Component Id="RuleDef_RAC_Canadaward">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\RAC_Canadaward.ini" />
+      </Component>
+      <Component Id="RuleDef_RAC_WANA">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\RAC_WANA.ini" />
+      </Component>
+      <Component Id="RuleDef_Route66OTA">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\Route66OTA.ini" />
+      </Component>
+      <Component Id="RuleDef_WAC">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WAC.ini" />
+      </Component>
+      <Component Id="RuleDef_WAS">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WAS.ini" />
+      </Component>
+      <Component Id="RuleDef_WAZ">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WAZ.ini" />
+      </Component>
+      <Component Id="RuleDef_WPX">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WPX.ini" />
+      </Component>
+      <Component Id="RuleDef_WWFF_Hunter">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WWFF_Hunter.ini" />
+      </Component>
+
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="RuleDefinitionsListsComponents" Directory="RuleDefinitionsListsDir">
+
+      <Component Id="RuleDefList_Colonies13Roster">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\Lists\colonies13_roster.txt" />
+      </Component>
+      <Component Id="RuleDefList_NaDxccEntities">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\Lists\na_dxcc_entities.txt" />
+      </Component>
+      <Component Id="RuleDefList_RacProvinces">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\Lists\rac_provinces.txt" />
+      </Component>
+      <Component Id="RuleDefList_Route66Roster">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\Lists\route66_roster.txt" />
       </Component>
 
     </ComponentGroup>

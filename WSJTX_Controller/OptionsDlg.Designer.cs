@@ -17,6 +17,8 @@ namespace WSJTX_Controller
         private void InitializeComponent()
         {
             this.tabControl1 = new System.Windows.Forms.TabControl();
+            this.lookupTabPage = new System.Windows.Forms.TabPage();
+            this.lookupPanel   = new System.Windows.Forms.Panel();
             this.generalTabPage = new System.Windows.Forms.TabPage();
             this.generalPanel = new System.Windows.Forms.Panel();
             this.receiveReplyTabPage = new System.Windows.Forms.TabPage();
@@ -72,6 +74,7 @@ namespace WSJTX_Controller
             this.label9 = new System.Windows.Forms.TextBox();
             this.okButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
+            this.lookupTabPage.SuspendLayout();
             this.tabControl1.SuspendLayout();
             this.generalTabPage.SuspendLayout();
             this.generalPanel.SuspendLayout();
@@ -103,6 +106,7 @@ namespace WSJTX_Controller
             this.tabControl1.Controls.Add(this.wantedCallsTabPage);   // index 6
             this.tabControl1.Controls.Add(this.soundsTabPage);        // index 7
             this.tabControl1.Controls.Add(this.udpTabPage);           // index 8
+            this.tabControl1.Controls.Add(this.lookupTabPage);        // index 9
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
@@ -290,6 +294,19 @@ namespace WSJTX_Controller
             this.soundsPanel.AutoScroll = true;
             this.soundsPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.soundsPanel.Name = "soundsPanel";
+            //
+            // lookupTabPage
+            //
+            this.lookupTabPage.Controls.Add(this.lookupPanel);
+            this.lookupTabPage.Text           = "Lookup / Data";
+            this.lookupTabPage.Name           = "lookupTabPage";
+            this.lookupTabPage.AccessibleName = "Lookup Data tab";
+            //
+            // lookupPanel
+            //
+            this.lookupPanel.AutoScroll = true;
+            this.lookupPanel.Dock       = System.Windows.Forms.DockStyle.Fill;
+            this.lookupPanel.Name       = "lookupPanel";
             //
             // udpTabPage
             //
@@ -708,6 +725,7 @@ namespace WSJTX_Controller
             this.udpPanel.PerformLayout();
             this.udpGroupBox.ResumeLayout(false);
             this.udpGroupBox.PerformLayout();
+            this.lookupTabPage.ResumeLayout(false);
             this.ResumeLayout(false);
         }
 
@@ -769,5 +787,7 @@ namespace WSJTX_Controller
         private System.Windows.Forms.Panel wantedCallsPanel;
         private System.Windows.Forms.TabPage soundsTabPage;
         private System.Windows.Forms.Panel soundsPanel;
+        private System.Windows.Forms.TabPage lookupTabPage;
+        private System.Windows.Forms.Panel lookupPanel;
     }
 }

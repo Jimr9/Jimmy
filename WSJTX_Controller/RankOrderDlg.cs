@@ -82,6 +82,10 @@ namespace WSJTX_Controller
             { WsjtxClient.CallCategory.MANUAL_SEL,          "Manual selection" },
             { WsjtxClient.CallCategory.WANTED_CQ,           "Directed CQ" },
             { WsjtxClient.CallCategory.DEFAULT,             "Ordinary CQ" },
+            { WsjtxClient.CallCategory.WAS_NEEDED,          "WAS Needed" },
+            { WsjtxClient.CallCategory.DXCC_UNCONFIRMED,    "DXCC Worked, Unconfirmed" },
+            { WsjtxClient.CallCategory.ZONE_NEEDED,         "Zones Needed" },
+            { WsjtxClient.CallCategory.STILL_NEEDED,        "Still Need (selected award)" },
         };
 
         // POTA, SOTA, and MANUAL_SEL are hidden from user-facing lists.
@@ -104,6 +108,10 @@ namespace WSJTX_Controller
             { WsjtxClient.CallCategory.TO_MYCALL,           5 },
             { WsjtxClient.CallCategory.WANTED_CQ,           3 },
             { WsjtxClient.CallCategory.DEFAULT,             0 },
+            { WsjtxClient.CallCategory.WAS_NEEDED,          0 },
+            { WsjtxClient.CallCategory.DXCC_UNCONFIRMED,    0 },
+            { WsjtxClient.CallCategory.ZONE_NEEDED,         0 },
+            { WsjtxClient.CallCategory.STILL_NEEDED,        0 },
         };
 
         private static readonly List<WsjtxClient.CallCategory> DefaultCallingPriorities =
@@ -114,6 +122,10 @@ namespace WSJTX_Controller
             WsjtxClient.CallCategory.ALWAYS_WANTED,
             WsjtxClient.CallCategory.TO_MYCALL,
             WsjtxClient.CallCategory.WANTED_CQ,
+            WsjtxClient.CallCategory.WAS_NEEDED,
+            WsjtxClient.CallCategory.DXCC_UNCONFIRMED,
+            WsjtxClient.CallCategory.ZONE_NEEDED,
+            WsjtxClient.CallCategory.STILL_NEEDED,
         };
 
         // ── Constructor ────────────────────────────────────────────────────────
@@ -594,6 +606,10 @@ namespace WSJTX_Controller
             WsjtxClient.CallCategory.ALWAYS_WANTED,
             WsjtxClient.CallCategory.TO_MYCALL,
             WsjtxClient.CallCategory.WANTED_CQ,
+            WsjtxClient.CallCategory.WAS_NEEDED,
+            WsjtxClient.CallCategory.DXCC_UNCONFIRMED,
+            WsjtxClient.CallCategory.ZONE_NEEDED,
+            WsjtxClient.CallCategory.STILL_NEEDED,
             WsjtxClient.CallCategory.DEFAULT,
         };
 

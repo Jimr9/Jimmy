@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using WsjtxUdpLib.Messages.Out;
+using WSJTX_Controller;
 
 // Unit tests for Jimmy's WSJT-X message parser.
 //
@@ -87,6 +90,8 @@ static class JimmyTests
         ApChainTests();
         SlashCallNoCountryTests();
         FoxHoundTests();
+        HrcEnumTests();
+        HrcCacheTests();
 
         Console.WriteLine();
         Console.WriteLine($"=== {passed} passed, {failed} failed ===");
@@ -290,6 +295,120 @@ static class JimmyTests
         // Safety: null and empty input
         Check("Possible F/H: null is NOT",               WsjtxMessage.IsFoxHound(null),                           false);
         Check("Possible F/H: empty is NOT",              WsjtxMessage.IsFoxHound(""),                             false);
+    }
+
+    // ── HRC filter enum values ────────────────────────────────────────────────
+    // Verify the three new CallCategory values have the expected integer assignments.
+    // If any of these fail, DeriveCategory / AddSelectedCall routing is broken.
+    static void HrcEnumTests()
+    {
+        Console.WriteLine("\n── HRC CallCategory Enum Values ──");
+        // Existing values must be unchanged — regression guard
+        Check("DEFAULT == 0",             (int)WsjtxClient.CallCategory.DEFAULT             == 0,  true);
+        Check("ALWAYS_WANTED == 8",       (int)WsjtxClient.CallCategory.ALWAYS_WANTED       == 8,  true);
+        // New HRC values
+        Check("WAS_NEEDED == 9",          (int)WsjtxClient.CallCategory.WAS_NEEDED          == 9,  true);
+        Check("DXCC_UNCONFIRMED == 10",   (int)WsjtxClient.CallCategory.DXCC_UNCONFIRMED    == 10, true);
+        Check("ZONE_NEEDED == 11",        (int)WsjtxClient.CallCategory.ZONE_NEEDED         == 11, true);
+    }
+
+    // ── HRC cache SQL logic ───────────────────────────────────────────────────
+    // Creates a throwaway SQLite database, inserts known QSOs, calls LoadHrcCache(),
+    // and verifies the three output HashSets are computed correctly.
+    // No network access, no WSJT-X, no real HRC data path involved.
+    static void HrcCacheTests()
+    {
+        Console.WriteLine("\n── HRC Cache (LoadHrcCache SQL logic) ──");
+        string tmpDb = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_HRC_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDb))
+            {
+                // TX confirmed via LoTW → TX must NOT be in neededStates
+                InsertQso(db, "W5TX",   "TX", dxcc: 100, zone: 4, lotwRcvd: "Y");
+                // CA worked but unconfirmed → CA MUST be in neededStates
+                InsertQso(db, "W6CA",   "CA", dxcc: 100, zone: 3);
+                // WY: never worked at all → WY MUST be in neededStates (no QSO inserted)
+
+                // DXCC 100 has a confirmed QSO (W5TX) → 100 must NOT be in unconfirmedDxcc
+                // DXCC 200 worked, never confirmed → 200 MUST be in unconfirmedDxcc
+                InsertQso(db, "OE1TST", "  ", dxcc: 200, zone: 15);
+                // DXCC 300 confirmed → 300 must NOT be in unconfirmedDxcc
+                InsertQso(db, "VK2TST", "  ", dxcc: 300, zone: 29, lotwRcvd: "Y");
+
+                // Zone 3 confirmed (VE3TST) → zone 3 must NOT be in neededZones
+                InsertQso(db, "VE3TST", "ON", dxcc: 400, zone: 3,  lotwRcvd: "Y");
+                // Zone 5 worked but unconfirmed → zone 5 MUST be in neededZones
+                InsertQso(db, "W0TST",  "CO", dxcc: 100, zone: 5);
+                // Zone 20: never worked → zone 20 MUST be in neededZones
+
+                HashSet<string> neededStates;
+                HashSet<int>    unconfirmedDxcc;
+                HashSet<int>    neededZones;
+                db.LoadHrcCache(out neededStates, out unconfirmedDxcc, out neededZones);
+
+                // ── States ──────────────────────────────────────────────────
+                Check("neededStates: TX confirmed → NOT in set",   neededStates.Contains("TX"), false);
+                Check("neededStates: CA unconfirmed → in set",     neededStates.Contains("CA"), true);
+                Check("neededStates: WY (no QSO) → in set",        neededStates.Contains("WY"), true);
+                Check("neededStates: count ≤ 50",                  neededStates.Count <= 50,    true);
+                // Only TX was confirmed, so 49 states should be needed
+                Check("neededStates: count == 49",                 neededStates.Count == 49,    true);
+                // DC must never appear — it is not a state
+                Check("neededStates: DC never present",            neededStates.Contains("DC"), false);
+
+                // ── DXCC unconfirmed ─────────────────────────────────────────
+                // DXCC 100 has a confirmed QSO → NOT unconfirmed
+                Check("unconfirmedDxcc: DXCC 100 has confirmed → NOT in set",
+                      unconfirmedDxcc.Contains(100), false);
+                // DXCC 200: worked, no confirmation → IS unconfirmed
+                Check("unconfirmedDxcc: DXCC 200 worked/unconfirmed → in set",
+                      unconfirmedDxcc.Contains(200), true);
+                // DXCC 300: confirmed → NOT unconfirmed
+                Check("unconfirmedDxcc: DXCC 300 confirmed → NOT in set",
+                      unconfirmedDxcc.Contains(300), false);
+
+                // ── Zones ────────────────────────────────────────────────────
+                // Zone 3: VE3TST confirmed → NOT needed
+                Check("neededZones: zone 3 confirmed (VE3TST) → NOT in set", neededZones.Contains(3),  false);
+                // Zone 4: W5TX confirmed → NOT needed (W5TX has zone=4, lotwRcvd='Y')
+                Check("neededZones: zone 4 confirmed (W5TX) → NOT in set",   neededZones.Contains(4),  false);
+                Check("neededZones: zone 5 unconfirmed → in set",             neededZones.Contains(5),  true);
+                Check("neededZones: zone 20 (no QSO) → in set",              neededZones.Contains(20), true);
+                // Zone 29: VK2TST confirmed → NOT needed
+                Check("neededZones: zone 29 confirmed (VK2TST) → NOT in set", neededZones.Contains(29), false);
+                Check("neededZones: count ≤ 40",                               neededZones.Count <= 40,  true);
+                // Zones 3, 4, and 29 confirmed → 40 - 3 = 37 zones needed
+                Check("neededZones: count == 37",                              neededZones.Count == 37,  true);
+                // Zone 41 must never be added — only zones 1-40 are valid
+                Check("neededZones: zone 41 never present",                   neededZones.Contains(41), false);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL  HrcCacheTests threw: {ex.GetType().Name}: {ex.Message}");
+            failed++;
+        }
+        finally
+        {
+            try { File.Delete(tmpDb); } catch { }
+        }
+    }
+
+    // Insert a minimal QSO record into a test LogbookDb.
+    // Each callsign produces a unique dedup key — no counter needed.
+    static void InsertQso(LogbookDb db, string call, string state,
+        int dxcc, int zone, string lotwRcvd = "")
+    {
+        string key = AdifImporter.BuildDedupKey(call, "20m", "FT8", "20241201", "1200");
+        // Parameter order: ..., lotwQslSent, lotwQslRcvd, qrzQslSent, qrzQslRcvd, ...
+        db.Upsert(call, "20m", "FT8", "20241201", "1200", "1215",
+            14_074_000, "-10", "-05", state, "Test", dxcc, zone,
+            "", "", "", "", "", "", "",
+            "", lotwRcvd, "", "",
+            "MANUAL", "", key,
+            "", 0, "", "", "", "", "", "", "", "");
     }
 
     // Verify that each AP-suffixed message, once stripped, classifies correctly.
