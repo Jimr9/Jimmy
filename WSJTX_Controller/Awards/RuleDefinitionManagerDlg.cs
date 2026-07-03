@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Windows.Forms;
 
@@ -20,7 +21,7 @@ namespace WSJTX_Controller
         private TextBox   _detailTb;
         private Label     _statusLbl;
         private Button    _viewErrorsBtn;
-        private Button    _editBtn, _duplicateBtn, _renameBtn, _deleteBtn, _enableBtn, _disableBtn;
+        private Button    _editBtn, _duplicateBtn, _renameBtn, _deleteBtn, _enableBtn, _disableBtn, _exportBtn;
 
         private List<RuleDefinition> _allDefs = new List<RuleDefinition>();
         private List<RuleDefinition> _shownDefs = new List<RuleDefinition>();
@@ -34,8 +35,8 @@ namespace WSJTX_Controller
         {
             Text            = "Rule Definition Manager";
             StartPosition   = FormStartPosition.CenterParent;
-            MinimumSize     = new Size(720, 480);
-            Size            = new Size(860, 560);
+            MinimumSize     = new Size(720, 544);
+            Size            = new Size(860, 624);
             FormBorderStyle = FormBorderStyle.Sizable;
             MaximizeBox     = true;
             MinimizeBox     = false;
@@ -153,6 +154,8 @@ namespace WSJTX_Controller
             _duplicateBtn = MakeBtn("&Duplicate...", "Duplicate the selected Rule Definition", (s, e) => DuplicateSelected());
             _renameBtn    = MakeBtn("Rena&me...", "Rename the selected Rule Definition", (s, e) => RenameSelected());
             _deleteBtn    = MakeBtn("De&lete...", "Delete the selected Rule Definition", (s, e) => DeleteSelected());
+            MakeBtn("&Import...", "Import a Rule Definition from a file", (s, e) => ImportRule());
+            _exportBtn    = MakeBtn("E&xport...", "Export the selected Rule Definition", (s, e) => ExportRule());
             by += gap;
             _enableBtn    = MakeBtn("En&able", "Enable the selected Rule Definition", (s, e) => SetEnabled(true));
             _disableBtn   = MakeBtn("&Disable", "Disable the selected Rule Definition", (s, e) => SetEnabled(false));
@@ -166,7 +169,7 @@ namespace WSJTX_Controller
             var closeBtn = new Button
             {
                 Text           = "Close",
-                Location       = new Point(bx, 490),
+                Location       = new Point(bx, 554),
                 Size           = new Size(bw, bh),
                 Anchor         = AnchorStyles.Bottom | AnchorStyles.Right,
                 TabIndex       = tab++,
@@ -244,6 +247,7 @@ namespace WSJTX_Controller
             _deleteBtn.Enabled = has;
             _enableBtn.Enabled = has && !SelectedDef.Enabled;
             _disableBtn.Enabled = has && SelectedDef.Enabled;
+            _exportBtn.Enabled = has;
         }
 
         private void UpdateStatus()
@@ -409,6 +413,260 @@ namespace WSJTX_Controller
                 MessageBox.Show(this, "Could not delete: " + ex.Message,
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        // Exports the selected Rule Definition as a plain .ini file, or -- if it
+        // depends on a companion list file (Universe/LimitTo = "File:xxx.txt") --
+        // as a .zip bundle containing both, so the recipient has everything the
+        // award needs to actually work.
+        private void ExportRule()
+        {
+            var d = SelectedDef;
+            if (d == null) return;
+
+            string companionFile = GetCompanionFileName(d);
+            try
+            {
+                if (companionFile == null)
+                {
+                    using (var sfd = new SaveFileDialog
+                    {
+                        Filter   = "Rule Definition (*.ini)|*.ini",
+                        FileName = d.Id + ".ini",
+                        Title    = "Export Rule Definition",
+                    })
+                    {
+                        if (sfd.ShowDialog(this) != DialogResult.OK) return;
+                        File.Copy(d.SourceFile, sfd.FileName, overwrite: true);
+                    }
+                }
+                else
+                {
+                    using (var sfd = new SaveFileDialog
+                    {
+                        Filter   = "Rule Definition Bundle (*.zip)|*.zip",
+                        FileName = d.Id + ".zip",
+                        Title    = "Export Rule Definition Bundle",
+                    })
+                    {
+                        if (sfd.ShowDialog(this) != DialogResult.OK) return;
+
+                        string companionPath = Path.Combine(RuleLoader.ListsFolder, companionFile);
+                        using (var fs  = new FileStream(sfd.FileName, FileMode.Create))
+                        using (var zip = new ZipArchive(fs, ZipArchiveMode.Create))
+                        {
+                            AddFileEntry(zip, d.Id + ".ini", d.SourceFile);
+                            if (File.Exists(companionPath))
+                                AddFileEntry(zip, companionFile, companionPath);
+                        }
+                    }
+                }
+                MessageBox.Show(this, "Export complete.", "Export Rule Definition",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not export: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // Imports a Rule Definition from a plain .ini file or a .zip bundle
+        // (one .ini plus any companion list files, all flat -- as produced by
+        // ExportRule above). Handles an Id collision by offering to overwrite or
+        // pick a new Id, reusing the same prompt/validation DuplicateSelected()
+        // uses. Never silently leaves a broken file behind: if the imported
+        // definition fails to load, the failure is shown immediately and the
+        // file can be removed on the spot.
+        private void ImportRule()
+        {
+            using (var ofd = new OpenFileDialog
+            {
+                Filter = "Rule Definition (*.ini;*.zip)|*.ini;*.zip|Rule Definition file (*.ini)|*.ini|Rule Definition bundle (*.zip)|*.zip",
+                Title  = "Import Rule Definition",
+            })
+            {
+                if (ofd.ShowDialog(this) != DialogResult.OK) return;
+
+                string tempDir = null;
+                try
+                {
+                    string iniPath;
+                    var companionFiles = new List<string>();
+
+                    if (string.Equals(Path.GetExtension(ofd.FileName), ".zip", StringComparison.OrdinalIgnoreCase))
+                    {
+                        tempDir = Path.Combine(Path.GetTempPath(), "JimmyRuleImport_" + Guid.NewGuid().ToString("N"));
+                        Directory.CreateDirectory(tempDir);
+
+                        string extractedIni = null;
+                        using (var fs  = File.OpenRead(ofd.FileName))
+                        using (var zip = new ZipArchive(fs, ZipArchiveMode.Read))
+                        {
+                            foreach (var entry in zip.Entries)
+                            {
+                                // entry.Name is the bare filename (no path component,
+                                // unlike FullName) -- this is what keeps a malformed
+                                // zip entry from writing outside tempDir.
+                                if (string.IsNullOrEmpty(entry.Name)) continue;
+                                string destPath = Path.Combine(tempDir, entry.Name);
+                                using (var es = entry.Open())
+                                using (var ds = File.Create(destPath))
+                                    es.CopyTo(ds);
+
+                                if (string.Equals(Path.GetExtension(entry.Name), ".ini", StringComparison.OrdinalIgnoreCase))
+                                    extractedIni = destPath;
+                                else
+                                    companionFiles.Add(destPath);
+                            }
+                        }
+                        if (extractedIni == null)
+                        {
+                            MessageBox.Show(this, "The selected zip file does not contain a Rule Definition (.ini) file.",
+                                "Import Rule Definition", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            return;
+                        }
+                        iniPath = extractedIni;
+                    }
+                    else
+                    {
+                        iniPath = ofd.FileName;
+                    }
+
+                    RuleFile incoming;
+                    try { incoming = RuleFile.Load(iniPath); }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(this, "Could not read the file: " + ex.Message, "Import Rule Definition",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+                    string incomingId = incoming.Get("Award", "Id");
+                    if (string.IsNullOrWhiteSpace(incomingId))
+                    {
+                        MessageBox.Show(this, "The selected file does not look like a valid Rule Definition (no [Award] Id found).",
+                            "Import Rule Definition", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    string targetId = incomingId;
+                    bool exists = RuleLibrary.Definitions.Any(x => string.Equals(x.Id, targetId, StringComparison.OrdinalIgnoreCase));
+                    if (exists)
+                    {
+                        var choice = MessageBox.Show(this,
+                            $"A Rule Definition with Id '{targetId}' already exists. Overwrite it?\n\n" +
+                            "Choose No to import under a different Id instead, or Cancel to stop.",
+                            "Rule Definition Already Exists", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
+                        if (choice == DialogResult.Cancel) return;
+                        if (choice == DialogResult.No)
+                        {
+                            targetId = PromptForNewId(targetId + "_IMPORT");
+                            if (targetId == null) return;
+                        }
+                    }
+
+                    // Rewrite the [Award] Id line if a new one was chosen, then copy
+                    // into place -- same File.Copy/File.WriteAllText primitive every
+                    // other button in this dialog already uses.
+                    string iniText = File.ReadAllText(iniPath);
+                    if (!string.Equals(targetId, incomingId, StringComparison.Ordinal))
+                        iniText = System.Text.RegularExpressions.Regex.Replace(
+                            iniText, @"(?im)^\s*Id\s*=.*$", "Id=" + targetId);
+
+                    string destIniPath = Path.Combine(RuleLoader.RulesFolder, targetId + ".ini");
+                    File.WriteAllText(destIniPath, iniText);
+
+                    Directory.CreateDirectory(RuleLoader.ListsFolder);
+                    foreach (var companionPath in companionFiles)
+                        File.Copy(companionPath, Path.Combine(RuleLoader.ListsFolder, Path.GetFileName(companionPath)), overwrite: true);
+
+                    RulesChanged = true;
+                    LoadFromLibrary();
+
+                    var newError = RuleLibrary.LoadErrors.FirstOrDefault(
+                        e => e.StartsWith(targetId + ".ini", StringComparison.OrdinalIgnoreCase));
+                    if (newError != null)
+                    {
+                        var cleanup = MessageBox.Show(this,
+                            "The imported Rule Definition could not be loaded:\n\n" + newError +
+                            "\n\nRemove the file that was just imported?",
+                            "Import Problem", MessageBoxButtons.YesNo, MessageBoxIcon.Error);
+                        if (cleanup == DialogResult.Yes)
+                        {
+                            try { File.Delete(destIniPath); } catch { }
+                            LoadFromLibrary();
+                        }
+                    }
+                    else
+                    {
+                        SelectById(targetId);
+                        MessageBox.Show(this, $"Imported '{targetId}'.", "Import Rule Definition",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "Could not import: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    if (tempDir != null) { try { Directory.Delete(tempDir, true); } catch { } }
+                }
+            }
+        }
+
+        // Same "ask for a new Id, validate the character set, check for a
+        // collision" loop DuplicateSelected() uses -- shared here so Import's
+        // "pick a different Id" path behaves identically. Returns null if the
+        // user cancels.
+        private string PromptForNewId(string initialValue)
+        {
+            while (true)
+            {
+                using (var prompt = new TextPromptDlg(
+                    "Import Rule Definition", "New Rule Id (letters, digits, _ and - only):",
+                    initialValue, "New Rule Id"))
+                {
+                    if (prompt.ShowDialog(this) != DialogResult.OK) return null;
+                    string newId = prompt.Value.ToUpperInvariant();
+
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(newId, @"^[A-Za-z0-9_-]+$"))
+                    {
+                        MessageBox.Show(this, "Rule Id may only contain letters, digits, '_' and '-'.",
+                            "Invalid Id", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        continue;
+                    }
+                    if (RuleLibrary.Definitions.Any(x => string.Equals(x.Id, newId, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        MessageBox.Show(this, $"A Rule Definition with Id '{newId}' already exists.",
+                            "Duplicate Id", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        continue;
+                    }
+                    return newId;
+                }
+            }
+        }
+
+        private static void AddFileEntry(ZipArchive zip, string entryName, string sourcePath)
+        {
+            var entry = zip.CreateEntry(entryName, CompressionLevel.Optimal);
+            using (var entryStream = entry.Open())
+            using (var sourceStream = File.OpenRead(sourcePath))
+                sourceStream.CopyTo(entryStream);
+        }
+
+        // Returns the companion list filename (e.g. "myroster.txt") referenced by
+        // this definition's Universe or LimitTo (the "File:xxx.txt" syntax
+        // RuleUniverse.cs resolves), or null if it doesn't depend on one.
+        private static string GetCompanionFileName(RuleDefinition d) =>
+            FileRefName(d.Universe) ?? FileRefName(d.LimitTo);
+
+        private static string FileRefName(string universeOrLimitTo)
+        {
+            const string prefix = "File:";
+            if (string.IsNullOrWhiteSpace(universeOrLimitTo) ||
+                !universeOrLimitTo.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return null;
+            return universeOrLimitTo.Substring(prefix.Length).Trim();
         }
 
         private void SetEnabled(bool enabled)
