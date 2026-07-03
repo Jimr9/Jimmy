@@ -75,7 +75,9 @@
     <Compile Include="Logbook\LogbookDb.cs" />
     <Compile Include="Logbook\AdifParser.cs" />
     <Compile Include="Logbook\AdifImporter.cs" />
+    <Compile Include="Logbook\AdifRecordBuilder.cs" />
     <Compile Include="Logbook\QrzLogbookClient.cs" />
+    <Compile Include="Logbook\ClubLogUploadClient.cs" />
     <Compile Include="Logbook\LoTWQsoClient.cs" />
     <Compile Include="Logbook\LogbookWindow.cs">
       <SubType>Form</SubType>

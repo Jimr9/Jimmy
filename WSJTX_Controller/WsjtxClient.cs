@@ -87,8 +87,10 @@ namespace WSJTX_Controller
         private bool _lastAddCallCategoryPlayed;
         private Dictionary<string, DateTime> _wantedAnywhereAlertTimes   = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, DateTime> _oppositePeriodAlertTimes    = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, DateTime> _awardAlertTimes             = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
         private const int WantedAnywhereAlertCooldownSecs  = 30;
         private const int OppositePeriodAlertCooldownSecs  = 45;
+        private const int AwardAlertCooldownSecs           = 30;
         private bool txEnabled = false;
         private bool txEnabledConf = false;
         private bool wsjtxTxEnableButton = false;
@@ -401,19 +403,23 @@ namespace WSJTX_Controller
         public HashSet<int>    hrcUnconfirmedDxcc = new HashSet<int>();
         public HashSet<int>    hrcNeededZones     = new HashSet<int>();
 
-        // Still Need live-tag cache -- built from whichever Rule Definition is
-        // currently selected in the Logbook window's Still Need tab (see
-        // Controller.RefreshStillNeedCache()). Independent of the fixed HRC sets
-        // above: this supports any enabled Rule Definition, not just WAS/DXCC/WAZ,
-        // but only GroupBy kinds with a fast decode-time field are usable (see
-        // Controller.StillNeedLiveTagGroupBys). stillNeedUsable is false (and the
-        // set empty) whenever no rule is selected, the selected rule's GroupBy
-        // isn't one of those kinds, or the rule has no fixed still-needed
-        // checklist (e.g. Target=COUNT/LEVELS awards never produce one).
-        public HashSet<string> stillNeedSet      = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        public RuleGroupBy     stillNeedGroupBy  = RuleGroupBy.None;
-        public string          stillNeedRuleName;
-        public bool            stillNeedUsable;
+        // One entry per Rule Definition currently checked for live tagging in the
+        // Logbook window's Still Need tab (see Controller.RefreshStillNeedCache()).
+        // Independent of the fixed HRC sets above: this supports any enabled Rule
+        // Definition, not just WAS/DXCC/WAZ, and several can be active at once.
+        // Only GroupBy kinds with a fast decode-time field are usable (see
+        // RuleEngine.SupportsLiveTag). A rule is simply absent from this dictionary
+        // whenever it isn't checked, its GroupBy isn't one of those kinds, or it has
+        // no fixed still-needed checklist (e.g. Target=COUNT/LEVELS awards never
+        // produce one).
+        public class ActiveAwardTag
+        {
+            public string          RuleId;
+            public string          RuleName;
+            public RuleGroupBy     GroupBy;
+            public HashSet<string> Set;
+        }
+        public Dictionary<string, ActiveAwardTag> activeAwardTags = new Dictionary<string, ActiveAwardTag>();
 
         // Returns the ADIF-style band string for the current dial frequency (e.g. "20m"),
         // or null when the frequency is unknown or off-band.
@@ -528,6 +534,7 @@ namespace WSJTX_Controller
         public WsjtxClient(Controller c, IPAddress reqIpAddress, int reqPort, bool reqMulticast, bool reqOverrideUdpDetect, bool reqDebug, bool reqLog, WsjtxClient.TxModes tMode)
         {
             ctrl = c;           //used for accessing/updating UI
+            RefreshResourceFileCache();
             ipAddress = reqIpAddress;
             port = reqPort;
             multicast = reqMulticast;
@@ -2211,8 +2218,99 @@ namespace WSJTX_Controller
                         cqPaused = false;
                         SetupCq(true);
                     }
+
+                    HandleLiveQsoLogged(qMsg);
                 }
             }
+        }
+
+        // Feeds a just-logged QSO into Jimmy's local logbook database (via the same
+        // dedup-safe AdifImporter pipeline already used for QRZ/LoTW/manual imports,
+        // so My Log/Awards/Still Need reflect it immediately) and, if the user has
+        // opted into real-time upload for QRZ and/or Club Log, sends it there too.
+        // Runs on a background task so a slow/failed network call never blocks
+        // WSJT-X message processing; all exceptions are caught and logged, never
+        // allowed to propagate.
+        private void HandleLiveQsoLogged(QsoLoggedMessage qMsg)
+        {
+            Task.Run(async () =>
+            {
+                try
+                {
+                    double freqMhz = qMsg.TxFrequency / 1_000_000.0;
+                    string freqMhzStr = freqMhz.ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture);
+                    string band = AdifImporter.NormalizeBand("", freqMhzStr);
+                    string qsoDate = qMsg.DateTimeOn.ToString("yyyyMMdd");
+                    string timeOn  = qMsg.DateTimeOn.ToString("HHmmss");
+                    string timeOff = qMsg.DateTimeOff.ToString("HHmmss");
+
+                    var fields = new Dictionary<string, string>
+                    {
+                        ["CALL"]             = qMsg.DxCall ?? "",
+                        ["BAND"]             = band,
+                        ["FREQ"]             = freqMhzStr,
+                        ["MODE"]             = qMsg.Mode ?? "",
+                        ["QSO_DATE"]         = qsoDate,
+                        ["TIME_ON"]          = timeOn,
+                        ["TIME_OFF"]         = timeOff,
+                        ["RST_SENT"]         = qMsg.ReportSent ?? "",
+                        ["RST_RCVD"]         = qMsg.ReportReceived ?? "",
+                        ["GRIDSQUARE"]       = qMsg.DxGrid ?? "",
+                        ["NAME"]             = qMsg.Name ?? "",
+                        ["COMMENT"]          = qMsg.Comments ?? "",
+                        ["TX_PWR"]           = qMsg.TxPower ?? "",
+                        ["OPERATOR"]         = qMsg.OperatorCall ?? "",
+                        ["STATION_CALLSIGN"] = qMsg.MyCall ?? "",
+                        ["MY_GRIDSQUARE"]    = qMsg.MyGrid ?? "",
+                        ["STX_STRING"]       = qMsg.ExchangeSent ?? "",
+                        ["SRX_STRING"]       = qMsg.ExchangeReceived ?? "",
+                    };
+
+                    string dedupKey = AdifImporter.BuildDedupKey(qMsg.DxCall ?? "", band, qMsg.Mode ?? "", qsoDate, timeOn);
+
+                    using (var db = new LogbookDb())
+                    {
+                        AdifImporter.Import(db, new[] { fields }, "WSJTX", null);
+
+                        bool needQrz = ctrl.qrzUploadEnabled && ctrl.qrzUploadRealtime &&
+                                       !string.IsNullOrWhiteSpace(ctrl.qrzLogbookApiKey);
+                        bool needClubLog = ctrl.clubLogUploadEnabled && ctrl.clubLogUploadRealtime &&
+                                       !string.IsNullOrWhiteSpace(ctrl.clubLogUploadEmail) &&
+                                       !string.IsNullOrWhiteSpace(ctrl.clubLogUploadPassword) &&
+                                       !string.IsNullOrWhiteSpace(ctrl.clubLogUploadCallsign);
+
+                        if (!needQrz && !needClubLog) return;
+
+                        string adifRecord = AdifRecordBuilder.Build(
+                            qMsg.DxCall ?? "", band, (long)qMsg.TxFrequency, qMsg.Mode ?? "",
+                            qsoDate, timeOn, timeOff, qMsg.ReportSent ?? "", qMsg.ReportReceived ?? "",
+                            qMsg.DxGrid ?? "", qMsg.Name ?? "", qMsg.Comments ?? "", qMsg.TxPower ?? "",
+                            qMsg.OperatorCall ?? "", qMsg.MyCall ?? "", qMsg.MyGrid ?? "",
+                            qMsg.ExchangeSent ?? "", qMsg.ExchangeReceived ?? "");
+
+                        if (needQrz)
+                        {
+                            var qrzClient = new QrzLogbookClient();
+                            bool ok = await qrzClient.InsertAsync(ctrl.qrzLogbookApiKey, adifRecord).ConfigureAwait(false);
+                            if (ok) db.MarkUploaded(dedupKey, "QRZ", DateTime.UtcNow);
+                            else DebugOutput($"{Time()} QRZ real-time upload failed for {qMsg.DxCall}: {qrzClient.LastError}");
+                        }
+
+                        if (needClubLog)
+                        {
+                            var clClient = new ClubLogUploadClient();
+                            bool ok = await clClient.RealtimeUploadAsync(
+                                ctrl.clubLogUploadEmail, ctrl.clubLogUploadPassword, ctrl.clubLogUploadCallsign, adifRecord).ConfigureAwait(false);
+                            if (ok) db.MarkUploaded(dedupKey, "CLUBLOG", DateTime.UtcNow);
+                            else DebugOutput($"{Time()} Club Log real-time upload failed for {qMsg.DxCall}: {clClient.LastError}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DebugOutput($"{Time()} HandleLiveQsoLogged error: {ex.Message}");
+                }
+            });
         }
 
         private void ProcessDecodeMsg(EnqueueDecodeMessage dmsg, bool isSpecOp)
@@ -2279,6 +2377,7 @@ namespace WSJTX_Controller
             }
 
             dmsg.Category = DeriveCategory(dmsg);   //after Priority set; before SetRank
+            CheckAwardAlert(dmsg);   // independent of Category/Call Filters admission -- see method comment
             SetRank(dmsg);      //only after priority set
 
             UpdateCallQueue(deCall, dmsg);      //newest call from station replaces older in call queue, so quality is kept current for sorting
@@ -3868,15 +3967,31 @@ namespace WSJTX_Controller
 
         public void Play(string strFileName)
         {
-            if (string.IsNullOrEmpty(strFileName)) return;
-            string resolved = ResolveSoundPath(strFileName);
+            Play(strFileName, null, null);
+        }
+
+        public void Play(string strFileName, string callsign, string key)
+        {
+            string resolved = ResolveSoundPath(strFileName, callsign, key);
             if (resolved != null) soundQueue.Enqueue(resolved);
         }
 
         public bool PlaySoundEvent(bool enabled, string file)
         {
-            if (!ctrl.soundsEnabled || !enabled || string.IsNullOrEmpty(file)) return false;
-            Play(file);
+            return PlaySoundEvent(enabled, file, null, null);
+        }
+
+        // callsign/key let a more specific drop-in sound file win over the configured
+        // default -- see ResolveSoundPath. Returns whether a sound actually resolved and
+        // was queued (not merely whether one was nominally configured), so callers that
+        // fall back to a generic sound when this returns false never go silent just
+        // because a configured file went missing.
+        public bool PlaySoundEvent(bool enabled, string file, string callsign, string key)
+        {
+            if (!ctrl.soundsEnabled || !enabled) return false;
+            string resolved = ResolveSoundPath(file, callsign, key);
+            if (resolved == null) return false;
+            soundQueue.Enqueue(resolved);
             return true;
         }
 
@@ -3886,38 +4001,90 @@ namespace WSJTX_Controller
             Play(file);
         }
 
-        private string ResolveSoundPath(string name)
+        // Filenames present in Resources/, refreshed at startup and whenever Options
+        // closes -- kept in memory so every sound lookup is a HashSet check, not a disk
+        // hit, even when trying several drop-in-file candidates per alert.
+        private HashSet<string> _resourceFileNames;
+        private string _resourceDir;
+
+        public void RefreshResourceFileCache()
         {
+            try
+            {
+                _resourceDir = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "Resources");
+                _resourceFileNames = Directory.Exists(_resourceDir)
+                    ? new HashSet<string>(Directory.GetFiles(_resourceDir).Select(Path.GetFileName), StringComparer.OrdinalIgnoreCase)
+                    : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                _resourceDir = null;
+                _resourceFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        // Tries, in order: a callsign-specific file (e.g. KG4CCG.wav), a rule/category-key
+        // -specific file (e.g. WAS.wav, NEW_COUNTRY.wav), then the file configured in
+        // Options -- the only behavior that existed before this. All three live in the same
+        // Resources folder already used for configured sounds; no new folder, no new
+        // Options UI needed for the first two.
+        private string ResolveSoundPath(string name, string callsign, string key)
+        {
+            if (_resourceFileNames == null) RefreshResourceFileCache();
+
+            if (!string.IsNullOrEmpty(callsign))
+            {
+                string candidate = SanitizeSoundFileName(callsign) + ".wav";
+                if (_resourceFileNames.Contains(candidate)) return Path.Combine(_resourceDir, candidate);
+            }
+            if (!string.IsNullOrEmpty(key))
+            {
+                string candidate = SanitizeSoundFileName(key) + ".wav";
+                if (_resourceFileNames.Contains(candidate)) return Path.Combine(_resourceDir, candidate);
+            }
+
             if (string.IsNullOrEmpty(name)) return null;
             if (Path.IsPathRooted(name))
                 return File.Exists(name) ? name : null;
-            string exeDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            string resolved = Path.Combine(exeDir, "Resources", name);
-            return File.Exists(resolved) ? resolved : null;
+            return _resourceFileNames.Contains(name) ? Path.Combine(_resourceDir, name) : null;
+        }
+
+        private static string SanitizeSoundFileName(string s)
+        {
+            foreach (char c in Path.GetInvalidFileNameChars())
+                s = s.Replace(c, '_');
+            return s;
         }
 
         private bool PlayCategorySound(EnqueueDecodeMessage msg)
         {
+            string call = msg.DeCall();
             switch (msg.Category)
             {
                 case CallCategory.TO_MYCALL:
-                    return PlaySoundEvent(ctrl.mycallCheckBox.Checked, ctrl.soundFile_CallingMe);
+                    return PlaySoundEvent(ctrl.mycallCheckBox.Checked, ctrl.soundFile_CallingMe, call, "CALLING_ME");
                 case CallCategory.NEW_COUNTRY:
-                    return PlaySoundEvent(ctrl.soundEnabled_NewDxcc, ctrl.soundFile_NewDxcc);
+                    return PlaySoundEvent(ctrl.soundEnabled_NewDxcc, ctrl.soundFile_NewDxcc, call, "NEW_COUNTRY");
                 case CallCategory.NEW_COUNTRY_ON_BAND:
-                    return PlaySoundEvent(ctrl.soundEnabled_NewDxccOnBand, ctrl.soundFile_NewDxccOnBand);
+                    return PlaySoundEvent(ctrl.soundEnabled_NewDxccOnBand, ctrl.soundFile_NewDxccOnBand, call, "NEW_COUNTRY_ON_BAND");
                 case CallCategory.ALWAYS_WANTED:
-                    return PlaySoundEvent(ctrl.soundEnabled_AlwaysWanted, ctrl.soundFile_AlwaysWanted);
+                    return PlaySoundEvent(ctrl.soundEnabled_AlwaysWanted, ctrl.soundFile_AlwaysWanted, call, "ALWAYS_WANTED");
                 case CallCategory.WANTED_CQ:
                     if (IsPotaCall(msg) && ctrl.soundEnabled_Pota && !string.IsNullOrEmpty(ctrl.soundFile_Pota))
-                        return PlaySoundEvent(ctrl.soundEnabled_Pota, ctrl.soundFile_Pota);
+                        return PlaySoundEvent(ctrl.soundEnabled_Pota, ctrl.soundFile_Pota, call, "POTA");
                     if (IsSotaCall(msg) && ctrl.soundEnabled_Sota && !string.IsNullOrEmpty(ctrl.soundFile_Sota))
-                        return PlaySoundEvent(ctrl.soundEnabled_Sota, ctrl.soundFile_Sota);
-                    return PlaySoundEvent(ctrl.soundEnabled_DirectedCq, ctrl.soundFile_DirectedCq);
+                        return PlaySoundEvent(ctrl.soundEnabled_Sota, ctrl.soundFile_Sota, call, "SOTA");
+                    return PlaySoundEvent(ctrl.soundEnabled_DirectedCq, ctrl.soundFile_DirectedCq, call, "DIRECTED_CQ");
                 case CallCategory.POTA:
-                    return PlaySoundEvent(ctrl.soundEnabled_Pota, ctrl.soundFile_Pota);
+                    return PlaySoundEvent(ctrl.soundEnabled_Pota, ctrl.soundFile_Pota, call, "POTA");
                 case CallCategory.SOTA:
-                    return PlaySoundEvent(ctrl.soundEnabled_Sota, ctrl.soundFile_Sota);
+                    return PlaySoundEvent(ctrl.soundEnabled_Sota, ctrl.soundFile_Sota, call, "SOTA");
+                case CallCategory.STILL_NEEDED:
+                    // The award-match sound is handled uniformly by CheckAwardAlert, which
+                    // runs independently of Category/admission for every decode -- returning
+                    // true here just prevents the generic "Call added" fallback from also
+                    // playing for the same, already-alerted station.
+                    return true;
                 default:
                     return false;
             }
@@ -3944,9 +4111,20 @@ namespace WSJTX_Controller
                 case CallCategory.WAS_NEEDED:          return "WAS Needed";
                 case CallCategory.DXCC_UNCONFIRMED:    return "DXCC Unconf";
                 case CallCategory.ZONE_NEEDED:         return "Zone Needed";
-                case CallCategory.STILL_NEEDED:        return (stillNeedRuleName ?? "Still") + " Needed";
+                case CallCategory.STILL_NEEDED:        return AwardDisplayName(d) + " Needed";
                 default:                               return "";
             }
+        }
+
+        // Looks up the display name of whichever active award this message matched
+        // (stashed on the message by DeriveCategory/CheckAwardAlert), falling back to a
+        // generic label if the rule can't be found (e.g. unchecked between match and display).
+        private string AwardDisplayName(EnqueueDecodeMessage d)
+        {
+            ActiveAwardTag tag;
+            if (!string.IsNullOrEmpty(d.MatchedAwardRuleId) && activeAwardTags.TryGetValue(d.MatchedAwardRuleId, out tag))
+                return tag.RuleName;
+            return "Still";
         }
 
         private void ShowQueue()
@@ -4247,7 +4425,7 @@ namespace WSJTX_Controller
                     if (d.Category == CallCategory.WANTED_CQ)
                         tag = WsjtxMessage.DirectedTo(d.Message) ?? "Dir CQ";
                     else if (d.Category == CallCategory.STILL_NEEDED)
-                        tag = (stillNeedRuleName ?? "Still") + " Needed";
+                        tag = AwardDisplayName(d) + " Needed";
                     else
                         RawTagLabels.TryGetValue(d.Category, out tag);
                     if (!string.IsNullOrEmpty(tag))
@@ -5963,11 +6141,100 @@ namespace WSJTX_Controller
             return true;
         }
 
+        // Alt+U. Originally LoTW-only; now also triggers the QRZ/Club Log upload
+        // catch-up when those services are configured+enabled, so pressing this one
+        // key sends everything pending to every enabled service. Each part is
+        // independently gated -- an unconfigured/disabled service is silently
+        // skipped, never attempted.
         public bool UploadLotw()
         {
             HaltTuning();
-            StartUploadLotw();
+            if (ctrl.lotwUploadEnabled)
+                StartUploadLotw();
+            RunUploadCatchUp();
             return true;
+        }
+
+        // Sends every QSO not yet uploaded to QRZ/Club Log. This is the batch
+        // safety net: it runs regardless of whether real-time upload is on for a
+        // service (normally finding nothing to do in that case), and it is the
+        // only path at all when real-time is off. Runs in the background --
+        // Alt+U returns immediately, matching the existing LoTW behavior where
+        // WSJT-X performs its upload asynchronously on its own too.
+        private void RunUploadCatchUp()
+        {
+            Task.Run(async () =>
+            {
+                try
+                {
+                    using (var db = new LogbookDb())
+                    {
+                        if (ctrl.qrzUploadEnabled && !string.IsNullOrWhiteSpace(ctrl.qrzLogbookApiKey))
+                            await CatchUpQrz(db).ConfigureAwait(false);
+
+                        if (ctrl.clubLogUploadEnabled &&
+                            !string.IsNullOrWhiteSpace(ctrl.clubLogUploadEmail) &&
+                            !string.IsNullOrWhiteSpace(ctrl.clubLogUploadPassword) &&
+                            !string.IsNullOrWhiteSpace(ctrl.clubLogUploadCallsign))
+                            await CatchUpClubLog(db).ConfigureAwait(false);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DebugOutput($"{Time()} RunUploadCatchUp error: {ex.Message}");
+                }
+            });
+        }
+
+        // QRZ's INSERT is single-QSO-per-call (no batch parameter), so a backlog is
+        // sent as a loop with a small courtesy delay between calls -- QRZ documents
+        // no hard rate limit, but other logging software follows this same pattern.
+        private async Task CatchUpQrz(LogbookDb db)
+        {
+            var pending = db.GetPendingUploads("QRZ");
+            if (pending.Count == 0) return;
+            DebugOutput($"{Time()} QRZ upload catch-up: {pending.Count} pending QSO(s).");
+            var client = new QrzLogbookClient();
+            foreach (var q in pending)
+            {
+                string adifRecord = AdifRecordBuilder.Build(
+                    q.Callsign, q.Band, q.FreqHz, q.Mode, q.QsoDate, q.TimeOn, q.TimeOff,
+                    q.RstSent, q.RstRcvd, q.Grid, q.Name, q.Comment, q.TxPwr,
+                    q.OperatorCall, q.StationCall, q.MyGrid, q.ExchangeSent, q.ExchangeRcvd);
+                bool ok = await client.InsertAsync(ctrl.qrzLogbookApiKey, adifRecord).ConfigureAwait(false);
+                if (ok) db.MarkUploaded(q.DedupKey, "QRZ", DateTime.UtcNow);
+                else DebugOutput($"{Time()} QRZ upload catch-up failed for {q.Callsign}: {client.LastError}");
+                await Task.Delay(300).ConfigureAwait(false);
+            }
+        }
+
+        // Club Log's own guidance is that a backlog must go through putlogs.php
+        // (one file, one request) rather than looping realtime.php -- so the whole
+        // pending set is sent as a single batch upload here.
+        private async Task CatchUpClubLog(LogbookDb db)
+        {
+            var pending = db.GetPendingUploads("CLUBLOG");
+            if (pending.Count == 0) return;
+            DebugOutput($"{Time()} Club Log upload catch-up: {pending.Count} pending QSO(s).");
+
+            var sb = new StringBuilder();
+            foreach (var q in pending)
+            {
+                sb.Append(AdifRecordBuilder.Build(
+                    q.Callsign, q.Band, q.FreqHz, q.Mode, q.QsoDate, q.TimeOn, q.TimeOff,
+                    q.RstSent, q.RstRcvd, q.Grid, q.Name, q.Comment, q.TxPwr,
+                    q.OperatorCall, q.StationCall, q.MyGrid, q.ExchangeSent, q.ExchangeRcvd));
+            }
+
+            var client = new ClubLogUploadClient();
+            bool ok = await client.BatchUploadAsync(
+                ctrl.clubLogUploadEmail, ctrl.clubLogUploadPassword, ctrl.clubLogUploadCallsign,
+                ClubLogAppKey.Resolve(), sb.ToString()).ConfigureAwait(false);
+
+            if (ok)
+                foreach (var q in pending) db.MarkUploaded(q.DedupKey, "CLUBLOG", DateTime.UtcNow);
+            else
+                DebugOutput($"{Time()} Club Log upload catch-up failed ({pending.Count} QSOs): {client.LastError}");
         }
 
         // Alt+N: Walk Call Filter order (outer), then rank order within each category (inner).
@@ -7473,12 +7740,38 @@ namespace WSJTX_Controller
                     else if (IsHrcWasNeeded(d))       cat = CallCategory.WAS_NEEDED;
                     else if (IsHrcDxccUnconfirmed(d)) cat = CallCategory.DXCC_UNCONFIRMED;
                     else if (IsHrcZoneNeeded(d))      cat = CallCategory.ZONE_NEEDED;
-                    else if (IsRuleStillNeeded(d))    cat = CallCategory.STILL_NEEDED;
-                    else cat = CallCategory.DEFAULT;
+                    else
+                    {
+                        string matchedRuleId = MatchedAwardRuleId(d);
+                        if (matchedRuleId != null) { cat = CallCategory.STILL_NEEDED; d.MatchedAwardRuleId = matchedRuleId; }
+                        else cat = CallCategory.DEFAULT;
+                    }
                     break;
             }
             if (debug) DebugOutput($"{spacer}DeriveCategory: '{d.DeCall()}' pri:{d.Priority} → {cat}");
             return cat;
+        }
+
+        // Independent of Category/Call Filters admission by design: a station can be
+        // classified NEW_COUNTRY (or anything else) for ranking/queueing purposes and
+        // still separately match one of the actively-checked awards -- e.g. turning off
+        // "New DXCC" during a DXCC contest must not also silence award alerts for the
+        // same stations. This runs for every decode, admitted or not, and plays the
+        // "Award Needed" sound (with its own cooldown) when a match is found. It does
+        // not affect ranking, Priority, Category, or Call Filters admission in any way.
+        private void CheckAwardAlert(EnqueueDecodeMessage d)
+        {
+            if (activeAwardTags.Count == 0) return;
+            string call = d.DeCall();
+            if (string.IsNullOrEmpty(call)) return;
+
+            string matchedRuleId = MatchedAwardRuleId(d);
+            if (matchedRuleId == null) return;
+            if (d.MatchedAwardRuleId == null) d.MatchedAwardRuleId = matchedRuleId;
+
+            if (!IsAlertCooledDown(_awardAlertTimes, call, AwardAlertCooldownSecs)) return;
+            _awardAlertTimes[call] = DateTime.UtcNow;
+            PlaySoundEvent(ctrl.soundEnabled_AwardNeeded, ctrl.soundFile_AwardNeeded, call, matchedRuleId);
         }
 
         // Returns true if dmsg is associated with a "CQ SOTA" transmission.
@@ -7494,9 +7787,12 @@ namespace WSJTX_Controller
         // All three read only in-memory HashSets populated at startup / after import.
         // If the HRC database is unavailable, the sets remain empty and these return false.
 
+        // Each guarded by activeAwardRuleIds so it auto-retires the moment the equivalent
+        // generic award (WAS/DXCC/WAZ) is checked in the new Still Need list -- no double
+        // alerts, and nothing changes for anyone who hasn't checked the new equivalent.
         private bool IsHrcWasNeeded(EnqueueDecodeMessage d)
         {
-            if (hrcNeededStates.Count == 0) return false;
+            if (hrcNeededStates.Count == 0 || ctrl.activeAwardRuleIds.Contains("WAS")) return false;
             string grid = WsjtxMessage.Grid(d.Message);
             if (string.IsNullOrEmpty(grid)) return false;
             string state = GridToUsState(grid);
@@ -7505,7 +7801,7 @@ namespace WSJTX_Controller
 
         private bool IsHrcDxccUnconfirmed(EnqueueDecodeMessage d)
         {
-            if (hrcUnconfirmedDxcc.Count == 0) return false;
+            if (hrcUnconfirmedDxcc.Count == 0 || ctrl.activeAwardRuleIds.Contains("DXCC")) return false;
             string call = d.DeCall();
             if (string.IsNullOrEmpty(call)) return false;
             var entity = lookupManager.GetClubLogEntity(call);
@@ -7514,57 +7810,70 @@ namespace WSJTX_Controller
 
         private bool IsHrcZoneNeeded(EnqueueDecodeMessage d)
         {
-            if (hrcNeededZones.Count == 0) return false;
+            if (hrcNeededZones.Count == 0 || ctrl.activeAwardRuleIds.Contains("WAZ")) return false;
             string call = d.DeCall();
             if (string.IsNullOrEmpty(call)) return false;
             var entity = lookupManager.GetClubLogEntity(call);
             return entity != null && entity.CqZone > 0 && hrcNeededZones.Contains(entity.CqZone);
         }
 
-        // Matches a decode against the Still Need live-tag cache (stillNeedSet), built by
-        // Controller.RefreshStillNeedCache() from the Rule Definition currently selected in
+        // Matches a decode against every actively-checked award (activeAwardTags), built by
+        // Controller.RefreshStillNeedCache() from whichever Rule Definitions are checked in
         // the Still Need tab. Only a fast in-memory lookup happens here -- the RuleEngine
-        // evaluation itself already ran once, at selection/refresh time, not per decode.
-        // The field used to derive the match key depends on the rule's GroupBy; kinds not
-        // listed here are never marked usable by RefreshStillNeedCache (see that method for why).
-        private bool IsRuleStillNeeded(EnqueueDecodeMessage d)
+        // evaluation itself already ran once per rule, at selection/refresh time, not per
+        // decode. Returns the matched rule's Id, or null if none matched. The field used to
+        // derive the match key depends on each rule's GroupBy; kinds not listed here are
+        // never included in activeAwardTags (see RuleEngine.SupportsLiveTag).
+        private string MatchedAwardRuleId(EnqueueDecodeMessage d)
         {
-            if (!stillNeedUsable || stillNeedSet.Count == 0) return false;
+            if (activeAwardTags.Count == 0) return null;
             string call = d.DeCall();
-            if (string.IsNullOrEmpty(call)) return false;
+            if (string.IsNullOrEmpty(call)) return null;
 
-            switch (stillNeedGroupBy)
+            foreach (var tag in activeAwardTags.Values)
             {
-                case RuleGroupBy.Callsign:
-                    return stillNeedSet.Contains(call);
-
-                case RuleGroupBy.State:
-                    string grid = WsjtxMessage.Grid(d.Message);
-                    if (string.IsNullOrEmpty(grid)) return false;
-                    string state = GridToUsState(grid);
-                    return !string.IsNullOrEmpty(state) && stillNeedSet.Contains(state);
-
-                case RuleGroupBy.CqZone:
+                if (tag.Set.Count == 0) continue;
+                bool match;
+                switch (tag.GroupBy)
                 {
-                    var entity = lookupManager.GetClubLogEntity(call);
-                    return entity != null && entity.CqZone > 0 && stillNeedSet.Contains(entity.CqZone.ToString());
+                    case RuleGroupBy.Callsign:
+                        match = tag.Set.Contains(call);
+                        break;
+
+                    case RuleGroupBy.State:
+                        string grid = WsjtxMessage.Grid(d.Message);
+                        string state = string.IsNullOrEmpty(grid) ? null : GridToUsState(grid);
+                        match = !string.IsNullOrEmpty(state) && tag.Set.Contains(state);
+                        break;
+
+                    case RuleGroupBy.CqZone:
+                    {
+                        var entity = lookupManager.GetClubLogEntity(call);
+                        match = entity != null && entity.CqZone > 0 && tag.Set.Contains(entity.CqZone.ToString());
+                        break;
+                    }
+
+                    case RuleGroupBy.Continent:
+                        // d.Continent comes straight from WSJT-X's own decode message -- always
+                        // available, no Club Log dependency (unlike CqZone/Dxcc above, WSJT-X
+                        // doesn't supply those as decode fields, only country/continent).
+                        match = !string.IsNullOrEmpty(d.Continent) && tag.Set.Contains(d.Continent);
+                        break;
+
+                    case RuleGroupBy.Dxcc:
+                    {
+                        var entity = lookupManager.GetClubLogEntity(call);
+                        match = entity != null && entity.Adif > 0 && tag.Set.Contains(entity.Adif.ToString());
+                        break;
+                    }
+
+                    default:
+                        match = false;
+                        break;
                 }
-
-                case RuleGroupBy.Continent:
-                    // d.Continent comes straight from WSJT-X's own decode message -- always
-                    // available, no Club Log dependency (unlike CqZone/Dxcc below, WSJT-X
-                    // doesn't supply those as decode fields, only country/continent).
-                    return !string.IsNullOrEmpty(d.Continent) && stillNeedSet.Contains(d.Continent);
-
-                case RuleGroupBy.Dxcc:
-                {
-                    var entity = lookupManager.GetClubLogEntity(call);
-                    return entity != null && entity.Adif > 0 && stillNeedSet.Contains(entity.Adif.ToString());
-                }
-
-                default:
-                    return false;
+                if (match) return tag.RuleId;
             }
+            return null;
         }
 
         private void SetRank(EnqueueDecodeMessage d)

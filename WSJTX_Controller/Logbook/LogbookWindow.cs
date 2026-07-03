@@ -17,10 +17,12 @@ namespace WSJTX_Controller
         private readonly string   _qrzApiKey;
         private readonly string   _lotwUser;
         private readonly string   _lotwPass;
+        private readonly string   _clubLogEmail;
+        private readonly string   _clubLogPassword;
+        private readonly string   _clubLogCallsign;
         private readonly Action   _onImportComplete;
-        private readonly string   _initialStillNeedRuleId;
-        private readonly Action<string> _onStillNeedRuleChanged;
-        private string            _lastNotifiedStillNeedRuleId;
+        private readonly HashSet<string> _activeAwardRuleIds;
+        private readonly Action<string, bool> _onActiveAwardRuleIdsChanged;
 
         // ── Database ──────────────────────────────────────────────────────────────
         private LogbookDb _db;
@@ -58,6 +60,7 @@ namespace WSJTX_Controller
 
         // ── Still Need controls ────────────────────────────────────────────────────
         private ComboBox _neededTypeCb;
+        private CheckBox _neededActiveCb;
         private ComboBox _neededBandCb;
         private ListView _neededLv;
         private Label    _neededCountLbl;
@@ -69,13 +72,16 @@ namespace WSJTX_Controller
         private Button   _searchBtn;
         private Label    _searchCountLbl;
         private ListView _searchLv;
+        private Button   _searchClearBtn;
 
         // ── Sync controls ─────────────────────────────────────────────────────────
         private Button   _syncImportBtn;
         private Button   _syncQrzBtn;
         private Button   _syncLotwBtn;
+        private Button   _syncClubLogBtn;
         private Label    _srcQrzStatusLbl;
         private Label    _srcLotwStatusLbl;
+        private Label    _srcClubLogStatusLbl;
         private ListView _srcHistoryLv;
 
         // ── Page constants ────────────────────────────────────────────────────────
@@ -93,17 +99,21 @@ namespace WSJTX_Controller
         // ── Constructor ───────────────────────────────────────────────────────────
 
         public LogbookWindow(IniFile ini, string qrzApiKey, string lotwUser, string lotwPass,
+            string clubLogEmail = null, string clubLogPassword = null, string clubLogCallsign = null,
             Action onImportComplete = null,
-            string initialStillNeedRuleId = null,
-            Action<string> onStillNeedRuleChanged = null)
+            HashSet<string> initialActiveAwardRuleIds = null,
+            Action<string, bool> onActiveAwardRuleIdsChanged = null)
         {
             _ini              = ini;
             _qrzApiKey        = qrzApiKey ?? "";
             _lotwUser         = lotwUser  ?? "";
             _lotwPass         = lotwPass  ?? "";
+            _clubLogEmail     = clubLogEmail    ?? "";
+            _clubLogPassword  = clubLogPassword ?? "";
+            _clubLogCallsign  = clubLogCallsign ?? "";
             _onImportComplete = onImportComplete;
-            _initialStillNeedRuleId = initialStillNeedRuleId;
-            _onStillNeedRuleChanged = onStillNeedRuleChanged;
+            _activeAwardRuleIds = initialActiveAwardRuleIds ?? new HashSet<string>();
+            _onActiveAwardRuleIdsChanged = onActiveAwardRuleIdsChanged;
 
             Text            = "Ham Radio Center — Logbook";
             MinimumSize     = new Size(720, 500);
@@ -139,6 +149,22 @@ namespace WSJTX_Controller
 
             // Status bar at the bottom — read-only TextBox so JAWS can focus and read it on demand.
             var statusPanel = new Panel { Dock = DockStyle.Bottom, Height = 22, BackColor = SystemColors.Control };
+
+            // Close button — a single shared control (not per-tab) so it lands last in tab
+            // order on every tab, satisfying "Close appears consistently on all tabs" without
+            // duplicating a button inside each TabPage.
+            var closeBtn = new Button
+            {
+                Text           = "Close",
+                Dock           = DockStyle.Right,
+                Width          = 70,
+                Font           = font,
+                TabIndex       = 2,
+                AccessibleName = "Close",
+            };
+            closeBtn.Click += (s, e) => this.Close();
+            statusPanel.Controls.Add(closeBtn);
+
             _statusTb = new TextBox
             {
                 Dock           = DockStyle.Fill,
@@ -276,7 +302,21 @@ namespace WSJTX_Controller
             };
             _syncLotwBtn.Click += LoTWRefreshBtn_Click;
 
-            _syncPanel.Controls.AddRange(new Control[] { _syncImportBtn, _syncQrzBtn, _syncLotwBtn });
+            _syncClubLogBtn = new Button
+            {
+                Text           = "Download from Club Log",
+                AccessibleName = "Download from Club Log",
+                Size           = new Size(160, 26),
+                Location       = new Point(428, y),
+                Font           = font,
+                TabIndex       = 4,
+                Enabled        = !string.IsNullOrWhiteSpace(_clubLogEmail) &&
+                                  !string.IsNullOrWhiteSpace(_clubLogPassword) &&
+                                  !string.IsNullOrWhiteSpace(_clubLogCallsign),
+            };
+            _syncClubLogBtn.Click += ClubLogRefreshBtn_Click;
+
+            _syncPanel.Controls.AddRange(new Control[] { _syncImportBtn, _syncQrzBtn, _syncLotwBtn, _syncClubLogBtn });
             y += 34;
 
             AddSectionLabel(_syncPanel, "QRZ Logbook", hfont, ref y);
@@ -285,6 +325,10 @@ namespace WSJTX_Controller
 
             AddSectionLabel(_syncPanel, "LoTW", hfont, ref y);
             _srcLotwStatusLbl = AddInfoLabel(_syncPanel, "Status: not configured", font, ref y);
+            y += 4;
+
+            AddSectionLabel(_syncPanel, "Club Log", hfont, ref y);
+            _srcClubLogStatusLbl = AddInfoLabel(_syncPanel, "Status: not configured", font, ref y);
             y += 12;
 
             var histLbl = new Label
@@ -348,24 +392,25 @@ namespace WSJTX_Controller
             };
             _awardsPanel.Controls.Add(_awardsProgressLbl);
 
+            _awardsLv = MakeListView(font);
+            _awardsLv.Location = new Point(8, 66);
+            _awardsLv.Anchor   = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            _awardsLv.Size     = new Size(700, 350);
+            _awardsLv.TabIndex = 2;
+            _awardsLv.AccessibleName = "Award detail list";
+            _awardsPanel.Controls.Add(_awardsLv);
+
             var manageBtn = new Button
             {
                 Text           = "Manage Rule Definitions...",
                 Font           = font,
                 Location       = new Point(8, 34),
                 Size           = new Size(180, 24),
-                TabIndex       = 2,
+                TabIndex       = 3,
                 AccessibleName = "Manage Rule Definitions",
             };
             manageBtn.Click += (s, e) => OpenRuleDefinitionManager();
             _awardsPanel.Controls.Add(manageBtn);
-
-            _awardsLv = MakeListView(font);
-            _awardsLv.Location = new Point(8, 66);
-            _awardsLv.Anchor   = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            _awardsLv.Size     = new Size(700, 350);
-            _awardsLv.AccessibleName = "Award detail list";
-            _awardsPanel.Controls.Add(_awardsLv);
         }
 
         // Opens the Rule Definition Manager and, if anything changed, refreshes
@@ -446,10 +491,29 @@ namespace WSJTX_Controller
             };
             _stillNeedPanel.Controls.Add(_neededCountLbl);
 
+            _neededActiveCb = new CheckBox
+            {
+                Text           = "Actively track this award (alerts on decode, any number can be checked)",
+                Font           = font,
+                Location       = new Point(8, 32),
+                AutoSize       = true,
+                TabIndex       = 3,
+                AccessibleName = "Actively track this award for live alerts",
+            };
+            _neededActiveCb.CheckedChanged += (s, e) =>
+            {
+                if (_suppressNeededEvent) return;
+                int idx = _neededTypeCb.SelectedIndex;
+                if (idx < 0 || idx >= _neededDefs.Count) return;
+                _onActiveAwardRuleIdsChanged?.Invoke(_neededDefs[idx].Id, _neededActiveCb.Checked);
+            };
+            _stillNeedPanel.Controls.Add(_neededActiveCb);
+
             _neededLv = MakeListView(font);
-            _neededLv.Location = new Point(8, 36);
+            _neededLv.Location = new Point(8, 58);
             _neededLv.Anchor   = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            _neededLv.Size     = new Size(700, 380);
+            _neededLv.Size     = new Size(700, 358);
+            _neededLv.TabIndex = 4;
             _neededLv.AccessibleName = "Needed items list";
             _stillNeedPanel.Controls.Add(_neededLv);
         }
@@ -504,6 +568,7 @@ namespace WSJTX_Controller
             _searchLv.Location = new Point(8, 36);
             _searchLv.Anchor   = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             _searchLv.Size     = new Size(700, 380);
+            _searchLv.TabIndex = 3;
             _searchLv.Columns.Add("Date",      80);
             _searchLv.Columns.Add("UTC",       55);
             _searchLv.Columns.Add("Callsign",  90);
@@ -515,6 +580,27 @@ namespace WSJTX_Controller
             _searchLv.Columns.Add("Source",    60);
             _searchLv.AccessibleName = "Search results list";
             _lookupPanel.Controls.Add(_searchLv);
+
+            _searchClearBtn = new Button
+            {
+                Text           = "Clear",
+                AccessibleName = "Clear search results",
+                Font           = font,
+                Location       = new Point(8, 420),
+                Size           = new Size(70, 23),
+                Anchor         = AnchorStyles.Bottom | AnchorStyles.Left,
+                TabIndex       = 4,
+            };
+            _searchClearBtn.Click += (s, e) => ClearSearch();
+            _lookupPanel.Controls.Add(_searchClearBtn);
+        }
+
+        private void ClearSearch()
+        {
+            _searchTb.Text = "";
+            _searchLv.Items.Clear();
+            _searchCountLbl.Text = "";
+            _searchTb.Focus();
         }
 
         // ── Navigation ────────────────────────────────────────────────────────────
@@ -610,6 +696,16 @@ namespace WSJTX_Controller
                     string dt = ReadableDate(_ini?.Read("LogbookLastLoTWRefresh"));
                     int cnt   = _db.TotalQsos("LOTW");
                     _srcLotwStatusLbl.Text = $"Username: {_lotwUser}.  Last refresh: {dt}.  QSOs: {cnt:N0}.";
+                }
+
+                // Club Log status
+                if (string.IsNullOrWhiteSpace(_clubLogEmail) || string.IsNullOrWhiteSpace(_clubLogPassword) || string.IsNullOrWhiteSpace(_clubLogCallsign))
+                    _srcClubLogStatusLbl.Text = "Club Log upload credentials not configured.  (Options > Logbook)";
+                else
+                {
+                    string dt = ReadableDate(_ini?.Read("LogbookLastClubLogRefresh"));
+                    int cnt   = _db.TotalQsos("CLUBLOG");
+                    _srcClubLogStatusLbl.Text = $"Callsign: {_clubLogCallsign}.  Last refresh: {dt}.  QSOs: {cnt:N0}.";
                 }
 
                 // History
@@ -796,7 +892,7 @@ namespace WSJTX_Controller
                     bool isConfirmed = confirmed.Contains(value);
                     if (showWorkedCol)
                         row.SubItems.Add(isWorked ? "Yes" : "—");
-                    row.SubItems.Add(isConfirmed ? "Yes" : (isWorked ? "No" : "—"));
+                    row.SubItems.Add(isConfirmed ? "Confirmed" : (isWorked ? "Not confirmed" : "—"));
 
                     _awardsLv.Items.Add(row);
                 }
@@ -852,7 +948,7 @@ namespace WSJTX_Controller
                 .OrderBy(d => d.Category ?? "").ThenBy(d => d.Name).ToList();
 
             string prevId = (_neededTypeCb.SelectedIndex >= 0 && _neededTypeCb.SelectedIndex < _neededDefs.Count)
-                ? _neededDefs[_neededTypeCb.SelectedIndex].Id : _initialStillNeedRuleId;
+                ? _neededDefs[_neededTypeCb.SelectedIndex].Id : _activeAwardRuleIds.FirstOrDefault();
 
             _neededDefs = defs;
 
@@ -894,15 +990,18 @@ namespace WSJTX_Controller
             if (idx < 0 || idx >= _neededDefs.Count) return;
             var def = _neededDefs[idx];
 
-            // Tell Controller which award is selected so it can rebuild the live FT8
-            // decode-tagging cache (see Controller.RefreshStillNeedCache()). Only fire on
-            // an actual selection change -- this also runs on band-filter/page-navigation
-            // repopulates, which shouldn't touch live tagging.
-            if (_onStillNeedRuleChanged != null && def.Id != _lastNotifiedStillNeedRuleId)
-            {
-                _lastNotifiedStillNeedRuleId = def.Id;
-                _onStillNeedRuleChanged(def.Id);
-            }
+            // Reflect whether the currently-browsed award is one of the actively-tracked
+            // ones -- checking/unchecking here only affects this one award's membership in
+            // Controller.activeAwardRuleIds (see _onActiveAwardRuleIdsChanged), independent
+            // of which award happens to be selected for browsing/viewing below.
+            bool supportsLiveTag = RuleEngine.SupportsLiveTag(def);
+            _suppressNeededEvent = true;
+            _neededActiveCb.Enabled = supportsLiveTag;
+            _neededActiveCb.Checked = supportsLiveTag && _activeAwardRuleIds.Contains(def.Id);
+            _neededActiveCb.AccessibleDescription = supportsLiveTag
+                ? ""
+                : "This award has no fixed checklist that can be tagged live during decoding.";
+            _suppressNeededEvent = false;
 
             try
             {
@@ -1027,20 +1126,25 @@ namespace WSJTX_Controller
                 string adif = await client.FetchAdifAsync(_qrzApiKey, since).ConfigureAwait(true);
                 if (adif == null)
                 {
-                    SetStatus("QRZ error: " + (client.LastError ?? "Unknown error") + " (see debug log for details)");
+                    string msg = "QRZ error: " + (client.LastError ?? "Unknown error") + " (see debug log for details)";
+                    LogSyncFailure("QRZ", msg);
+                    SetStatus(msg);
                     return;
                 }
                 if (adif.Length == 0)
                 {
-                    SetStatus(since.HasValue
+                    string msg = since.HasValue
                         ? "QRZ: no new records since last refresh."
-                        : "QRZ: 0 QSOs returned. Verify this is your QRZ Logbook API key (qrz.com → Logbook → Settings), not the XML callsign key.");
+                        : "QRZ: 0 QSOs returned. Verify this is your QRZ Logbook API key (qrz.com → Logbook → Settings), not the XML callsign key.";
+                    LogSyncFailure("QRZ", msg);
+                    SetStatus(msg);
                     return;
                 }
                 await RunImportFromText(adif, "QRZ", "LogbookLastQrzRefresh");
             }
             catch (Exception ex)
             {
+                LogSyncFailure("QRZ", "QRZ refresh error: " + ex.Message);
                 SetStatus("QRZ refresh error: " + ex.Message);
             }
             finally { SetBusy(false); }
@@ -1065,7 +1169,9 @@ namespace WSJTX_Controller
                 string adif1 = await client.FetchReportAsync(_lotwUser, _lotwPass, since, confirmedOnly: true).ConfigureAwait(true);
                 if (adif1 == null)
                 {
-                    SetStatus("LoTW error: " + (client.LastError ?? "Unknown error"));
+                    string msg = "LoTW error: " + (client.LastError ?? "Unknown error");
+                    LogSyncFailure("LOTW", msg);
+                    SetStatus(msg);
                     return;
                 }
 
@@ -1077,9 +1183,61 @@ namespace WSJTX_Controller
             }
             catch (Exception ex)
             {
+                LogSyncFailure("LOTW", "LoTW refresh error: " + ex.Message);
                 SetStatus("LoTW refresh error: " + ex.Message);
             }
             finally { SetBusy(false); }
+        }
+
+        private async void ClubLogRefreshBtn_Click(object sender, EventArgs e)
+        {
+            if (_db == null) { SetStatus("Database not available."); return; }
+            if (string.IsNullOrWhiteSpace(_clubLogEmail) || string.IsNullOrWhiteSpace(_clubLogPassword) || string.IsNullOrWhiteSpace(_clubLogCallsign))
+            {
+                SetStatus("Club Log upload credentials not configured.");
+                return;
+            }
+
+            SetStatus("Fetching Club Log…");
+            SetBusy(true);
+            try
+            {
+                var client = new ClubLogUploadClient();
+                // getadif.php only supports whole-year filtering (no day-level "since"
+                // like QRZ/LoTW), so only the year of the last refresh is passed.
+                DateTime? since = (_db.TotalQsos("CLUBLOG") > 0)
+                    ? ParseMetaDate(_ini?.Read("LogbookLastClubLogRefresh"))
+                    : null;
+                string adif = await client.FetchAdifAsync(_clubLogEmail, _clubLogPassword, _clubLogCallsign, since?.Year).ConfigureAwait(true);
+                if (adif == null)
+                {
+                    string msg = "Club Log error: " + (client.LastError ?? "Unknown error");
+                    LogSyncFailure("CLUBLOG", msg);
+                    SetStatus(msg);
+                    return;
+                }
+                if (adif.Trim().Length == 0)
+                {
+                    SetStatus("Club Log: no records returned.");
+                    return;
+                }
+                await RunImportFromText(adif, "CLUBLOG", "LogbookLastClubLogRefresh");
+            }
+            catch (Exception ex)
+            {
+                LogSyncFailure("CLUBLOG", "Club Log refresh error: " + ex.Message);
+                SetStatus("Club Log refresh error: " + ex.Message);
+            }
+            finally { SetBusy(false); }
+        }
+
+        // Records a history row for a sync attempt that failed before any ADIF data
+        // reached RunImportFromText (which logs its own row on success/parse-level errors).
+        private void LogSyncFailure(string source, string message)
+        {
+            if (_db == null) return;
+            int logId = _db.LogImportStart(source);
+            _db.LogImportFinish(logId, 0, 0, 0, 0, message);
         }
 
         private async Task RunImport(string filePath, string source)
@@ -1260,9 +1418,11 @@ namespace WSJTX_Controller
 
         private void SetBusy(bool busy)
         {
-            _syncImportBtn.Enabled = !busy;
-            _syncQrzBtn.Enabled    = !busy && !string.IsNullOrWhiteSpace(_qrzApiKey);
-            _syncLotwBtn.Enabled   = !busy && !string.IsNullOrWhiteSpace(_lotwUser) && !string.IsNullOrWhiteSpace(_lotwPass);
+            _syncImportBtn.Enabled  = !busy;
+            _syncQrzBtn.Enabled     = !busy && !string.IsNullOrWhiteSpace(_qrzApiKey);
+            _syncLotwBtn.Enabled    = !busy && !string.IsNullOrWhiteSpace(_lotwUser) && !string.IsNullOrWhiteSpace(_lotwPass);
+            _syncClubLogBtn.Enabled = !busy && !string.IsNullOrWhiteSpace(_clubLogEmail) &&
+                                       !string.IsNullOrWhiteSpace(_clubLogPassword) && !string.IsNullOrWhiteSpace(_clubLogCallsign);
         }
 
         private string SetStatus_Text;

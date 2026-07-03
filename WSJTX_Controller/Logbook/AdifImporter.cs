@@ -75,7 +75,7 @@ namespace WSJTX_Controller
                             source, q.sourceQsoId, q.dedupKey,
                             q.continent, q.ituZone, q.county, q.iota,
                             q.sig, q.sigInfo, q.mySig, q.mySigInfo,
-                            q.darcDok, q.wpxPrefix);
+                            q.darcDok, q.wpxPrefix, q.exchangeSent, q.exchangeRcvd);
 
                         if (isNew)         result.NewQsos++;
                         else if (isUpdated) result.Updated++;
@@ -134,6 +134,7 @@ namespace WSJTX_Controller
             // Fields used by the Rule Definitions (awards) engine.
             public string continent, county, iota, sig, sigInfo, mySig, mySigInfo, darcDok, wpxPrefix;
             public int    ituZone;
+            public string exchangeSent, exchangeRcvd;
         }
 
         private static NormalizedQso Normalize(Dictionary<string, string> f, string source)
@@ -238,6 +239,8 @@ namespace WSJTX_Controller
                 mySigInfo    = (GetField(f, "MY_SIG_INFO") ?? "").ToUpperInvariant(),
                 darcDok      = (GetField(f, "DARC_DOK") ?? "").ToUpperInvariant(),
                 wpxPrefix    = (GetField(f, "PFX") ?? "").ToUpperInvariant(),
+                exchangeSent = GetField(f, "STX_STRING") ?? "",
+                exchangeRcvd = GetField(f, "SRX_STRING") ?? "",
             };
         }
 
@@ -247,7 +250,9 @@ namespace WSJTX_Controller
             return $"{call.ToUpperInvariant()}|{(band ?? "").ToLowerInvariant()}|{(mode ?? "").ToUpperInvariant()}|{qsoDate}|{t4}";
         }
 
-        private static string NormalizeBand(string band, string freqStr)
+        // internal (not private): reused by AdifRecordBuilder callers that need the
+        // same freq-to-band table for QRZ/Club Log upload records.
+        internal static string NormalizeBand(string band, string freqStr)
         {
             if (!string.IsNullOrWhiteSpace(band))
                 return band.ToLowerInvariant().Trim();

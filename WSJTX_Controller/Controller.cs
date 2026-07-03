@@ -80,6 +80,8 @@ namespace WSJTX_Controller
         public string soundFile_WantedAnywhere    = "";
         public bool   soundEnabled_OppositePeriod = false;
         public string soundFile_OppositePeriod    = "";
+        public bool   soundEnabled_AwardNeeded    = false;
+        public string soundFile_AwardNeeded       = "";
 
         // Feature flags
         public bool   wantedCallAnywhereEnabled   = true;
@@ -88,12 +90,27 @@ namespace WSJTX_Controller
         public string qrzLogbookApiKey = "";
         public string lotwLogbookUser  = "";
         public string lotwLogbookPass  = "";
+
+        // Logbook upload settings (loaded from ini; set from Options > Lookup / Data tab).
+        // QRZ upload reuses qrzLogbookApiKey above -- same key QRZ uses for download.
+        // Club Log upload needs its own per-user credentials (Application Password, not
+        // the normal Club Log website login), separate from the app-wide Club Log key
+        // used for read-only country data (see ClubLogAppKey.cs).
+        public bool   qrzUploadEnabled       = false;
+        public bool   qrzUploadRealtime      = false;
+        public bool   clubLogUploadEnabled   = false;
+        public bool   clubLogUploadRealtime  = false;
+        public string clubLogUploadEmail     = "";
+        public string clubLogUploadPassword  = "";
+        public string clubLogUploadCallsign  = "";
+        public bool   lotwUploadEnabled      = true;   // matches today's Alt+U behavior by default
         private LogbookWindow _logbookWindow;
 
-        // Id of the Rule Definition currently selected in the Logbook window's Still Need
-        // tab, persisted so live FT8 tagging (see RefreshStillNeedCache()) survives across
-        // sessions and works even before the Logbook window has been opened. Empty = none selected.
-        public string stillNeedLiveTagRuleId = "";
+        // Ids of the Rule Definitions checked for live FT8 tagging in the Logbook window's
+        // Still Need tab, persisted so tagging survives across sessions and works even before
+        // the Logbook window has been opened. Empty = none actively tracked. Several awards
+        // can be tracked at once (see RefreshStillNeedCache()).
+        public HashSet<string> activeAwardRuleIds = new HashSet<string>();
 
         // Lookup / Data settings
         public LookupManager    lookupManager;
@@ -309,6 +326,7 @@ namespace WSJTX_Controller
                 //check all screens, extended screen may not be present
                 var screens = System.Windows.Forms.Screen.AllScreens;
                 bool found = false;
+                Rectangle matchedScreenBounds = Screen.PrimaryScreen.Bounds;
                 for (int scnIdx = 0; scnIdx < screens.Length; scnIdx++)
                 {
                     var screenBounds = screens[scnIdx].Bounds;
@@ -316,6 +334,7 @@ namespace WSJTX_Controller
                     if (screenBounds.Contains(centerPt))
                     {
                         found = true;       //found screen for window posn
+                        matchedScreenBounds = screenBounds;
                         break;
                     }
                 }
@@ -323,11 +342,20 @@ namespace WSJTX_Controller
                 {
                     x = 0;
                     y = 0;
+                    matchedScreenBounds = Screen.PrimaryScreen.Bounds;
                 }
                 this.Location = new Point(x, y);
                 int i;
+                int w;
+                int.TryParse(iniFile.Read("windowWd"), out w);
                 int.TryParse(iniFile.Read("windowHt"), out i);
-                this.Height = i;
+                // Clamp to the matched screen and today's safe minimum, so a saved size
+                // from a different/larger monitor can't leave the window unusable.
+                if (w > 0) this.Width  = Math.Max(this.MinimumSize.Width,  Math.Min(w, matchedScreenBounds.Width));
+                if (i > 0) this.Height = Math.Max(this.MinimumSize.Height, Math.Min(i, matchedScreenBounds.Height));
+
+                if (iniFile.Read("windowState") == "Maximized")
+                    this.WindowState = FormWindowState.Maximized;
 
                 ipAddrStr = iniFile.Read("ipAddress");
                 multicast = iniFile.Read("multicast") == "True";
@@ -451,6 +479,8 @@ namespace WSJTX_Controller
                 if (iniFile.KeyExists("soundFile_WantedAnywhere"))    soundFile_WantedAnywhere    = iniFile.Read("soundFile_WantedAnywhere");
                 if (iniFile.KeyExists("soundEnabled_OppositePeriod")) soundEnabled_OppositePeriod = iniFile.Read("soundEnabled_OppositePeriod") == "True";
                 if (iniFile.KeyExists("soundFile_OppositePeriod"))    soundFile_OppositePeriod    = iniFile.Read("soundFile_OppositePeriod");
+                if (iniFile.KeyExists("soundEnabled_AwardNeeded"))    soundEnabled_AwardNeeded    = iniFile.Read("soundEnabled_AwardNeeded") == "True";
+                if (iniFile.KeyExists("soundFile_AwardNeeded"))       soundFile_AwardNeeded       = iniFile.Read("soundFile_AwardNeeded");
                 if (iniFile.KeyExists("soundsEnabled"))               soundsEnabled               = iniFile.Read("soundsEnabled") != "False";
 
                 // Lookup / Data settings
@@ -468,7 +498,22 @@ namespace WSJTX_Controller
                 if (iniFile.KeyExists("qrzLogbookApiKey")) qrzLogbookApiKey = iniFile.Read("qrzLogbookApiKey") ?? "";
                 if (iniFile.KeyExists("lotwLogbookUser"))  lotwLogbookUser  = iniFile.Read("lotwLogbookUser")  ?? "";
                 if (iniFile.KeyExists("lotwLogbookPass"))  lotwLogbookPass  = iniFile.Read("lotwLogbookPass")  ?? "";
-                if (iniFile.KeyExists("stillNeedLiveTagRuleId")) stillNeedLiveTagRuleId = iniFile.Read("stillNeedLiveTagRuleId") ?? "";
+                if (iniFile.KeyExists("qrzUploadEnabled"))      qrzUploadEnabled      = iniFile.Read("qrzUploadEnabled")      == "True";
+                if (iniFile.KeyExists("qrzUploadRealtime"))     qrzUploadRealtime     = iniFile.Read("qrzUploadRealtime")     == "True";
+                if (iniFile.KeyExists("clubLogUploadEnabled"))  clubLogUploadEnabled  = iniFile.Read("clubLogUploadEnabled")  == "True";
+                if (iniFile.KeyExists("clubLogUploadRealtime")) clubLogUploadRealtime = iniFile.Read("clubLogUploadRealtime") == "True";
+                if (iniFile.KeyExists("clubLogUploadEmail"))    clubLogUploadEmail    = iniFile.Read("clubLogUploadEmail")    ?? "";
+                if (iniFile.KeyExists("clubLogUploadPassword")) clubLogUploadPassword = iniFile.Read("clubLogUploadPassword") ?? "";
+                if (iniFile.KeyExists("clubLogUploadCallsign")) clubLogUploadCallsign = iniFile.Read("clubLogUploadCallsign") ?? "";
+                if (iniFile.KeyExists("lotwUploadEnabled"))     lotwUploadEnabled     = iniFile.Read("lotwUploadEnabled")     == "True";
+                if (iniFile.KeyExists("activeAwardRuleIds")) activeAwardRuleIds = ParseActiveAwardRuleIds(iniFile.Read("activeAwardRuleIds"));
+                else if (iniFile.KeyExists("stillNeedLiveTagRuleId"))
+                {
+                    // Migrate the old single-rule setting the first time this INI is loaded
+                    // under the new multi-award system.
+                    string oldId = iniFile.Read("stillNeedLiveTagRuleId");
+                    if (!string.IsNullOrWhiteSpace(oldId)) activeAwardRuleIds = new HashSet<string> { oldId };
+                }
             }
 
             txMode = mode ? WsjtxClient.TxModes.LISTEN : WsjtxClient.TxModes.CALL_CQ;
@@ -625,9 +670,16 @@ namespace WSJTX_Controller
             if (iniFile != null)
             {
                 iniFile.Write("debug", wsjtxClient.debug.ToString());
-                iniFile.Write("windowPosX", this.Location.X.ToString());
-                iniFile.Write("windowPosY", this.Location.Y.ToString());
-                iniFile.Write("windowHt", this.Height.ToString());
+                // Save the Normal-state bounds even if currently maximized/minimized, so
+                // restoring later doesn't land on maximized dimensions.
+                Rectangle normalBounds = this.WindowState == FormWindowState.Normal
+                    ? new Rectangle(this.Location, this.Size)
+                    : this.RestoreBounds;
+                iniFile.Write("windowPosX", normalBounds.X.ToString());
+                iniFile.Write("windowPosY", normalBounds.Y.ToString());
+                iniFile.Write("windowWd", normalBounds.Width.ToString());
+                iniFile.Write("windowHt", normalBounds.Height.ToString());
+                iniFile.Write("windowState", this.WindowState.ToString());
                 if (wsjtxClient.ipAddress != null) iniFile.Write("ipAddress", wsjtxClient.ipAddress.ToString());   //string
                 if (wsjtxClient.port != 0) iniFile.Write("port", wsjtxClient.port.ToString());
                 iniFile.Write("multicast", wsjtxClient.multicast.ToString());
@@ -725,6 +777,8 @@ namespace WSJTX_Controller
                 iniFile.Write("soundFile_WantedAnywhere",    soundFile_WantedAnywhere    ?? "");
                 iniFile.Write("soundEnabled_OppositePeriod", soundEnabled_OppositePeriod.ToString());
                 iniFile.Write("soundFile_OppositePeriod",    soundFile_OppositePeriod    ?? "");
+                iniFile.Write("soundEnabled_AwardNeeded",    soundEnabled_AwardNeeded.ToString());
+                iniFile.Write("soundFile_AwardNeeded",       soundFile_AwardNeeded       ?? "");
                 iniFile.Write("soundsEnabled",               soundsEnabled.ToString());
                 iniFile.Write("txOddOffset",  wsjtxClient.cachedOddOffset.ToString());
                 iniFile.Write("txEvenOffset", wsjtxClient.cachedEvenOffset.ToString());
@@ -743,7 +797,16 @@ namespace WSJTX_Controller
                 iniFile.Write("qrzLogbookApiKey",        qrzLogbookApiKey         ?? "");
                 iniFile.Write("lotwLogbookUser",         lotwLogbookUser          ?? "");
                 iniFile.Write("lotwLogbookPass",         lotwLogbookPass          ?? "");
-                iniFile.Write("stillNeedLiveTagRuleId",  stillNeedLiveTagRuleId   ?? "");
+                iniFile.Write("qrzUploadEnabled",        qrzUploadEnabled.ToString());
+                iniFile.Write("qrzUploadRealtime",       qrzUploadRealtime.ToString());
+                iniFile.Write("clubLogUploadEnabled",    clubLogUploadEnabled.ToString());
+                iniFile.Write("clubLogUploadRealtime",   clubLogUploadRealtime.ToString());
+                iniFile.Write("clubLogUploadEmail",      clubLogUploadEmail       ?? "");
+                iniFile.Write("clubLogUploadPassword",   clubLogUploadPassword    ?? "");
+                iniFile.Write("clubLogUploadCallsign",   clubLogUploadCallsign    ?? "");
+                iniFile.Write("lotwUploadEnabled",       lotwUploadEnabled.ToString());
+                iniFile.Write("activeAwardRuleIds",  FormatActiveAwardRuleIds(activeAwardRuleIds));
+                iniFile.DeleteKey("stillNeedLiveTagRuleId");
                 // Phase 4: remove stale keys left by older versions.
                 iniFile.DeleteKey("autoReplyNewCq");
                 iniFile.DeleteKey("replyOnlyDxcc");
@@ -979,6 +1042,12 @@ namespace WSJTX_Controller
                 return true;
             }
 
+            if (keyData == hotkeyConfig[HotkeyAction.ResetWindowSize])
+            {
+                ResetWindowSize();
+                return true;
+            }
+
             if (keyData == hotkeyConfig[HotkeyAction.AudioUp])
             {
                 return wsjtxClient.AudioLevel(true);
@@ -1105,10 +1174,57 @@ namespace WSJTX_Controller
             if (formLoaded) wsjtxClient.DebugChanged();
         }
 
+        private bool _inResize;
+        private void Controller_Resize(object sender, EventArgs e)
+        {
+            if (!formLoaded || _inResize) return;
+            _inResize = true;
+            try { ApplyAdvancedLayout(); } finally { _inResize = false; }
+        }
+
+        private void ResetWindowSize()
+        {
+            this.WindowState = FormWindowState.Normal;
+            this.Location = new Point(0, 0);
+            this.Size = this.MinimumSize;   // natural size for the currently visible lists
+            ApplyAdvancedLayout();
+
+            statusText.Text = "Window size and position reset to default.";
+            if (!statusText.Focused) statusText.Focus();
+            BeginInvoke((Action)(() => SendKeys.Send("{UP}")));
+        }
+
+        // Natural (unstretched) bottom Y of the advanced lists block for however many of
+        // TX1/TX2/Raw are shown, always derived from the fixed base sizes below -- never
+        // from the lists' current (possibly window-stretched) positions/sizes. Sharing this
+        // between ApplyAdvancedLayout and UpdateDebug keeps the per-configuration minimum
+        // window height stable instead of ratcheting up every time the window grows.
+        private int NaturalAdvancedListsBottom(bool showTx1, bool showTx2, bool showRaw, out int baseListH, out int baseRawH)
+        {
+            const int startY   = 376;   // first label Y (same as designer baseline)
+            const int labelH   = 14;    // approx height of bold 8.25pt label
+            const int labelGap = 2;     // gap between label bottom and list top
+            const int groupGap = 6;     // gap between list bottom and next label
+
+            int count = (showTx1 ? 1 : 0) + (showTx2 ? 1 : 0) + (showRaw ? 1 : 0);
+            switch (count)
+            {
+                case 1:  baseListH = 200; baseRawH = 200; break;
+                case 2:  baseListH = 120; baseRawH = 120; break;
+                default: baseListH = 77;  baseRawH = 92;  break;   // 3 lists: original proportions
+            }
+
+            int bottom = startY;
+            if (showTx1) bottom += labelH + labelGap + baseListH + groupGap;
+            if (showTx2) bottom += labelH + labelGap + baseListH + groupGap;
+            if (showRaw) bottom += labelH + labelGap + baseRawH + groupGap;
+            return bottom;
+        }
+
         private void UpdateDebug()
         {
             SuspendLayout();
-            FormBorderStyle = FormBorderStyle.FixedSingle;
+            FormBorderStyle = FormBorderStyle.Sizable;
             label2.Visible = wsjtxClient.debug;
             label5.Visible = wsjtxClient.debug;
             label7.Visible = wsjtxClient.debug;
@@ -1120,21 +1236,25 @@ namespace WSJTX_Controller
                 AllocConsole();
                 ShowWindow(GetConsoleWindow(), 5);
 #endif
-                Height = this.MaximumSize.Height;
+                WindowState = FormWindowState.Maximized;
                 wsjtxClient.UpdateDebug();
             }
             else
             {
-                int advBottom = 0;
-                if (advancedCallLayout)
+                bool anyAdvList = advancedCallLayout && (advShowTx1 || advShowTx2 || advShowRaw);
+                int naturalHeight;
+                if (anyAdvList)
                 {
-                    if (advShowRaw)      advBottom = advRawListBox.Location.Y + advRawListBox.Height;
-                    else if (advShowTx2) advBottom = advTx2ListBox.Location.Y + advTx2ListBox.Height;
-                    else if (advShowTx1) advBottom = advTx1ListBox.Location.Y + advTx1ListBox.Height;
+                    int bottom = NaturalAdvancedListsBottom(advShowTx1, advShowTx2, advShowRaw, out _, out _);
+                    naturalHeight = bottom + 45;
                 }
-                Height = advBottom > 0
-                    ? advBottom + 45
-                    : sortOrderButton.Location.Y + sortOrderButton.Height + 45;
+                else
+                {
+                    naturalHeight = sortOrderButton.Location.Y + sortOrderButton.Height + 45;
+                }
+                // 390 is the original Designer minimum height (today's default/safe floor);
+                // never let the per-configuration natural height shrink below it.
+                MinimumSize = new Size(MinimumSize.Width, Math.Max(390, naturalHeight));
 #if DEBUG
                 ShowWindow(GetConsoleWindow(), 0);
 #endif
@@ -1208,54 +1328,39 @@ namespace WSJTX_Controller
             catch { }
         }
 
-        // Rebuilds WsjtxClient's Still Need live-tag cache from whichever Rule Definition is
-        // currently selected (stillNeedLiveTagRuleId), scoped to the radio's current band --
-        // mirrors LoadHrcCache()'s per-band semantics. Only evaluates the RuleEngine here, at
-        // selection/refresh time; decode-time matching (IsRuleStillNeeded) is a plain HashSet
-        // lookup. Safe to call any time; leaves the cache marked unusable (no live tagging) if
-        // no rule is selected, the rule can't be found, RuleEngine.SupportsLiveTag(def) is false,
-        // or it has no fixed still-needed checklist (e.g. a Target=COUNT/LEVELS award, which
-        // never produces a StillNeeded list).
+        // Rebuilds WsjtxClient's live-tag cache from every Rule Definition currently checked
+        // in activeAwardRuleIds, scoped to the radio's current band -- mirrors LoadHrcCache()'s
+        // per-band semantics. Several awards can be tracked at once; each gets its own entry in
+        // wsjtxClient.activeAwardTags. Only evaluates the RuleEngine here, at selection/refresh
+        // time; decode-time matching is a plain HashSet lookup per active award. Safe to call any
+        // time. Rules that can't be found, fail RuleEngine.SupportsLiveTag(def), or have no fixed
+        // still-needed checklist (e.g. a Target=COUNT/LEVELS award) are simply left out.
         public void RefreshStillNeedCache()
         {
             if (wsjtxClient == null) return;
 
-            var def = string.IsNullOrEmpty(stillNeedLiveTagRuleId)
-                ? null
-                : RuleLibrary.Definitions.FirstOrDefault(d => d.Enabled && d.Id == stillNeedLiveTagRuleId);
-
-            if (!RuleEngine.SupportsLiveTag(def))
+            var tags = new Dictionary<string, WsjtxClient.ActiveAwardTag>();
+            foreach (string ruleId in activeAwardRuleIds)
             {
-                wsjtxClient.stillNeedUsable = false;
-                wsjtxClient.stillNeedSet.Clear();
-                wsjtxClient.stillNeedRuleName = def?.Name;
-                return;
-            }
+                var def = RuleLibrary.Definitions.FirstOrDefault(d => d.Enabled && d.Id == ruleId);
+                if (!RuleEngine.SupportsLiveTag(def)) continue;
 
-            try
-            {
-                var result = RuleEngine.EvaluateBand(def, wsjtxClient.CurrentBandStr);
-                if (result.StillNeeded == null)
+                try
                 {
-                    // Target != ALL, or the universe couldn't be resolved -- no fixed
-                    // checklist to tag against (same condition the Still Need tab already
-                    // shows as "This rule does not have a fixed still-needed checklist.").
-                    wsjtxClient.stillNeedUsable = false;
-                    wsjtxClient.stillNeedSet.Clear();
-                    wsjtxClient.stillNeedRuleName = def.Name;
-                    return;
-                }
+                    var result = RuleEngine.EvaluateBand(def, wsjtxClient.CurrentBandStr);
+                    if (result.StillNeeded == null) continue;   // no fixed checklist to tag against
 
-                wsjtxClient.stillNeedSet     = new HashSet<string>(result.StillNeeded, StringComparer.OrdinalIgnoreCase);
-                wsjtxClient.stillNeedGroupBy = def.GroupBy;
-                wsjtxClient.stillNeedRuleName = def.Name;
-                wsjtxClient.stillNeedUsable  = true;
+                    tags[ruleId] = new WsjtxClient.ActiveAwardTag
+                    {
+                        RuleId   = ruleId,
+                        RuleName = def.Name,
+                        GroupBy  = def.GroupBy,
+                        Set      = new HashSet<string>(result.StillNeeded, StringComparer.OrdinalIgnoreCase),
+                    };
+                }
+                catch { /* skip this rule, keep the others */ }
             }
-            catch
-            {
-                wsjtxClient.stillNeedUsable = false;
-                wsjtxClient.stillNeedSet.Clear();
-            }
+            wsjtxClient.activeAwardTags = tags;
         }
 
         public void OpenLogbookWindow()
@@ -1268,12 +1373,14 @@ namespace WSJTX_Controller
             try
             {
                 _logbookWindow = new LogbookWindow(iniFile, qrzLogbookApiKey, lotwLogbookUser, lotwLogbookPass,
-                    () => BeginInvoke(new Action(() => { LoadHrcCache(); RefreshStillNeedCache(); })),
-                    stillNeedLiveTagRuleId,
-                    ruleId =>
+                    clubLogUploadEmail, clubLogUploadPassword, clubLogUploadCallsign,
+                    onImportComplete: () => BeginInvoke(new Action(() => { LoadHrcCache(); RefreshStillNeedCache(); })),
+                    initialActiveAwardRuleIds: activeAwardRuleIds,
+                    onActiveAwardRuleIdsChanged: (ruleId, isTracked) =>
                     {
-                        stillNeedLiveTagRuleId = ruleId ?? "";
-                        iniFile?.Write("stillNeedLiveTagRuleId", stillNeedLiveTagRuleId);
+                        if (isTracked) activeAwardRuleIds.Add(ruleId);
+                        else activeAwardRuleIds.Remove(ruleId);
+                        iniFile?.Write("activeAwardRuleIds", FormatActiveAwardRuleIds(activeAwardRuleIds));
                         RefreshStillNeedCache();
                     });
                 _logbookWindow.FormClosed += (s, e) => _logbookWindow = null;
@@ -1319,6 +1426,7 @@ namespace WSJTX_Controller
             TopMost = alwaysOnTop;
             wsjtxClient.suspendComm   = false;
             wsjtxClient.lotwBoostEnabled = lotwBoostEnabled;
+            wsjtxClient.RefreshResourceFileCache();
             optionsDlg = null;
             lookupManager?.Initialize(
                 useLookupData,
@@ -1507,6 +1615,7 @@ namespace WSJTX_Controller
                 $"{nl}{K(HotkeyAction.UpdateCheck)}: Check for update to {friendlyName}." +
                 $"{nl}{K(HotkeyAction.PSKReporter)}: Toggle sending spots to PSKReporter (leave 'Enabled' to help other hams)" +
                 $"{nl}{K(HotkeyAction.SortOrder)}: Open stations available sort order editor." +
+                $"{nl}{K(HotkeyAction.ResetWindowSize)}: Reset window size and position to default." +
                 $"{nl}{K(HotkeyAction.Help)}: Read the list of shortcut keys." +
 
                 $"{nl}{nl}Main navigation keys:" +
@@ -2297,6 +2406,28 @@ namespace WSJTX_Controller
             return result;
         }
 
+        // Serialize activeAwardRuleIds to a comma-separated list of Rule Definition Ids.
+        public static string FormatActiveAwardRuleIds(HashSet<string> ids)
+        {
+            if (ids == null || ids.Count == 0) return string.Empty;
+            var sorted = new List<string>(ids);
+            sorted.Sort(StringComparer.OrdinalIgnoreCase);
+            return string.Join(",", sorted);
+        }
+
+        // Parse an activeAwardRuleIds INI string into a HashSet (trimmed, no duplicates).
+        public static HashSet<string> ParseActiveAwardRuleIds(string s)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(s)) return result;
+            foreach (var tok in s.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string id = tok.Trim();
+                if (!string.IsNullOrEmpty(id)) result.Add(id);
+            }
+            return result;
+        }
+
         // Called by OptionsDlg when the Wanted Calls tab is saved.
         public void ApplyAndSaveWantedCalls(HashSet<string> normalized)
         {
@@ -2680,16 +2811,21 @@ namespace WSJTX_Controller
                 const int labelGap = 2;     // gap between label bottom and list top
                 const int groupGap = 6;     // gap between list bottom and next label
                 const int listX    = 10;
-                const int listW    = 280;
+
+                // Lists widen to fill the window, never below today's default 280px.
+                int listW = Math.Max(280, this.ClientSize.Width - 2 * listX);
 
                 int count = (showTx1 ? 1 : 0) + (showTx2 ? 1 : 0) + (showRaw ? 1 : 0);
-                int listH, rawH;
-                switch (count)
-                {
-                    case 1:  listH = 200; rawH = 200; break;
-                    case 2:  listH = 120; rawH = 120; break;
-                    default: listH = 77;  rawH = 92;  break;   // 3 lists: original proportions
-                }
+
+                // Extra vertical room the current window height offers beyond the natural
+                // (unstretched) size for however many lists are shown, split evenly between
+                // them — grows TX1/TX2/Raw with the window without shrinking below the base sizes.
+                int naturalBottom = NaturalAdvancedListsBottom(showTx1, showTx2, showRaw, out int baseListH, out int baseRawH);
+                int extra = Math.Max(0, this.Height - (naturalBottom + 45));
+                int extraPerList = count > 0 ? extra / count : 0;
+
+                int listH = baseListH + extraPerList;
+                int rawH  = baseRawH + extraPerList;
 
                 int y = startY;
                 if (showTx1)

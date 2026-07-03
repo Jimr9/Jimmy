@@ -417,7 +417,7 @@ static class JimmyTests
             "", "", "", "", "", "", "",
             "", lotwRcvd, "", "",
             "MANUAL", "", key,
-            "", 0, "", "", "", "", "", "", "", "");
+            "", 0, "", "", "", "", "", "", "", "", "", "");
     }
 
     // Verify that each AP-suffixed message, once stripped, classifies correctly.

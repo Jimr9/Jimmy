@@ -178,6 +178,28 @@ namespace WSJTX_Controller
 
                 SetMeta("db_version", "2");
             }
+
+            // v3: per-QSO outbound upload tracking for QRZ/Club Log logbook upload.
+            // Empty string = not yet uploaded to that service (matches this table's
+            // existing convention of '' rather than NULL for "unset" TEXT columns).
+            if (ver < 3)
+            {
+                Exec("ALTER TABLE qso ADD COLUMN qrz_uploaded_at     TEXT DEFAULT '';");
+                Exec("ALTER TABLE qso ADD COLUMN clublog_uploaded_at TEXT DEFAULT '';");
+
+                SetMeta("db_version", "3");
+            }
+
+            // v4: contest exchange fields (ADIF STX_STRING/SRX_STRING), e.g. Field
+            // Day "2A MO" -- carried through to QRZ/Club Log upload so contest QSOs
+            // are not missing this data there.
+            if (ver < 4)
+            {
+                Exec("ALTER TABLE qso ADD COLUMN exchange_sent TEXT DEFAULT '';");
+                Exec("ALTER TABLE qso ADD COLUMN exchange_rcvd TEXT DEFAULT '';");
+
+                SetMeta("db_version", "4");
+            }
         }
 
         // ── Meta ─────────────────────────────────────────────────────────────────
@@ -227,7 +249,8 @@ namespace WSJTX_Controller
             string source, string sourceQsoId, string dedupKey,
             string continent, int ituZone, string county, string iota,
             string sig, string sigInfo, string mySig, string mySigInfo,
-            string darcDok, string wpxPrefix)
+            string darcDok, string wpxPrefix,
+            string exchangeSent, string exchangeRcvd)
         {
             lock (_lock)
             {
@@ -249,7 +272,7 @@ INSERT INTO qso (
     lotw_qsl_sent, lotw_qsl_rcvd, qrz_qsl_sent, qrz_qsl_rcvd,
     source, source_qso_id, imported_at, dedup_key,
     continent, itu_zone, county, iota, sig, sig_info, my_sig, my_sig_info,
-    darc_dok, wpx_prefix
+    darc_dok, wpx_prefix, exchange_sent, exchange_rcvd
 ) VALUES (
     @callsign, @band, @mode, @qso_date, @time_on, @time_off, @freq_hz,
     @rst_sent, @rst_rcvd, @state, @country, @dxcc, @cq_zone, @grid,
@@ -257,7 +280,7 @@ INSERT INTO qso (
     @lotw_qsl_sent, @lotw_qsl_rcvd, @qrz_qsl_sent, @qrz_qsl_rcvd,
     @source, @source_qso_id, @imported_at, @dedup_key,
     @continent, @itu_zone, @county, @iota, @sig, @sig_info, @my_sig, @my_sig_info,
-    @darc_dok, @wpx_prefix
+    @darc_dok, @wpx_prefix, @exchange_sent, @exchange_rcvd
 )
 ON CONFLICT(dedup_key) DO UPDATE SET
     lotw_qsl_sent = CASE WHEN excluded.source='LOTW' AND excluded.lotw_qsl_sent!='' THEN excluded.lotw_qsl_sent ELSE qso.lotw_qsl_sent END,
@@ -279,7 +302,9 @@ ON CONFLICT(dedup_key) DO UPDATE SET
     my_sig       = CASE WHEN (qso.my_sig      ='' OR qso.my_sig       IS NULL) AND excluded.my_sig      !='' THEN excluded.my_sig       ELSE qso.my_sig       END,
     my_sig_info  = CASE WHEN (qso.my_sig_info ='' OR qso.my_sig_info  IS NULL) AND excluded.my_sig_info !='' THEN excluded.my_sig_info  ELSE qso.my_sig_info  END,
     darc_dok     = CASE WHEN (qso.darc_dok    ='' OR qso.darc_dok     IS NULL) AND excluded.darc_dok    !='' THEN excluded.darc_dok     ELSE qso.darc_dok     END,
-    wpx_prefix   = CASE WHEN (qso.wpx_prefix  ='' OR qso.wpx_prefix   IS NULL) AND excluded.wpx_prefix  !='' THEN excluded.wpx_prefix   ELSE qso.wpx_prefix   END;
+    wpx_prefix   = CASE WHEN (qso.wpx_prefix  ='' OR qso.wpx_prefix   IS NULL) AND excluded.wpx_prefix  !='' THEN excluded.wpx_prefix   ELSE qso.wpx_prefix   END,
+    exchange_sent = CASE WHEN (qso.exchange_sent ='' OR qso.exchange_sent IS NULL) AND excluded.exchange_sent !='' THEN excluded.exchange_sent ELSE qso.exchange_sent END,
+    exchange_rcvd = CASE WHEN (qso.exchange_rcvd ='' OR qso.exchange_rcvd IS NULL) AND excluded.exchange_rcvd !='' THEN excluded.exchange_rcvd ELSE qso.exchange_rcvd END;
 ";
                     cmd.Parameters.AddWithValue("@callsign",      callsign      ?? "");
                     cmd.Parameters.AddWithValue("@band",          band          ?? "");
@@ -319,6 +344,8 @@ ON CONFLICT(dedup_key) DO UPDATE SET
                     cmd.Parameters.AddWithValue("@my_sig_info",    mySigInfo     ?? "");
                     cmd.Parameters.AddWithValue("@darc_dok",       darcDok       ?? "");
                     cmd.Parameters.AddWithValue("@wpx_prefix",     wpxPrefix     ?? "");
+                    cmd.Parameters.AddWithValue("@exchange_sent",  exchangeSent  ?? "");
+                    cmd.Parameters.AddWithValue("@exchange_rcvd",  exchangeRcvd  ?? "");
                     cmd.ExecuteNonQuery();
                 }
 
@@ -396,6 +423,90 @@ ON CONFLICT(dedup_key) DO UPDATE SET
                     }
                 }
                 return result;
+            }
+        }
+
+        // ── Outbound upload tracking (QRZ / Club Log logbook upload) ───────────────
+
+        public class PendingUploadQso
+        {
+            public string Callsign, Band, Mode, QsoDate, TimeOn, TimeOff;
+            public long   FreqHz;
+            public string RstSent, RstRcvd, Grid, Name, Comment, TxPwr;
+            public string OperatorCall, StationCall, MyGrid, DedupKey;
+            public string ExchangeSent, ExchangeRcvd;
+        }
+
+        // service is "qrz" or "clublog". Returns QSOs never yet uploaded to that
+        // service, oldest first, so a batch upload sends them in QSO order.
+        public List<PendingUploadQso> GetPendingUploads(string service, int limit = 1000)
+        {
+            string col = UploadColumn(service);
+            lock (_lock)
+            {
+                var result = new List<PendingUploadQso>();
+                using (var cmd = _conn.CreateCommand())
+                {
+                    cmd.CommandText =
+                        $"SELECT callsign, band, mode, qso_date, time_on, time_off, freq_hz, " +
+                        $"rst_sent, rst_rcvd, grid, name, comment, tx_pwr, operator_call, station_call, my_grid, dedup_key, " +
+                        $"exchange_sent, exchange_rcvd " +
+                        $"FROM qso WHERE {col} = '' ORDER BY qso_date, time_on LIMIT {limit};";
+                    using (var r = cmd.ExecuteReader())
+                    {
+                        while (r.Read())
+                        {
+                            result.Add(new PendingUploadQso
+                            {
+                                Callsign     = r.IsDBNull(0)  ? "" : r.GetString(0),
+                                Band         = r.IsDBNull(1)  ? "" : r.GetString(1),
+                                Mode         = r.IsDBNull(2)  ? "" : r.GetString(2),
+                                QsoDate      = r.IsDBNull(3)  ? "" : r.GetString(3),
+                                TimeOn       = r.IsDBNull(4)  ? "" : r.GetString(4),
+                                TimeOff      = r.IsDBNull(5)  ? "" : r.GetString(5),
+                                FreqHz       = r.IsDBNull(6)  ? 0  : r.GetInt64(6),
+                                RstSent      = r.IsDBNull(7)  ? "" : r.GetString(7),
+                                RstRcvd      = r.IsDBNull(8)  ? "" : r.GetString(8),
+                                Grid         = r.IsDBNull(9)  ? "" : r.GetString(9),
+                                Name         = r.IsDBNull(10) ? "" : r.GetString(10),
+                                Comment      = r.IsDBNull(11) ? "" : r.GetString(11),
+                                TxPwr        = r.IsDBNull(12) ? "" : r.GetString(12),
+                                OperatorCall = r.IsDBNull(13) ? "" : r.GetString(13),
+                                StationCall  = r.IsDBNull(14) ? "" : r.GetString(14),
+                                MyGrid       = r.IsDBNull(15) ? "" : r.GetString(15),
+                                DedupKey     = r.IsDBNull(16) ? "" : r.GetString(16),
+                                ExchangeSent = r.IsDBNull(17) ? "" : r.GetString(17),
+                                ExchangeRcvd = r.IsDBNull(18) ? "" : r.GetString(18),
+                            });
+                        }
+                    }
+                }
+                return result;
+            }
+        }
+
+        public void MarkUploaded(string dedupKey, string service, DateTime whenUtc)
+        {
+            string col = UploadColumn(service);
+            lock (_lock)
+            {
+                using (var cmd = _conn.CreateCommand())
+                {
+                    cmd.CommandText = $"UPDATE qso SET {col} = @w WHERE dedup_key = @k;";
+                    cmd.Parameters.AddWithValue("@w", whenUtc.ToString("o"));
+                    cmd.Parameters.AddWithValue("@k", dedupKey);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        private static string UploadColumn(string service)
+        {
+            switch ((service ?? "").ToUpperInvariant())
+            {
+                case "QRZ":     return "qrz_uploaded_at";
+                case "CLUBLOG": return "clublog_uploaded_at";
+                default: throw new ArgumentException("Unknown upload service: " + service);
             }
         }
 

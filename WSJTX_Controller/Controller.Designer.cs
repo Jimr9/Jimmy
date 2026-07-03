@@ -143,7 +143,7 @@
             this.statusText.AccessibleDescription = "";
             this.statusText.AccessibleName = "Status:";
             this.statusText.AccessibleRole = System.Windows.Forms.AccessibleRole.None;
-            this.statusText.BackColor = System.Drawing.Color.Red;
+            this.statusText.BackColor = System.Drawing.Color.DarkRed;
             this.statusText.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.statusText.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.statusText.ForeColor = System.Drawing.Color.White;
@@ -318,7 +318,7 @@
             // verLabel2
             // 
             this.verLabel2.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Underline, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.verLabel2.ForeColor = System.Drawing.Color.Blue;
+            this.verLabel2.ForeColor = System.Drawing.Color.DarkBlue;
             this.verLabel2.Location = new System.Drawing.Point(15, 356);
             this.verLabel2.Name = "verLabel2";
             this.verLabel2.Size = new System.Drawing.Size(110, 14);
@@ -461,7 +461,7 @@
             this.UseDirectedHelpLabel.AutoSize = true;
             this.UseDirectedHelpLabel.BackColor = System.Drawing.SystemColors.Control;
             this.UseDirectedHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.UseDirectedHelpLabel.ForeColor = System.Drawing.Color.Blue;
+            this.UseDirectedHelpLabel.ForeColor = System.Drawing.Color.DarkBlue;
             this.UseDirectedHelpLabel.Location = new System.Drawing.Point(277, 187);
             this.UseDirectedHelpLabel.AccessibleName = "Help for Directed CQ setting";
             this.UseDirectedHelpLabel.Name = "UseDirectedHelpLabel";
@@ -476,7 +476,7 @@
             this.AlertDirectedHelpLabel.AutoSize = true;
             this.AlertDirectedHelpLabel.BackColor = System.Drawing.SystemColors.Control;
             this.AlertDirectedHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.AlertDirectedHelpLabel.ForeColor = System.Drawing.Color.Blue;
+            this.AlertDirectedHelpLabel.ForeColor = System.Drawing.Color.DarkBlue;
             this.AlertDirectedHelpLabel.Location = new System.Drawing.Point(277, 238);
             this.AlertDirectedHelpLabel.AccessibleName = "Help for Alert callsign field";
             this.AlertDirectedHelpLabel.Name = "AlertDirectedHelpLabel";
@@ -491,7 +491,7 @@
             this.LogEarlyHelpLabel.AutoSize = true;
             this.LogEarlyHelpLabel.BackColor = System.Drawing.SystemColors.Control;
             this.LogEarlyHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.LogEarlyHelpLabel.ForeColor = System.Drawing.Color.Blue;
+            this.LogEarlyHelpLabel.ForeColor = System.Drawing.Color.DarkBlue;
             this.LogEarlyHelpLabel.Location = new System.Drawing.Point(138, 397);
             this.LogEarlyHelpLabel.AccessibleName = "Help for Log Early setting";
             this.LogEarlyHelpLabel.Name = "LogEarlyHelpLabel";
@@ -506,7 +506,7 @@
             this.ExcludeHelpLabel.AutoSize = true;
             this.ExcludeHelpLabel.BackColor = System.Drawing.SystemColors.Control;
             this.ExcludeHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.ExcludeHelpLabel.ForeColor = System.Drawing.Color.Blue;
+            this.ExcludeHelpLabel.ForeColor = System.Drawing.Color.DarkBlue;
             this.ExcludeHelpLabel.Location = new System.Drawing.Point(277, 264);
             this.ExcludeHelpLabel.AccessibleName = "Help for Exclude filter setting";
             this.ExcludeHelpLabel.Name = "ExcludeHelpLabel";
@@ -555,7 +555,7 @@
             this.LimitTxHelpLabel.AutoSize = true;
             this.LimitTxHelpLabel.BackColor = System.Drawing.SystemColors.Control;
             this.LimitTxHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.LimitTxHelpLabel.ForeColor = System.Drawing.Color.Blue;
+            this.LimitTxHelpLabel.ForeColor = System.Drawing.Color.DarkBlue;
             this.LimitTxHelpLabel.Location = new System.Drawing.Point(277, 416);
             this.LimitTxHelpLabel.AccessibleName = "Help for Transmit limit setting";
             this.LimitTxHelpLabel.Name = "LimitTxHelpLabel";
@@ -822,7 +822,7 @@
             // logListBox
             // 
             this.logListBox.AccessibleName = "auto-logged calls:";
-            this.logListBox.BackColor = System.Drawing.SystemColors.Control;
+            this.logListBox.BackColor = System.Drawing.SystemColors.Window;
             this.logListBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.logListBox.Font = new System.Drawing.Font("Consolas", 10F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.logListBox.FormattingEnabled = true;
@@ -836,7 +836,7 @@
             // 
             this.callListBox.AccessibleDescription = "";
             this.callListBox.AccessibleName = "stations calling:";
-            this.callListBox.BackColor = System.Drawing.SystemColors.Control;
+            this.callListBox.BackColor = System.Drawing.SystemColors.Window;
             this.callListBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.callListBox.Font = new System.Drawing.Font("Consolas", 10F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.callListBox.FormattingEnabled = true;
@@ -905,7 +905,7 @@
             this.IncludeHelpLabel.AutoSize = true;
             this.IncludeHelpLabel.BackColor = System.Drawing.SystemColors.Control;
             this.IncludeHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.IncludeHelpLabel.ForeColor = System.Drawing.Color.Blue;
+            this.IncludeHelpLabel.ForeColor = System.Drawing.Color.DarkBlue;
             this.IncludeHelpLabel.Location = new System.Drawing.Point(277, 285);
             this.IncludeHelpLabel.AccessibleName = "Help for Include filter setting";
             this.IncludeHelpLabel.Name = "IncludeHelpLabel";
@@ -930,7 +930,7 @@
             this.IgnoreNonDxHelpLabel.AutoSize = true;
             this.IgnoreNonDxHelpLabel.BackColor = System.Drawing.SystemColors.Control;
             this.IgnoreNonDxHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.IgnoreNonDxHelpLabel.ForeColor = System.Drawing.Color.Blue;
+            this.IgnoreNonDxHelpLabel.ForeColor = System.Drawing.Color.DarkBlue;
             this.IgnoreNonDxHelpLabel.Location = new System.Drawing.Point(277, 170);
             this.IgnoreNonDxHelpLabel.AccessibleName = "Help for Ignore non-DX setting";
             this.IgnoreNonDxHelpLabel.Name = "IgnoreNonDxHelpLabel";
@@ -958,7 +958,7 @@
             this.ReplyRR73HelpLabel.AutoSize = true;
             this.ReplyRR73HelpLabel.BackColor = System.Drawing.SystemColors.Control;
             this.ReplyRR73HelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.ReplyRR73HelpLabel.ForeColor = System.Drawing.Color.Blue;
+            this.ReplyRR73HelpLabel.ForeColor = System.Drawing.Color.DarkBlue;
             this.ReplyRR73HelpLabel.Location = new System.Drawing.Point(277, 398);
             this.ReplyRR73HelpLabel.AccessibleName = "Help for RR73 reply setting";
             this.ReplyRR73HelpLabel.Name = "ReplyRR73HelpLabel";
@@ -1091,7 +1091,7 @@
             this.PeriodHelpLabel.AutoSize = true;
             this.PeriodHelpLabel.BackColor = System.Drawing.SystemColors.Control;
             this.PeriodHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.PeriodHelpLabel.ForeColor = System.Drawing.Color.Blue;
+            this.PeriodHelpLabel.ForeColor = System.Drawing.Color.DarkBlue;
             this.PeriodHelpLabel.Location = new System.Drawing.Point(277, 436);
             this.PeriodHelpLabel.AccessibleName = "Help for Transmit period setting";
             this.PeriodHelpLabel.Name = "PeriodHelpLabel";
@@ -1145,7 +1145,7 @@
             this.blockHelpLabel.AutoSize = true;
             this.blockHelpLabel.BackColor = System.Drawing.SystemColors.Control;
             this.blockHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.blockHelpLabel.ForeColor = System.Drawing.Color.Blue;
+            this.blockHelpLabel.ForeColor = System.Drawing.Color.DarkBlue;
             this.blockHelpLabel.Location = new System.Drawing.Point(278, 348);
             this.blockHelpLabel.AccessibleName = "Help for Except callsigns setting";
             this.blockHelpLabel.Name = "blockHelpLabel";
@@ -1295,7 +1295,7 @@
             this.AutoFreqHelpLabel.AutoSize = true;
             this.AutoFreqHelpLabel.BackColor = System.Drawing.SystemColors.Control;
             this.AutoFreqHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, ((System.Drawing.FontStyle)((System.Drawing.FontStyle.Bold | System.Drawing.FontStyle.Italic))), System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.AutoFreqHelpLabel.ForeColor = System.Drawing.Color.Blue;
+            this.AutoFreqHelpLabel.ForeColor = System.Drawing.Color.DarkBlue;
             this.AutoFreqHelpLabel.Location = new System.Drawing.Point(150, 436);
             this.AutoFreqHelpLabel.AccessibleName = "Help for Auto frequency setting";
             this.AutoFreqHelpLabel.Name = "AutoFreqHelpLabel";
@@ -1344,7 +1344,7 @@
             // advTx1ListBox
             //
             this.advTx1ListBox.AccessibleName = "TX1 available stations";
-            this.advTx1ListBox.BackColor = System.Drawing.SystemColors.Control;
+            this.advTx1ListBox.BackColor = System.Drawing.SystemColors.Window;
             this.advTx1ListBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.advTx1ListBox.Font = new System.Drawing.Font("Consolas", 10F, System.Drawing.FontStyle.Bold);
             this.advTx1ListBox.FormattingEnabled = true;
@@ -1369,7 +1369,7 @@
             // advTx2ListBox
             //
             this.advTx2ListBox.AccessibleName = "TX2 available stations";
-            this.advTx2ListBox.BackColor = System.Drawing.SystemColors.Control;
+            this.advTx2ListBox.BackColor = System.Drawing.SystemColors.Window;
             this.advTx2ListBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.advTx2ListBox.Font = new System.Drawing.Font("Consolas", 10F, System.Drawing.FontStyle.Bold);
             this.advTx2ListBox.FormattingEnabled = true;
@@ -1394,7 +1394,7 @@
             // advRawListBox
             //
             this.advRawListBox.AccessibleName = "Raw decodes";
-            this.advRawListBox.BackColor = System.Drawing.SystemColors.Control;
+            this.advRawListBox.BackColor = System.Drawing.SystemColors.Window;
             this.advRawListBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.advRawListBox.Font = new System.Drawing.Font("Consolas", 10F, System.Drawing.FontStyle.Bold);
             this.advRawListBox.FormattingEnabled = true;
@@ -1513,8 +1513,8 @@
             this.Controls.Add(this.replyNormCqLabel);
             this.Font = new System.Drawing.Font("Microsoft Sans Serif", 6.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
-            this.MaximizeBox = false;
-            this.MaximumSize = new System.Drawing.Size(317, 430);
+            this.MaximizeBox = true;
+            this.MaximumSize = new System.Drawing.Size(0, 0);
             this.MinimumSize = new System.Drawing.Size(317, 390);
             this.Name = "Controller";
             this.Activated += new System.EventHandler(this.Controller_Activated);
@@ -1523,6 +1523,7 @@
             this.Load += new System.EventHandler(this.Form_Load);
             this.Enter += new System.EventHandler(this.Controller_Enter);
             this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.Controller_KeyDown);
+            this.Resize += new System.EventHandler(this.Controller_Resize);
             ((System.ComponentModel.ISupportInitialize)(this.timeoutNumUpDown)).EndInit();
             this.modeGroupBox.ResumeLayout(false);
             this.modeGroupBox.PerformLayout();

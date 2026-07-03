@@ -79,18 +79,26 @@ namespace WSJTX_Controller
         private System.Windows.Forms.ComboBox        _qrzPolicyCb;
         private System.Windows.Forms.NumericUpDown   _qrzIntervalNum;
         private System.Windows.Forms.Button          _qrzTestBtn;
-        private System.Windows.Forms.Label           _qrzStatusLbl;
+        private System.Windows.Forms.TextBox         _qrzStatusLbl;
         private System.Windows.Forms.TextBox         _qrzLogbookApiKeyTb;
+        private System.Windows.Forms.CheckBox        _qrzUploadEnabledCb;
+        private System.Windows.Forms.CheckBox        _qrzUploadRealtimeCb;
         private System.Windows.Forms.CheckBox        _lotwEnabledCb;
         private System.Windows.Forms.CheckBox        _lotwBoostCb;
         private System.Windows.Forms.NumericUpDown   _lotwRefreshDaysNum;
         private System.Windows.Forms.Button          _lotwUpdateBtn;
-        private System.Windows.Forms.Label           _lotwStatusLbl;
+        private System.Windows.Forms.TextBox         _lotwStatusLbl;
+        private System.Windows.Forms.CheckBox        _lotwUploadEnabledCb;
         private System.Windows.Forms.TextBox         _lotwLogbookUserTb;
         private System.Windows.Forms.TextBox         _lotwLogbookPassTb;
         private System.Windows.Forms.NumericUpDown   _clubLogRefreshDaysNum;
         private System.Windows.Forms.Button          _clubLogUpdateBtn;
-        private System.Windows.Forms.Label           _clubLogStatusLbl;
+        private System.Windows.Forms.TextBox         _clubLogStatusLbl;
+        private System.Windows.Forms.CheckBox        _clubLogUploadEnabledCb;
+        private System.Windows.Forms.CheckBox        _clubLogUploadRealtimeCb;
+        private System.Windows.Forms.TextBox         _clubLogUploadEmailTb;
+        private System.Windows.Forms.TextBox         _clubLogUploadPasswordTb;
+        private System.Windows.Forms.TextBox         _clubLogUploadCallsignTb;
 
         private sealed class SoundRow
         {
@@ -747,6 +755,7 @@ namespace WSJTX_Controller
                 new { Key = "Sota",           Label = "SOTA",                            Enabled = ctrl.soundEnabled_Sota,           File = ctrl.soundFile_Sota,           EnabledEditable = true },
                 new { Key = "WantedAnywhere", Label = "Wanted call heard anywhere",       Enabled = ctrl.soundEnabled_WantedAnywhere, File = ctrl.soundFile_WantedAnywhere, EnabledEditable = true },
                 new { Key = "OppositePeriod", Label = "Interesting call opposite period", Enabled = ctrl.soundEnabled_OppositePeriod, File = ctrl.soundFile_OppositePeriod, EnabledEditable = true },
+                new { Key = "AwardNeeded",    Label = "Award needed (Still Need tab)",    Enabled = ctrl.soundEnabled_AwardNeeded,    File = ctrl.soundFile_AwardNeeded,    EnabledEditable = true },
             };
 
             int y = 84;
@@ -913,6 +922,10 @@ namespace WSJTX_Controller
                     case "OppositePeriod":
                         ctrl.soundEnabled_OppositePeriod = enabled;
                         ctrl.soundFile_OppositePeriod = file;
+                        break;
+                    case "AwardNeeded":
+                        ctrl.soundEnabled_AwardNeeded = enabled;
+                        ctrl.soundFile_AwardNeeded = file;
                         break;
                 }
             }
@@ -1290,6 +1303,7 @@ namespace WSJTX_Controller
                 HotkeyAction.SortOrder,
                 HotkeyAction.RowOrder,
                 HotkeyAction.AnalyzeSlot,
+                HotkeyAction.ResetWindowSize,
             };
 
             var navActions = new HotkeyAction[]
@@ -1612,13 +1626,17 @@ namespace WSJTX_Controller
             _qrzTestBtn.Click += QrzTestBtn_Click;
             qrzBox.Controls.Add(_qrzTestBtn);
 
-            _qrzStatusLbl = new System.Windows.Forms.Label
+            _qrzStatusLbl = new System.Windows.Forms.TextBox
             {
                 Text           = QrzStatusText(),
                 Location       = new System.Drawing.Point(110, 171),
                 Size           = new System.Drawing.Size(500, 18),
                 Font           = font,
-                TabStop        = false,
+                ReadOnly       = true,
+                BorderStyle    = System.Windows.Forms.BorderStyle.None,
+                BackColor      = System.Drawing.SystemColors.Control,
+                TabStop        = true,
+                TabIndex       = tabIdx++,
                 AccessibleName = "QRZ login status",
             };
             qrzBox.Controls.Add(_qrzStatusLbl);
@@ -1633,8 +1651,8 @@ namespace WSJTX_Controller
                 "free accounts receive very limited data that QRZ intends only for testing.",
                 10, 226, font));
 
-            // ── QRZ Logbook Download ─────────────────────────────────────────────
-            var qrzLogbookBox = MakeGroupBox("QRZ Logbook Download", 5, 296, pw, 100, font);
+            // ── QRZ Logbook Download / Upload ────────────────────────────────────
+            var qrzLogbookBox = MakeGroupBox("QRZ Logbook Download / Upload", 5, 296, pw, 156, font);
             lookupPanel.Controls.Add(qrzLogbookBox);
 
             qrzLogbookBox.Controls.Add(MakeLabel("API key:", 10, 23, font));
@@ -1660,8 +1678,32 @@ namespace WSJTX_Controller
                 "above -- this key only reaches your own logbook, it cannot look up other callsigns.",
                 10, 80, font));
 
+            _qrzUploadEnabledCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Enable QRZ Logbook upload (uses the same API key above)",
+                Checked        = ctrl.qrzUploadEnabled,
+                Location       = new System.Drawing.Point(10, 104),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Enable QRZ Logbook upload",
+            };
+            qrzLogbookBox.Controls.Add(_qrzUploadEnabledCb);
+
+            _qrzUploadRealtimeCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Upload automatically as each QSO completes (otherwise, use Alt+U)",
+                Checked        = ctrl.qrzUploadRealtime,
+                Location       = new System.Drawing.Point(28, 126),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Upload to QRZ automatically in real time",
+            };
+            qrzLogbookBox.Controls.Add(_qrzUploadRealtimeCb);
+
             // ── LoTW User Activity ───────────────────────────────────────────────
-            var lotwBox = MakeGroupBox("LoTW User Activity  (public download — no account required)", 5, 402, pw, 116, font);
+            var lotwBox = MakeGroupBox("LoTW User Activity  (public download — no account required)", 5, 458, pw, 160, font);
             lookupPanel.Controls.Add(lotwBox);
 
             _lotwEnabledCb = new System.Windows.Forms.CheckBox
@@ -1714,19 +1756,38 @@ namespace WSJTX_Controller
             _lotwUpdateBtn.Click += LoTWUpdateBtn_Click;
             lotwBox.Controls.Add(_lotwUpdateBtn);
 
-            _lotwStatusLbl = new System.Windows.Forms.Label
+            _lotwStatusLbl = new System.Windows.Forms.TextBox
             {
                 Text      = LoTWStatusText(),
                 Location  = new System.Drawing.Point(110, 91),
                 Size      = new System.Drawing.Size(500, 18),
                 Font      = font,
-                TabStop   = false,
+                ReadOnly    = true,
+                BorderStyle = System.Windows.Forms.BorderStyle.None,
+                BackColor   = System.Drawing.SystemColors.Control,
+                TabStop   = true,
+                TabIndex  = tabIdx++,
                 AccessibleName = "LoTW download status",
             };
             lotwBox.Controls.Add(_lotwStatusLbl);
 
+            _lotwUploadEnabledCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Enable LoTW upload via WSJT-X (Alt+U)",
+                Checked        = ctrl.lotwUploadEnabled,
+                Location       = new System.Drawing.Point(10, 116),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Enable LoTW upload via WSJT-X",
+            };
+            lotwBox.Controls.Add(_lotwUploadEnabledCb);
+            lotwBox.Controls.Add(MakeLabel(
+                "Controls Alt+U -- WSJT-X itself performs the actual LoTW/TQSL upload; Jimmy only sends the command.",
+                10, 138, font));
+
             // ── LoTW Logbook Download ────────────────────────────────────────────
-            var lotwLogbookBox = MakeGroupBox("LoTW Logbook Download", 5, 524, pw, 116, font);
+            var lotwLogbookBox = MakeGroupBox("LoTW Logbook Download", 5, 624, pw, 116, font);
             lookupPanel.Controls.Add(lotwLogbookBox);
 
             lotwLogbookBox.Controls.Add(MakeLabel("Username:", 10, 23, font));
@@ -1766,7 +1827,7 @@ namespace WSJTX_Controller
             // data downloads unconditionally using Jimmy's own application key
             // (see ClubLogAppKey.cs), so Rule Definition awards (DXCC etc.) work
             // out of the box with no configuration.
-            var clBox = MakeGroupBox("Club Log Country Data  (automatic — no account or key needed; uses Jimmy's own registration)", 5, 646, pw, 76, font);
+            var clBox = MakeGroupBox("Club Log Country Data (automatic — no account needed)", 5, 746, pw, 76, font);
             lookupPanel.Controls.Add(clBox);
 
             clBox.Controls.Add(MakeLabel("Refresh (days):", 10, 23, font));
@@ -1795,16 +1856,98 @@ namespace WSJTX_Controller
             _clubLogUpdateBtn.Click += ClubLogUpdateBtn_Click;
             clBox.Controls.Add(_clubLogUpdateBtn);
 
-            _clubLogStatusLbl = new System.Windows.Forms.Label
+            _clubLogStatusLbl = new System.Windows.Forms.TextBox
             {
                 Text      = ClubLogStatusText(),
                 Location  = new System.Drawing.Point(110, 47),
                 Size      = new System.Drawing.Size(500, 18),
                 Font      = font,
-                TabStop   = false,
+                ReadOnly    = true,
+                BorderStyle = System.Windows.Forms.BorderStyle.None,
+                BackColor   = System.Drawing.SystemColors.Control,
+                TabStop   = true,
+                TabIndex  = tabIdx++,
                 AccessibleName = "Club Log download status",
             };
             clBox.Controls.Add(_clubLogStatusLbl);
+
+            // ── Club Log Logbook Upload ──────────────────────────────────────────
+            // A per-user credential (Application Password), entirely separate from
+            // the app-wide Club Log key used for country data above -- see
+            // ClubLogUploadClient.cs for why these cannot be the same credential.
+            var clUploadBox = MakeGroupBox("Club Log Logbook Upload", 5, 828, pw, 196, font);
+            lookupPanel.Controls.Add(clUploadBox);
+
+            _clubLogUploadEnabledCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Enable Club Log Logbook upload",
+                Checked        = ctrl.clubLogUploadEnabled,
+                Location       = new System.Drawing.Point(10, 20),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Enable Club Log Logbook upload",
+            };
+            clUploadBox.Controls.Add(_clubLogUploadEnabledCb);
+
+            _clubLogUploadRealtimeCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Upload automatically as each QSO completes (otherwise, use Alt+U)",
+                Checked        = ctrl.clubLogUploadRealtime,
+                Location       = new System.Drawing.Point(28, 42),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Upload to Club Log automatically in real time",
+            };
+            clUploadBox.Controls.Add(_clubLogUploadRealtimeCb);
+
+            clUploadBox.Controls.Add(MakeLabel("Email:", 10, 68, font));
+            _clubLogUploadEmailTb = new System.Windows.Forms.TextBox
+            {
+                Text           = ctrl.clubLogUploadEmail ?? "",
+                Location       = new System.Drawing.Point(90, 65),
+                Size           = new System.Drawing.Size(220, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Club Log account email for upload",
+            };
+            clUploadBox.Controls.Add(_clubLogUploadEmailTb);
+
+            clUploadBox.Controls.Add(MakeLabel("App Password:", 10, 92, font));
+            _clubLogUploadPasswordTb = new System.Windows.Forms.TextBox
+            {
+                Text           = ctrl.clubLogUploadPassword ?? "",
+                Location       = new System.Drawing.Point(90, 89),
+                Size           = new System.Drawing.Size(220, 20),
+                PasswordChar   = '●',
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Club Log Application Password for upload",
+            };
+            clUploadBox.Controls.Add(_clubLogUploadPasswordTb);
+
+            clUploadBox.Controls.Add(MakeLabel("Callsign:", 10, 116, font));
+            _clubLogUploadCallsignTb = new System.Windows.Forms.TextBox
+            {
+                Text           = ctrl.clubLogUploadCallsign ?? "",
+                Location       = new System.Drawing.Point(90, 113),
+                Size           = new System.Drawing.Size(120, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Callsign for Club Log upload",
+            };
+            clUploadBox.Controls.Add(_clubLogUploadCallsignTb);
+
+            clUploadBox.Controls.Add(MakeLabel(
+                "Uploads QSOs to your Club Log online logbook (Logbook > Sync tab, or automatically as you log",
+                10, 142, font));
+            clUploadBox.Controls.Add(MakeLabel(
+                "each contact). Requires a Club Log Application Password (clublog.org → Settings → App",
+                10, 158, font));
+            clUploadBox.Controls.Add(MakeLabel(
+                "Passwords) -- NOT your normal Club Log website login. Separate from the country-data key above.",
+                10, 174, font));
         }
 
         private static System.Windows.Forms.GroupBox MakeGroupBox(string text, int x, int y, int w, int h, System.Drawing.Font font)
@@ -1874,12 +2017,20 @@ namespace WSJTX_Controller
             ctrl.qrzLookupPolicy         = (QrzLookupPolicy)(_qrzPolicyCb?.SelectedIndex ?? 0);
             ctrl.qrzMinIntervalSeconds   = (int)(_qrzIntervalNum?.Value         ?? 10);
             ctrl.qrzLogbookApiKey        = _qrzLogbookApiKeyTb?.Text.Trim()     ?? "";
+            ctrl.qrzUploadEnabled        = _qrzUploadEnabledCb?.Checked         ?? false;
+            ctrl.qrzUploadRealtime       = _qrzUploadRealtimeCb?.Checked        ?? false;
             ctrl.lotwEnabled             = _lotwEnabledCb?.Checked              ?? false;
             ctrl.lotwBoostEnabled        = _lotwBoostCb?.Checked                ?? false;
             ctrl.lotwRefreshDays         = (int)(_lotwRefreshDaysNum?.Value      ?? 30);
+            ctrl.lotwUploadEnabled       = _lotwUploadEnabledCb?.Checked        ?? false;
             ctrl.lotwLogbookUser         = _lotwLogbookUserTb?.Text.Trim()      ?? "";
             ctrl.lotwLogbookPass         = _lotwLogbookPassTb?.Text            ?? "";
             ctrl.clubLogRefreshDays      = (int)(_clubLogRefreshDaysNum?.Value   ?? 30);
+            ctrl.clubLogUploadEnabled    = _clubLogUploadEnabledCb?.Checked     ?? false;
+            ctrl.clubLogUploadRealtime   = _clubLogUploadRealtimeCb?.Checked    ?? false;
+            ctrl.clubLogUploadEmail      = _clubLogUploadEmailTb?.Text.Trim()   ?? "";
+            ctrl.clubLogUploadPassword   = _clubLogUploadPasswordTb?.Text      ?? "";
+            ctrl.clubLogUploadCallsign   = _clubLogUploadCallsignTb?.Text.Trim().ToUpperInvariant() ?? "";
         }
 
         private async void QrzTestBtn_Click(object sender, EventArgs e)
@@ -1907,6 +2058,7 @@ namespace WSJTX_Controller
                     _qrzStatusLbl.Text = $"Error: {ctrl.lookupManager.Qrz.LastError}";
                 }
                 _qrzTestBtn.Enabled = true;
+                _qrzStatusLbl.Focus();
             }
         }
 
@@ -1920,6 +2072,7 @@ namespace WSJTX_Controller
             {
                 _lotwStatusLbl.Text   = ok ? LoTWStatusText() : $"Error: {ctrl.lookupManager.LoTW.LastError}";
                 _lotwUpdateBtn.Enabled = true;
+                _lotwStatusLbl.Focus();
             }
         }
 
@@ -1934,6 +2087,7 @@ namespace WSJTX_Controller
             {
                 _clubLogStatusLbl.Text    = ok ? ClubLogStatusText() : $"Error: {ctrl.lookupManager.ClubLog.LastError}";
                 _clubLogUpdateBtn.Enabled = true;
+                _clubLogStatusLbl.Focus();
             }
         }
     }

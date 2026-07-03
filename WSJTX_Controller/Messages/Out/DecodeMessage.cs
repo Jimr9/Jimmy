@@ -347,6 +347,10 @@ namespace WsjtxUdpLib.Messages.Out
         public int SequenceNumber { get; set; }
         public int Quality { get; set; }
         public WSJTX_Controller.WsjtxClient.CallCategory Category { get; set; }
+        // Id of whichever actively-checked Rule Definition this message matched, if any --
+        // set by DeriveCategory/CheckAwardAlert, read back for display (CategoryTag/raw
+        // decode tags) and for smart sound file lookup. Null when no award matched.
+        public string MatchedAwardRuleId { get; set; }
 
         public static string WsjtxCountry(string country)
         {
@@ -482,6 +486,7 @@ namespace WsjtxUdpLib.Messages.Out
             enqueueDecodeMessage.IsNewCountry = IsNewCountry;
             enqueueDecodeMessage.Priority = Priority;
             enqueueDecodeMessage.Category = Category;
+            enqueueDecodeMessage.MatchedAwardRuleId = MatchedAwardRuleId;
             enqueueDecodeMessage.Country = String.Copy(Country);
             enqueueDecodeMessage.Continent = String.Copy(Continent);
             enqueueDecodeMessage.Azimuth = Azimuth;
