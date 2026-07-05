@@ -5540,6 +5540,37 @@ namespace WSJTX_Controller
             DebugOutput($"{Time()} >>>>>Sent 'Broadcast' cmd:255");
             emsg.CmdCheck = "";
 
+            // Root-cause fix: the cmd:255 broadcast above asks WSJT-X to log the QSO, but
+            // WSJT-X's own confirmation (QsoLoggedMessage/LoggedAdifMessage) -- the only
+            // thing that normally drives ImportLiveLoggedQso (local logbook.db, Awards/Still
+            // Need tracking, and QRZ/Club Log real-time upload) -- is not guaranteed to come
+            // back. Observed in practice: WSJT-X wrote the QSO to its own ADIF log but never
+            // sent the confirmation, so Jimmy's own database silently never learned about it.
+            // Jimmy already has every field needed to record this QSO itself, so it does so
+            // directly here instead of depending solely on that round trip. ClaimLiveLoggedQso
+            // still dedupes against WSJT-X's confirmation if it arrives afterward.
+            string liveDedupKey = AdifImporter.BuildDedupKey(call, band, mode, qsoDateOn, qsoTimeOn);
+            if (ClaimLiveLoggedQso(liveDedupKey))
+            {
+                var liveFields = new Dictionary<string, string>
+                {
+                    ["CALL"]             = call,
+                    ["BAND"]             = band,
+                    ["FREQ"]             = freq,
+                    ["MODE"]             = mode,
+                    ["QSO_DATE"]         = qsoDateOn,
+                    ["TIME_ON"]          = qsoTimeOn,
+                    ["TIME_OFF"]         = qsoTimeOff,
+                    ["RST_SENT"]         = rstSent,
+                    ["RST_RCVD"]         = rstRecd,
+                    ["GRIDSQUARE"]       = grid,
+                    ["STATION_CALLSIGN"] = myCall,
+                    ["MY_GRIDSQUARE"]    = myGrid,
+                };
+                EnrichWithClubLogGeoData(liveFields, call);
+                ImportLiveLoggedQso(call, liveFields, adifRecord, liveDedupKey);
+            }
+
             Sounds.PlaySoundEvent(ctrl.loggedCheckBox.Checked, ctrl.soundFile_Logged);
             StatusView.ShowMessage($"Logged QSO with {call}", false);
             if (isPota) AddPotaLogDict(call, DateTime.Now, band, mode);         //local date/time
