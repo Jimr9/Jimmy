@@ -21,12 +21,17 @@ namespace WSJTX_Controller
     [Serializable]
     public class QrzCacheEntry
     {
-        [XmlAttribute] public string Callsign  { get; set; }
-        [XmlAttribute] public string Country   { get; set; }
-        [XmlAttribute] public string State     { get; set; }
-        [XmlAttribute] public string Grid      { get; set; }
-        [XmlAttribute] public string Continent { get; set; }
-        [XmlAttribute] public string Name      { get; set; }
+        [XmlAttribute] public string Callsign   { get; set; }
+        [XmlAttribute] public string Country    { get; set; }
+        [XmlAttribute] public string State      { get; set; }
+        [XmlAttribute] public string Grid       { get; set; }
+        [XmlAttribute] public string Continent  { get; set; }
+        [XmlAttribute] public string Name       { get; set; }
+        [XmlAttribute] public string County     { get; set; }
+        [XmlAttribute] public string CqZone      { get; set; }
+        [XmlAttribute] public string ItuZone     { get; set; }
+        [XmlAttribute] public string QslManager { get; set; }
+        [XmlAttribute] public string Email       { get; set; }
         [XmlAttribute] public string CachedAt  { get; set; }
 
         [XmlIgnore]
@@ -212,13 +217,18 @@ namespace WSJTX_Controller
 
             return new QrzCacheEntry
             {
-                Callsign  = (NodeText(doc, "call") ?? call).ToUpperInvariant(),
-                Country   = NodeText(doc, "country"),
-                State     = NodeText(doc, "state"),
-                Grid      = NodeText(doc, "grid"),
-                Continent = NodeText(doc, "cont"),
-                Name      = NodeText(doc, "fname") ?? NodeText(doc, "name"),
-                CachedAt  = DateTime.UtcNow.ToString("o"),
+                Callsign   = (NodeText(doc, "call") ?? call).ToUpperInvariant(),
+                Country    = NodeText(doc, "country"),
+                State      = NodeText(doc, "state"),
+                Grid       = NodeText(doc, "grid"),
+                Continent  = NodeText(doc, "cont"),
+                Name       = NodeText(doc, "fname") ?? NodeText(doc, "name"),
+                County     = NodeText(doc, "county"),
+                CqZone     = NodeText(doc, "cqzone"),
+                ItuZone    = NodeText(doc, "ituzone"),
+                QslManager = NodeText(doc, "qslmgr"),
+                Email      = NodeText(doc, "email"),
+                CachedAt   = DateTime.UtcNow.ToString("o"),
             };
         }
 
@@ -231,13 +241,24 @@ namespace WSJTX_Controller
 
         private static CallsignLookupResult ToResult(QrzCacheEntry e) => new CallsignLookupResult
         {
-            Callsign  = e.Callsign,
-            Country   = e.Country,
-            State     = e.State,
-            Grid      = e.Grid,
-            Continent = e.Continent,
-            Name      = e.Name,
+            Callsign   = e.Callsign,
+            Country    = e.Country,
+            State      = e.State,
+            Grid       = e.Grid,
+            Continent  = e.Continent,
+            Name       = e.Name,
+            County     = e.County,
+            CqZone     = ParseZone(e.CqZone),
+            ItuZone    = ParseZone(e.ItuZone),
+            QslManager = e.QslManager,
+            Email      = e.Email,
         };
+
+        private static int ParseZone(string s)
+        {
+            int z;
+            return int.TryParse(s, out z) ? z : 0;
+        }
 
         private void LoadCache()
         {

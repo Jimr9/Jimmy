@@ -60,7 +60,11 @@ namespace WSJTX_Controller
             "'NM','NV','NY','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VA','VT','WA'," +
             "'WI','WV','WY'";
 
+        // JIMMY_TEST_DB_PATH lets the replay test suite point a real, separately-running
+        // Jimmy.exe at a throwaway database instead of the user's actual logbook -- unset
+        // in normal operation, so behavior is unchanged.
         public static string DbPath =>
+            Environment.GetEnvironmentVariable("JIMMY_TEST_DB_PATH") ??
             Path.Combine(LookupManager.DataRoot, "Logbook", "logbook.db");
 
         public LogbookDb()
@@ -252,14 +256,31 @@ namespace WSJTX_Controller
             string darcDok, string wpxPrefix,
             string exchangeSent, string exchangeRcvd)
         {
+            // Columns the ON CONFLICT clause below can modify. Compared before/after so
+            // "updated" only counts rows whose data actually changed, instead of every
+            // already-known QSO the source re-sends (which is nearly all of them).
+            const string mutableCols =
+                "lotw_qsl_sent, lotw_qsl_rcvd, qrz_qsl_sent, qrz_qsl_rcvd, country, state, name, grid, " +
+                "dxcc, cq_zone, continent, itu_zone, county, iota, sig, sig_info, my_sig, my_sig_info, " +
+                "darc_dok, wpx_prefix, exchange_sent, exchange_rcvd";
+
             lock (_lock)
             {
                 bool existed;
+                object[] before = null;
                 using (var check = _conn.CreateCommand())
                 {
-                    check.CommandText = "SELECT COUNT(*) FROM qso WHERE dedup_key=@k;";
+                    check.CommandText = $"SELECT {mutableCols} FROM qso WHERE dedup_key=@k;";
                     check.Parameters.AddWithValue("@k", dedupKey);
-                    existed = (long)check.ExecuteScalar() > 0;
+                    using (var r = check.ExecuteReader())
+                    {
+                        existed = r.Read();
+                        if (existed)
+                        {
+                            before = new object[r.FieldCount];
+                            r.GetValues(before);
+                        }
+                    }
                 }
 
                 using (var cmd = _conn.CreateCommand())
@@ -349,7 +370,29 @@ ON CONFLICT(dedup_key) DO UPDATE SET
                     cmd.ExecuteNonQuery();
                 }
 
-                return (!existed, existed);
+                bool isUpdated = false;
+                if (existed)
+                {
+                    using (var check2 = _conn.CreateCommand())
+                    {
+                        check2.CommandText = $"SELECT {mutableCols} FROM qso WHERE dedup_key=@k;";
+                        check2.Parameters.AddWithValue("@k", dedupKey);
+                        using (var r = check2.ExecuteReader())
+                        {
+                            if (r.Read())
+                            {
+                                var after = new object[r.FieldCount];
+                                r.GetValues(after);
+                                for (int i = 0; i < before.Length; i++)
+                                {
+                                    if (!Equals(before[i], after[i])) { isUpdated = true; break; }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return (!existed, isUpdated);
             }
         }
 

@@ -101,6 +101,19 @@ static class JimmyTests
         HrcCacheTests();
         RuleUniverseBuiltInTests();
         RuleUniverseClubLogTests();
+        RuleEngineCoreTests();
+        RuleEngineDateRangeTests();
+        RuleEngineBandIndependenceTests();
+        RuleEngineWorkedBandsTests();
+        Colonies13RosterRegressionTest();
+        CallQueueRankerCategoryTierTests();
+        CallQueueRankerSortMethodTests();
+        CallQueueRankerTieBreakTests();
+        CallQueueRankerCategoryWeightValidationTests();
+        CallQueueRankerCallingPrioritiesTests();
+        CallQueueRankerBeamRankTests();
+        JimmySettingsRoundTripTests();
+        JimmySettingsDefaultsTests();
 
         Console.WriteLine();
         Console.WriteLine($"=== {passed} passed, {failed} failed ===");
@@ -407,17 +420,20 @@ static class JimmyTests
 
     // Insert a minimal QSO record into a test LogbookDb.
     // Each callsign produces a unique dedup key — no counter needed.
+    // band/qsoDate/continent are optional so existing calls (fixed 20m,
+    // 2024-12-01, no continent) keep working unchanged.
     static void InsertQso(LogbookDb db, string call, string state,
-        int dxcc, int zone, string lotwRcvd = "")
+        int dxcc, int zone, string lotwRcvd = "",
+        string band = "20m", string qsoDate = "20241201", string continent = "")
     {
-        string key = AdifImporter.BuildDedupKey(call, "20m", "FT8", "20241201", "1200");
+        string key = AdifImporter.BuildDedupKey(call, band, "FT8", qsoDate, "1200");
         // Parameter order: ..., lotwQslSent, lotwQslRcvd, qrzQslSent, qrzQslRcvd, ...
-        db.Upsert(call, "20m", "FT8", "20241201", "1200", "1215",
+        db.Upsert(call, band, "FT8", qsoDate, "1200", "1215",
             14_074_000, "-10", "-05", state, "Test", dxcc, zone,
             "", "", "", "", "", "", "",
             "", lotwRcvd, "", "",
             "MANUAL", "", key,
-            "", 0, "", "", "", "", "", "", "", "", "", "");
+            continent, 0, "", "", "", "", "", "", "", "", "", "");
     }
 
     // Verify that each AP-suffixed message, once stripped, classifies correctly.
@@ -648,5 +664,534 @@ static class JimmyTests
         {
             try { Directory.Delete(tmpRoot, true); } catch { }
         }
+    }
+
+    // ── RuleEngine core evaluation ────────────────────────────────────────────
+    // Exercises RuleEngine.Evaluate/EvaluateBand directly against a throwaway
+    // SQLite database -- no live app, no WSJT-X. Added after two real bugs
+    // shipped without anything ever testing RuleEngine itself: a Colonies13
+    // DateFrom/DateTo mixup, and the HRC cache always filtering by the current
+    // band. Before this, only RuleUniverse.Resolve() (checklist building) and
+    // LoadHrcCache() called the correct (unrestricted) way were covered.
+    static void RuleEngineCoreTests()
+    {
+        Console.WriteLine("\n── RuleEngine: Evaluate (GroupBy/Target/Confirmation) ──");
+        string tmpDb = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_RuleEngine_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDb))
+            {
+                // Confirmation=None: a plain worked QSO (no QSL) must be enough to count.
+                InsertQso(db, "W5TX", "TX", dxcc: 291, zone: 5);
+                var defWorked = new RuleDefinition
+                {
+                    Id = "TEST_WORKED", Name = "Test", FormatVersion = 1, Enabled = true,
+                    GroupBy = RuleGroupBy.State, Universe = "US_50_STATES",
+                    Confirmation = RuleConfirmation.None, Target = RuleTargetType.All,
+                };
+                var r1 = RuleEngine.Evaluate(defWorked, tmpDb, null);
+                Check("Confirmation=None: TX worked (no QSL) counts",
+                      r1.WorkedItems != null && r1.WorkedItems.Contains("TX"), true);
+                Check("Confirmation=None: 49 still needed",
+                      r1.StillNeeded != null && r1.StillNeeded.Count == 49, true);
+
+                // Confirmation=Lotw: worked-but-unconfirmed must NOT count as done.
+                var defConfirmed = new RuleDefinition
+                {
+                    Id = "TEST_CONFIRMED", Name = "Test", FormatVersion = 1, Enabled = true,
+                    GroupBy = RuleGroupBy.State, Universe = "US_50_STATES",
+                    Confirmation = RuleConfirmation.Lotw, Target = RuleTargetType.All,
+                };
+                var r2 = RuleEngine.Evaluate(defConfirmed, tmpDb, null);
+                Check("Confirmation=Lotw: TX worked but unconfirmed -> still needed",
+                      r2.StillNeeded != null && r2.StillNeeded.Contains("TX"), true);
+
+                InsertQso(db, "W6CA", "CA", dxcc: 291, zone: 3, lotwRcvd: "Y");
+                var r3 = RuleEngine.Evaluate(defConfirmed, tmpDb, null);
+                Check("Confirmation=Lotw: CA confirmed -> not still needed",
+                      r3.StillNeeded != null && !r3.StillNeeded.Contains("CA"), true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL  RuleEngineCoreTests threw: {ex.GetType().Name}: {ex.Message}");
+            failed++;
+        }
+        finally
+        {
+            try { File.Delete(tmpDb); } catch { }
+        }
+    }
+
+    // ── RuleEngine date range filtering ────────────────────────────────────────
+    // Mirrors the exact Colonies13 scenario: DateFrom/DateTo set to track one
+    // year's event. A real QSO from an earlier year must NOT count once a date
+    // range excludes it -- that's the correct, intentional behavior the feature
+    // is for, but it's exactly what caused the "why does it still say I need
+    // this station" confusion, so it needs a test pinning down both directions.
+    static void RuleEngineDateRangeTests()
+    {
+        Console.WriteLine("\n── RuleEngine: DateFrom/DateTo Filtering ──");
+        string tmpDb = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_RuleEngineDate_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDb))
+            {
+                // OH worked only in a prior year -- outside the 2026-07-01..2026-07-08 window.
+                InsertQso(db, "W8OH", "OH", dxcc: 291, zone: 4, qsoDate: "20240115");
+                // TX worked inside the window.
+                InsertQso(db, "W5TX", "TX", dxcc: 291, zone: 5, qsoDate: "20260703");
+
+                var def = new RuleDefinition
+                {
+                    Id = "TEST_DATERANGE", Name = "Test", FormatVersion = 1, Enabled = true,
+                    GroupBy = RuleGroupBy.State, Universe = "US_50_STATES",
+                    Confirmation = RuleConfirmation.None, Target = RuleTargetType.All,
+                    DateFrom = "2026-07-01", DateTo = "2026-07-08",
+                };
+                var r = RuleEngine.Evaluate(def, tmpDb, null);
+                Check("Date range: OH worked only outside window -> still needed",
+                      r.StillNeeded != null && r.StillNeeded.Contains("OH"), true);
+                Check("Date range: TX worked inside window -> not still needed",
+                      r.StillNeeded != null && !r.StillNeeded.Contains("TX"), true);
+
+                // Same log, no date range at all: OH must count too (all-time view).
+                var defAllTime = new RuleDefinition
+                {
+                    Id = "TEST_ALLTIME", Name = "Test", FormatVersion = 1, Enabled = true,
+                    GroupBy = RuleGroupBy.State, Universe = "US_50_STATES",
+                    Confirmation = RuleConfirmation.None, Target = RuleTargetType.All,
+                };
+                var rAll = RuleEngine.Evaluate(defAllTime, tmpDb, null);
+                Check("No date range: OH worked (any year) -> not still needed",
+                      rAll.StillNeeded != null && !rAll.StillNeeded.Contains("OH"), true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL  RuleEngineDateRangeTests threw: {ex.GetType().Name}: {ex.Message}");
+            failed++;
+        }
+        finally
+        {
+            try { File.Delete(tmpDb); } catch { }
+        }
+    }
+
+    // ── RuleEngine / LoadHrcCache band independence ────────────────────────────
+    // Regression guard for two real bugs: the live Still Need cache
+    // (Controller.RefreshStillNeedCache) and the HRC cache (LoadHrcCache) both
+    // silently scoped "still needed" to the current band even though the award
+    // itself has no [Match] Bands= restriction -- which is every shipped award.
+    // EvaluateBand(def, null) / LoadHrcCache(..., band: null) is the correct call
+    // for those awards; passing a real band is a genuinely different, deliberately
+    // restricted view (used by the Still Need tab's manual band filter). This
+    // pins down both halves of that contract: unrestricted finds cross-band work,
+    // and a real band filter genuinely does restrict (so the mechanism itself is
+    // proven to work, not just always empty/always full).
+    static void RuleEngineBandIndependenceTests()
+    {
+        Console.WriteLine("\n── RuleEngine / LoadHrcCache: Band Independence ──");
+        string tmpDb = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_RuleEngineBand_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDb))
+            {
+                // Worked on 20m only. No Bands= restriction on the award (empty list).
+                InsertQso(db, "K2BAND", "", dxcc: 291, zone: 5, band: "20m");
+                var def = new RuleDefinition
+                {
+                    Id = "TEST_BANDIND", Name = "Test", FormatVersion = 1, Enabled = true,
+                    GroupBy = RuleGroupBy.Callsign, Target = RuleTargetType.Count, Threshold = 1,
+                    Confirmation = RuleConfirmation.None,
+                };
+
+                var unrestricted = RuleEngine.EvaluateBand(def, null, tmpDb, null);
+                Check("EvaluateBand(band:null): worked on 20m counts regardless of 'current' band",
+                      unrestricted.WorkedItems != null && unrestricted.WorkedItems.Contains("K2BAND"), true);
+
+                var wrongBand = RuleEngine.EvaluateBand(def, "10m", tmpDb, null);
+                Check("EvaluateBand(band:'10m'): correctly restricts -- 20m QSO doesn't count for 10m",
+                      wrongBand.WorkedItems == null || !wrongBand.WorkedItems.Contains("K2BAND"), true);
+
+                var rightBand = RuleEngine.EvaluateBand(def, "20m", tmpDb, null);
+                Check("EvaluateBand(band:'20m'): restricting to the actual band still finds it",
+                      rightBand.WorkedItems != null && rightBand.WorkedItems.Contains("K2BAND"), true);
+
+                // Same mechanism, older HRC cache code path: state confirmed on 20m only.
+                InsertQso(db, "W5TX", "TX", dxcc: 291, zone: 5, band: "20m", lotwRcvd: "Y");
+
+                HashSet<string> neededNoBand, neededWithBand;
+                db.LoadHrcCache(out neededNoBand, out _, out _, band: null);
+                db.LoadHrcCache(out neededWithBand, out _, out _, band: "10m");
+
+                Check("LoadHrcCache(band:null): TX confirmed on 20m -> not needed (all-time view)",
+                      !neededNoBand.Contains("TX"), true);
+                Check("LoadHrcCache(band:'10m'): TX confirmed only on 20m -> needed again for 10m",
+                      neededWithBand.Contains("TX"), true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL  RuleEngineBandIndependenceTests threw: {ex.GetType().Name}: {ex.Message}");
+            failed++;
+        }
+        finally
+        {
+            try { File.Delete(tmpDb); } catch { }
+        }
+    }
+
+    // ── RuleEngine "Band(s) worked" column ─────────────────────────────────────
+    // The Awards tab's "Band(s) worked" column (RuleResult.WorkedBands) must
+    // list every band a station was worked on, low-to-high, regardless of the
+    // order the QSOs were logged in.
+    static void RuleEngineWorkedBandsTests()
+    {
+        Console.WriteLine("\n── RuleEngine: WorkedBands (\"Band(s) worked\" column) ──");
+        string tmpDb = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_RuleEngineBands_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDb))
+            {
+                // Logged out of frequency order: 17m, then 40m, then 20m.
+                InsertQso(db, "K2BANDS", "", dxcc: 291, zone: 5, band: "17m", qsoDate: "20260701");
+                InsertQso(db, "K2BANDS", "", dxcc: 291, zone: 5, band: "40m", qsoDate: "20260702");
+                InsertQso(db, "K2BANDS", "", dxcc: 291, zone: 5, band: "20m", qsoDate: "20260703");
+
+                var def = new RuleDefinition
+                {
+                    Id = "TEST_BANDS", Name = "Test", FormatVersion = 1, Enabled = true,
+                    GroupBy = RuleGroupBy.Callsign, Target = RuleTargetType.Count, Threshold = 1,
+                    Confirmation = RuleConfirmation.None,
+                };
+                var r = RuleEngine.Evaluate(def, tmpDb, null);
+
+                Check("WorkedBands: entry exists for K2BANDS",
+                      r.WorkedBands != null && r.WorkedBands.ContainsKey("K2BANDS"), true);
+                if (r.WorkedBands != null && r.WorkedBands.TryGetValue("K2BANDS", out var bands))
+                {
+                    CheckStr("WorkedBands: ordered low-to-high regardless of log order",
+                             string.Join(",", bands), "40m,20m,17m");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL  RuleEngineWorkedBandsTests threw: {ex.GetType().Name}: {ex.Message}");
+            failed++;
+        }
+        finally
+        {
+            try { File.Delete(tmpDb); } catch { }
+        }
+    }
+
+    // ── 13 Colonies bonus-station roster regression guard ──────────────────────
+    // WM3PEN/GB13COL/TM13COL are bonus stations, deliberately excluded from the
+    // Clean Sweep roster (they have their own separate award instead -- see
+    // Colonies13Bonus.ini). Guards against someone "fixing" a future bug report
+    // by merging them back into the Clean Sweep roster.
+    static void Colonies13RosterRegressionTest()
+    {
+        Console.WriteLine("\n── Colonies13: Bonus Stations Excluded From Clean Sweep ──");
+        string path = FindRepoFile(Path.Combine("WSJTX_Controller", "RuleDefinitions", "Lists", "colonies13_roster.txt"));
+        if (path == null)
+        {
+            Console.WriteLine("  SKIP  colonies13_roster.txt not found relative to test binary");
+            return;
+        }
+
+        string text = File.ReadAllText(path);
+        // Only real (non-comment) roster lines count -- the file documents the
+        // bonus calls in a comment, which must not be mistaken for membership.
+        var realLines = text.Split('\n')
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0 && !l.StartsWith(";") && !l.StartsWith("#"))
+            .Select(l => l.Split(';')[0].Trim().ToUpperInvariant())
+            .ToList();
+
+        foreach (var bonus in new[] { "WM3PEN", "GB13COL", "TM13COL" })
+            Check($"Clean Sweep roster excludes bonus station {bonus}",
+                  realLines.Contains(bonus), false);
+        Check("Clean Sweep roster has exactly the 13 official stations",
+              realLines.Count == 13, true);
+    }
+
+    // ── CallQueueRanker: pure ranking/ordering logic extracted from WsjtxClient ──
+    // Category *derivation* (HRC/lookup/award-tag matching) stays in WsjtxClient and
+    // isn't covered here; these tests assume Category/Priority/Distance/Azimuth/Snr/
+    // SequenceNumber are already set, matching how WsjtxClient.SortCalls() calls in.
+    static EnqueueDecodeMessage MakeDecode(string call, WsjtxClient.CallCategory cat, int distance = 500,
+        int azimuth = 45, int snr = -10, int sequenceNumber = 1)
+    {
+        return new EnqueueDecodeMessage
+        {
+            Message = $"{MY_CALL} {call} EM63",
+            Category = cat,
+            Distance = distance,
+            Azimuth = azimuth,
+            Snr = snr,
+            SequenceNumber = sequenceNumber,
+        };
+    }
+
+    static void CallQueueRankerCategoryTierTests()
+    {
+        Console.WriteLine("\n── CallQueueRanker: Category Tier Ordering ──");
+        var ranker = new CallQueueRanker();
+
+        var toMyCall   = MakeDecode("K1ABC", WsjtxClient.CallCategory.TO_MYCALL);
+        var newCtryBand= MakeDecode("K2ABC", WsjtxClient.CallCategory.NEW_COUNTRY_ON_BAND);
+        var newCtry    = MakeDecode("K3ABC", WsjtxClient.CallCategory.NEW_COUNTRY);
+        var wantedCq   = MakeDecode("K4ABC", WsjtxClient.CallCategory.WANTED_CQ);
+        var alwaysWtd  = MakeDecode("K5ABC", WsjtxClient.CallCategory.ALWAYS_WANTED);
+        var wasNeeded  = MakeDecode("K6ABC", WsjtxClient.CallCategory.WAS_NEEDED);
+
+        foreach (var d in new[] { toMyCall, newCtryBand, newCtry, wantedCq, alwaysWtd, wasNeeded })
+            ranker.SetRank(d);
+
+        Check("TO_MYCALL ranks above NEW_COUNTRY_ON_BAND", toMyCall.Rank > newCtryBand.Rank, true);
+        Check("NEW_COUNTRY_ON_BAND ranks above NEW_COUNTRY", newCtryBand.Rank > newCtry.Rank, true);
+        Check("NEW_COUNTRY ranks above WANTED_CQ", newCtry.Rank > wantedCq.Rank, true);
+        Check("WANTED_CQ ranks above ALWAYS_WANTED", wantedCq.Rank > alwaysWtd.Rank, true);
+        Check("ALWAYS_WANTED ranks above WAS_NEEDED (tier 0)", alwaysWtd.Rank > wasNeeded.Rank, true);
+        Check("Non-DEFAULT categories always rank above the DEFAULT tier base",
+              wasNeeded.Rank >= CallQueueRanker.NonDefaultTierBase, true);
+
+        // POTA/SOTA/MANUAL_SEL are hidden from the tier UI and rank with WANTED_CQ.
+        var pota = MakeDecode("K7ABC", WsjtxClient.CallCategory.POTA);
+        ranker.SetRank(pota);
+        Check("POTA ranks the same tier as WANTED_CQ", pota.Rank == wantedCq.Rank, true);
+    }
+
+    static void CallQueueRankerSortMethodTests()
+    {
+        Console.WriteLine("\n── CallQueueRanker: DEFAULT-category Sort Methods ──");
+        var ranker = new CallQueueRanker();
+
+        // CALL_ORDER: oldest (lowest SequenceNumber) first.
+        var older = MakeDecode("K1OLD", WsjtxClient.CallCategory.DEFAULT, sequenceNumber: 1);
+        var newer = MakeDecode("K2NEW", WsjtxClient.CallCategory.DEFAULT, sequenceNumber: 2);
+        ranker.ApplySortOrder(new List<WsjtxClient.RankMethods> { WsjtxClient.RankMethods.CALL_ORDER }, null);
+        ranker.SetRank(older); ranker.SetRank(newer);
+        Check("CALL_ORDER: oldest (lower SequenceNumber) ranks first", older.Rank > newer.Rank, true);
+
+        // MOST_RECENT: newest (highest SequenceNumber) first.
+        ranker.ApplySortOrder(new List<WsjtxClient.RankMethods> { WsjtxClient.RankMethods.MOST_RECENT }, null);
+        ranker.SetRank(older); ranker.SetRank(newer);
+        Check("MOST_RECENT: newest (higher SequenceNumber) ranks first", newer.Rank > older.Rank, true);
+
+        // DIST_DECR: farthest first (descending distance down the list).
+        var near = MakeDecode("K3NEAR", WsjtxClient.CallCategory.DEFAULT, distance: 100);
+        var far  = MakeDecode("K4FAR",  WsjtxClient.CallCategory.DEFAULT, distance: 5000);
+        ranker.ApplySortOrder(new List<WsjtxClient.RankMethods> { WsjtxClient.RankMethods.DIST_DECR }, null);
+        ranker.SetRank(near); ranker.SetRank(far);
+        Check("DIST_DECR: farthest station ranks first", far.Rank > near.Rank, true);
+
+        // DIST_INCR: nearest first (ascending distance down the list).
+        ranker.ApplySortOrder(new List<WsjtxClient.RankMethods> { WsjtxClient.RankMethods.DIST_INCR }, null);
+        ranker.SetRank(near); ranker.SetRank(far);
+        Check("DIST_INCR: nearest station ranks first", near.Rank > far.Rank, true);
+
+        // SNR_DECR: strongest signal first.
+        var weak = MakeDecode("K5WEAK", WsjtxClient.CallCategory.DEFAULT, snr: -20);
+        var strong = MakeDecode("K6STR", WsjtxClient.CallCategory.DEFAULT, snr: -3);
+        ranker.ApplySortOrder(new List<WsjtxClient.RankMethods> { WsjtxClient.RankMethods.SNR_DECR }, null);
+        ranker.SetRank(weak); ranker.SetRank(strong);
+        Check("SNR_DECR: strongest signal ranks first", strong.Rank > weak.Rank, true);
+
+        // SNR_INCR: weakest signal first.
+        ranker.ApplySortOrder(new List<WsjtxClient.RankMethods> { WsjtxClient.RankMethods.SNR_INCR }, null);
+        ranker.SetRank(weak); ranker.SetRank(strong);
+        Check("SNR_INCR: weakest signal ranks first", weak.Rank > strong.Rank, true);
+    }
+
+    static void CallQueueRankerTieBreakTests()
+    {
+        Console.WriteLine("\n── CallQueueRanker: Tie-break Ordering (Compare/CompareRank) ──");
+        var ranker = new CallQueueRanker();
+        // Primary MOST_RECENT (tied), secondary DIST_INCR breaks the tie.
+        ranker.ApplySortOrder(new List<WsjtxClient.RankMethods>
+            { WsjtxClient.RankMethods.MOST_RECENT, WsjtxClient.RankMethods.DIST_INCR }, null);
+
+        var closeStation = MakeDecode("K1CLOSE", WsjtxClient.CallCategory.DEFAULT, distance: 200, sequenceNumber: 5);
+        var farStation   = MakeDecode("K2FAR",   WsjtxClient.CallCategory.DEFAULT, distance: 3000, sequenceNumber: 5);
+        ranker.SetRank(closeStation);
+        ranker.SetRank(farStation);
+
+        Check("Tied primary sort (equal SequenceNumber) produces equal Rank",
+              closeStation.Rank == farStation.Rank, true);
+        int cmp = ranker.Compare(closeStation, farStation, null, false);
+        Check("Compare: closer station (DIST_INCR secondary) sorts before farther one", cmp < 0, true);
+
+        int cmpRank = ranker.CompareRank(farStation, closeStation, null, false);
+        Check("CompareRank: mirrors Compare's tiebreak direction", cmpRank < 0, true);
+
+        // Final fallback: a single-method order list (DIST_INCR only, no secondary) means two
+        // same-distance entries tie on the only configured method, with no more tiebreakers left
+        // to apply -- only then does the final SequenceNumber fallback actually decide the order.
+        ranker.ApplySortOrder(new List<WsjtxClient.RankMethods> { WsjtxClient.RankMethods.DIST_INCR }, null);
+        var first = MakeDecode("K3FIRST", WsjtxClient.CallCategory.DEFAULT, distance: 500, sequenceNumber: 1);
+        var second = MakeDecode("K4SECOND", WsjtxClient.CallCategory.DEFAULT, distance: 500, sequenceNumber: 2);
+        ranker.SetRank(first);
+        ranker.SetRank(second);
+        Check("Same-distance entries tie on the only configured sort method", first.Rank == second.Rank, true);
+        int cmpFinal = ranker.Compare(first, second, null, false);
+        Check("Final CALL_ORDER fallback: identical primary, older SequenceNumber sorts first", cmpFinal < 0, true);
+    }
+
+    static void CallQueueRankerCategoryWeightValidationTests()
+    {
+        Console.WriteLine("\n── CallQueueRanker: ApplyCategoryWeights Validation ──");
+        var ranker = new CallQueueRanker();
+        var originalDefault = new Dictionary<WsjtxClient.CallCategory, int>(ranker.categoryWeight);
+
+        Check("ApplyCategoryWeights(null) is rejected", ranker.ApplyCategoryWeights(null), false);
+
+        var badWeights = new Dictionary<WsjtxClient.CallCategory, int> { { WsjtxClient.CallCategory.DEFAULT, 1 } };
+        Check("ApplyCategoryWeights with DEFAULT != 0 is rejected", ranker.ApplyCategoryWeights(badWeights), false);
+        Check("Rejected weights table leaves categoryWeight unchanged",
+              ranker.categoryWeight[WsjtxClient.CallCategory.TO_MYCALL] == originalDefault[WsjtxClient.CallCategory.TO_MYCALL], true);
+
+        // Partial table (old INI with missing keys, e.g. a config saved before STILL_NEEDED existed):
+        // missing entries should be merged in from the current defaults, not left absent.
+        var partialWeights = new Dictionary<WsjtxClient.CallCategory, int>
+        {
+            { WsjtxClient.CallCategory.DEFAULT, 0 },
+            { WsjtxClient.CallCategory.TO_MYCALL, 9 },
+        };
+        Check("ApplyCategoryWeights with a valid partial table is accepted", ranker.ApplyCategoryWeights(partialWeights), true);
+        Check("Explicit override value is applied", ranker.categoryWeight[WsjtxClient.CallCategory.TO_MYCALL] == 9, true);
+        Check("Missing key (STILL_NEEDED) is merged in with its prior default",
+              ranker.categoryWeight.ContainsKey(WsjtxClient.CallCategory.STILL_NEEDED), true);
+    }
+
+    static void CallQueueRankerCallingPrioritiesTests()
+    {
+        Console.WriteLine("\n── CallQueueRanker: ApplyCallingPriorities / IsCallingEnabled ──");
+        var ranker = new CallQueueRanker();
+
+        ranker.ApplyCallingPriorities(new List<WsjtxClient.CallCategory> { WsjtxClient.CallCategory.TO_MYCALL });
+        Check("IsCallingEnabled: TO_MYCALL enabled after explicit list", ranker.IsCallingEnabled(WsjtxClient.CallCategory.TO_MYCALL), true);
+        Check("IsCallingEnabled: WANTED_CQ NOT enabled (excluded from explicit list)", ranker.IsCallingEnabled(WsjtxClient.CallCategory.WANTED_CQ), false);
+
+        // POTA/SOTA/MANUAL_SEL are hidden from the Call Filters UI; they follow WANTED_CQ's admission.
+        ranker.ApplyCallingPriorities(new List<WsjtxClient.CallCategory> { WsjtxClient.CallCategory.WANTED_CQ });
+        Check("IsCallingEnabled: POTA follows WANTED_CQ admission", ranker.IsCallingEnabled(WsjtxClient.CallCategory.POTA), true);
+        Check("IsCallingEnabled: SOTA follows WANTED_CQ admission", ranker.IsCallingEnabled(WsjtxClient.CallCategory.SOTA), true);
+
+        // null restores the documented default list.
+        ranker.ApplyCallingPriorities(null);
+        Check("ApplyCallingPriorities(null): default includes TO_MYCALL", ranker.IsCallingEnabled(WsjtxClient.CallCategory.TO_MYCALL), true);
+        Check("ApplyCallingPriorities(null): default includes DEFAULT", ranker.IsCallingEnabled(WsjtxClient.CallCategory.DEFAULT), true);
+    }
+
+    static void CallQueueRankerBeamRankTests()
+    {
+        Console.WriteLine("\n── CallQueueRanker: Beam (Azimuth) Ranking ──");
+        var ranker = new CallQueueRanker();
+
+        Check("CalcAzRank: unknown azimuth (-1) is off-beam", ranker.CalcAzRank(-1) == CallQueueRanker.OffBeamRank, true);
+
+        // AZ_NQUAD points at heading 0; BeamWidth defaults to 90 (±45).
+        ranker.ApplySortOrder(new List<WsjtxClient.RankMethods> { WsjtxClient.RankMethods.MOST_RECENT }, WsjtxClient.RankMethods.AZ_NQUAD);
+        Check("CalcAzRank: azimuth exactly on heading is the best (closest to zero) in-beam rank",
+              ranker.CalcAzRank(0) == 0, true);
+        Check("CalcAzRank: azimuth just outside the beam window is off-beam",
+              ranker.CalcAzRank(0 + CallQueueRanker.BeamWidth / 2 + 1) == CallQueueRanker.OffBeamRank, true);
+
+        // SetRank with a beam method set on a DEFAULT-category message routes through CalcAzRank.
+        var onBeam  = MakeDecode("K1BEAM", WsjtxClient.CallCategory.DEFAULT, azimuth: 0);
+        var offBeam = MakeDecode("K2BEAM", WsjtxClient.CallCategory.DEFAULT, azimuth: 180);
+        ranker.SetRank(onBeam);
+        ranker.SetRank(offBeam);
+        Check("SetRank: on-beam station ranks above an off-beam station", onBeam.Rank > offBeam.Rank, true);
+    }
+
+    // ── JimmySettings: Advanced Call Layout flags (Phase 2.1 first slice) ────────
+    static void JimmySettingsRoundTripTests()
+    {
+        Console.WriteLine("\n── JimmySettings: Load/Save Round-trip ──");
+        string tmpIni = Path.Combine(Path.GetTempPath(), "JimmyTest_Settings_" + Guid.NewGuid().ToString("N") + ".ini");
+        try
+        {
+            var saved = new JimmySettings
+            {
+                AdvancedCallLayout = false,
+                AdvShowTx1 = false,
+                AdvShowTx2 = true,
+                AdvShowRaw = false,
+                ListFontSize = 14,
+                ListBackColor = System.Drawing.Color.FromArgb(30, 30, 30),
+                ListForeColor = System.Drawing.Color.FromArgb(220, 220, 220),
+                ListAltRowColor = System.Drawing.Color.FromArgb(45, 45, 45),
+            };
+            var ini = new IniFile(tmpIni);
+            saved.SaveToIni(ini);
+
+            var loaded = new JimmySettings();
+            loaded.LoadFromIni(ini);
+
+            Check("Round-trip: AdvancedCallLayout", loaded.AdvancedCallLayout, saved.AdvancedCallLayout);
+            Check("Round-trip: AdvShowTx1", loaded.AdvShowTx1, saved.AdvShowTx1);
+            Check("Round-trip: AdvShowTx2", loaded.AdvShowTx2, saved.AdvShowTx2);
+            Check("Round-trip: AdvShowRaw", loaded.AdvShowRaw, saved.AdvShowRaw);
+            Check("Round-trip: ListFontSize", loaded.ListFontSize == saved.ListFontSize, true);
+            Check("Round-trip: ListBackColor", loaded.ListBackColor.ToArgb() == saved.ListBackColor.ToArgb(), true);
+            Check("Round-trip: ListForeColor", loaded.ListForeColor.ToArgb() == saved.ListForeColor.ToArgb(), true);
+            Check("Round-trip: ListAltRowColor", loaded.ListAltRowColor.ToArgb() == saved.ListAltRowColor.ToArgb(), true);
+        }
+        finally
+        {
+            try { File.Delete(tmpIni); } catch { }
+        }
+    }
+
+    static void JimmySettingsDefaultsTests()
+    {
+        Console.WriteLine("\n── JimmySettings: Missing-key Defaults (matches prior inline Form_Load behavior) ──");
+        string tmpIni = Path.Combine(Path.GetTempPath(), "JimmyTest_SettingsDefaults_" + Guid.NewGuid().ToString("N") + ".ini");
+        try
+        {
+            // Fresh/never-written INI file -- every key read returns "".
+            var ini = new IniFile(tmpIni);
+            var settings = new JimmySettings();
+            settings.LoadFromIni(ini);
+
+            // Preserves a pre-existing quirk: AdvancedCallLayout reads as `== "True"` (missing
+            // key -> false), while the other three read as `!= "False"` (missing key -> true).
+            // This mismatch already existed in Controller.Form_Load; not "fixed" here.
+            Check("Missing advCallLayout key -> AdvancedCallLayout defaults false", settings.AdvancedCallLayout, false);
+            Check("Missing advShowTx1 key -> AdvShowTx1 defaults true", settings.AdvShowTx1, true);
+            Check("Missing advShowTx2 key -> AdvShowTx2 defaults true", settings.AdvShowTx2, true);
+            Check("Missing advShowRaw key -> AdvShowRaw defaults true", settings.AdvShowRaw, true);
+        }
+        finally
+        {
+            try { File.Delete(tmpIni); } catch { }
+        }
+    }
+
+    // Walks up from the test binary's directory looking for Jimmy.sln, then
+    // resolves relativePath from there. Returns null if not found (keeps this
+    // test a soft SKIP rather than a hard failure if run from an unusual layout).
+    static string FindRepoFile(string relativePath)
+    {
+        var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+        for (int i = 0; i < 8 && dir != null; i++, dir = dir.Parent)
+        {
+            string candidateSln = Path.Combine(dir.FullName, "Jimmy.sln");
+            if (File.Exists(candidateSln))
+            {
+                string full = Path.Combine(dir.FullName, relativePath);
+                return File.Exists(full) ? full : null;
+            }
+        }
+        return null;
     }
 }

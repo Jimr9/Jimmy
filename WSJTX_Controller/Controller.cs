@@ -4,7 +4,7 @@ using System.ComponentModel;
 using System.Data;
 using System.Drawing;
 using System.Linq;
-using System.Text;
+        using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
@@ -21,16 +21,21 @@ using System.Text.RegularExpressions;
 
 namespace WSJTX_Controller
 {
-    public partial class Controller : Form
+    public partial class Controller : Form, IJimmyStatusView, IJimmyQueueView, IJimmyLogView
     {
         public WsjtxClient wsjtxClient;
         public OptionsDlg optionsDlg;
         public bool alwaysOnTop = false;
         public bool skipLevelPrompt = false;
-        public bool advancedCallLayout = true;
-        public bool advShowTx1 = true;
-        public bool advShowTx2 = true;
-        public bool advShowRaw = true;
+        // Advanced Call Layout display flags now live in Settings (JimmySettings.cs) so
+        // they're unit-testable outside a live Form. These are thin pass-through
+        // properties, kept under the original field names so the ~65 existing call
+        // sites across Controller/WsjtxClient/OptionsDlg/SupportReportBuilder are unaffected.
+        public JimmySettings Settings = new JimmySettings();
+        public bool advancedCallLayout { get => Settings.AdvancedCallLayout; set => Settings.AdvancedCallLayout = value; }
+        public bool advShowTx1 { get => Settings.AdvShowTx1; set => Settings.AdvShowTx1 = value; }
+        public bool advShowTx2 { get => Settings.AdvShowTx2; set => Settings.AdvShowTx2 = value; }
+        public bool advShowRaw { get => Settings.AdvShowRaw; set => Settings.AdvShowRaw = value; }
         public bool rawShowCq = true;
         public bool rawShowDirected = true;
         public bool rawShowReports = true;
@@ -85,6 +90,12 @@ namespace WSJTX_Controller
 
         // Feature flags
         public bool   wantedCallAnywhereEnabled   = true;
+
+        // Weak-signal floor (Options > Receive / Auto Reply > Block List) — created and
+        // reparented the same way as the other Receive / Auto Reply controls.
+        public CheckBox      ignoreWeakSnrCheckBox;
+        public NumericUpDown minSnrNumUpDown;
+        public Label         minSnrLabel;
 
         // Logbook credentials (loaded from ini; set from Options > Lookup / Data tab)
         public string qrzLogbookApiKey = "";
@@ -214,6 +225,7 @@ namespace WSJTX_Controller
                 if (!Directory.Exists(path)) Directory.CreateDirectory(path);
                 iniFile = new IniFile(pathFileNameExt);
                 hotkeyConfig.LoadFromIni(iniFile);
+                RefreshHotkeyAccessibleNames();
                 // Parse optional call-waiting row order from INI (INI-only setting).
                 // Stored in local variable and assigned to wsjtxClient after it's constructed.
                 // Use ASCII comma and ignore invalid tokens/duplicates.
@@ -424,10 +436,7 @@ namespace WSJTX_Controller
                 }
                 usePskReporter = iniFile.Read("usePskReporter") != "False";              //default: true
                 showUsStateCheckBox.Checked = iniFile.Read("showUsState") == "True";
-                advancedCallLayout = iniFile.Read("advCallLayout") == "True";
-                advShowTx1 = iniFile.Read("advShowTx1") != "False";
-                advShowTx2 = iniFile.Read("advShowTx2") != "False";
-                advShowRaw = iniFile.Read("advShowRaw") != "False";
+                Settings.LoadFromIni(iniFile);
                 rawShowCq = iniFile.Read("rawShowCq") != "False";
                 rawShowDirected = iniFile.Read("rawShowDirected") != "False";
                 rawShowReports = iniFile.Read("rawShowReports") != "False";
@@ -487,7 +496,7 @@ namespace WSJTX_Controller
                 if (iniFile.KeyExists("useLookupData"))      useLookupData      = iniFile.Read("useLookupData") == "True";
                 if (iniFile.KeyExists("qrzEnabled"))         qrzEnabled         = iniFile.Read("qrzEnabled")    == "True";
                 if (iniFile.KeyExists("qrzUsername"))        qrzUsername        = iniFile.Read("qrzUsername");
-                if (iniFile.KeyExists("qrzPassword"))        qrzPassword        = iniFile.Read("qrzPassword");
+                if (iniFile.KeyExists("qrzPassword"))        qrzPassword        = CredentialProtector.Unprotect(iniFile.Read("qrzPassword"));
                 int qrzcd; if (iniFile.KeyExists("qrzCacheDays")    && int.TryParse(iniFile.Read("qrzCacheDays"),    out qrzcd)   && qrzcd   >= 1) qrzCacheDays    = qrzcd;
                 int qrzpol; if (iniFile.KeyExists("qrzLookupPolicy") && int.TryParse(iniFile.Read("qrzLookupPolicy"), out qrzpol)) qrzLookupPolicy = (QrzLookupPolicy)qrzpol;
                 int qrzint; if (iniFile.KeyExists("qrzMinIntervalSeconds") && int.TryParse(iniFile.Read("qrzMinIntervalSeconds"), out qrzint) && qrzint >= 5) qrzMinIntervalSeconds = qrzint;
@@ -495,15 +504,15 @@ namespace WSJTX_Controller
                 if (iniFile.KeyExists("lotwBoostEnabled"))   lotwBoostEnabled   = iniFile.Read("lotwBoostEnabled") == "True";
                 int lotwd; if (iniFile.KeyExists("lotwRefreshDays") && int.TryParse(iniFile.Read("lotwRefreshDays"), out lotwd)   && lotwd   >= 1) lotwRefreshDays  = lotwd;
                 int clgd; if (iniFile.KeyExists("clubLogRefreshDays") && int.TryParse(iniFile.Read("clubLogRefreshDays"), out clgd) && clgd >= 1) clubLogRefreshDays = clgd;
-                if (iniFile.KeyExists("qrzLogbookApiKey")) qrzLogbookApiKey = iniFile.Read("qrzLogbookApiKey") ?? "";
+                if (iniFile.KeyExists("qrzLogbookApiKey")) qrzLogbookApiKey = CredentialProtector.Unprotect(iniFile.Read("qrzLogbookApiKey"));
                 if (iniFile.KeyExists("lotwLogbookUser"))  lotwLogbookUser  = iniFile.Read("lotwLogbookUser")  ?? "";
-                if (iniFile.KeyExists("lotwLogbookPass"))  lotwLogbookPass  = iniFile.Read("lotwLogbookPass")  ?? "";
+                if (iniFile.KeyExists("lotwLogbookPass"))  lotwLogbookPass  = CredentialProtector.Unprotect(iniFile.Read("lotwLogbookPass"));
                 if (iniFile.KeyExists("qrzUploadEnabled"))      qrzUploadEnabled      = iniFile.Read("qrzUploadEnabled")      == "True";
                 if (iniFile.KeyExists("qrzUploadRealtime"))     qrzUploadRealtime     = iniFile.Read("qrzUploadRealtime")     == "True";
                 if (iniFile.KeyExists("clubLogUploadEnabled"))  clubLogUploadEnabled  = iniFile.Read("clubLogUploadEnabled")  == "True";
                 if (iniFile.KeyExists("clubLogUploadRealtime")) clubLogUploadRealtime = iniFile.Read("clubLogUploadRealtime") == "True";
                 if (iniFile.KeyExists("clubLogUploadEmail"))    clubLogUploadEmail    = iniFile.Read("clubLogUploadEmail")    ?? "";
-                if (iniFile.KeyExists("clubLogUploadPassword")) clubLogUploadPassword = iniFile.Read("clubLogUploadPassword") ?? "";
+                if (iniFile.KeyExists("clubLogUploadPassword")) clubLogUploadPassword = CredentialProtector.Unprotect(iniFile.Read("clubLogUploadPassword"));
                 if (iniFile.KeyExists("clubLogUploadCallsign")) clubLogUploadCallsign = iniFile.Read("clubLogUploadCallsign") ?? "";
                 if (iniFile.KeyExists("lotwUploadEnabled"))     lotwUploadEnabled     = iniFile.Read("lotwUploadEnabled")     == "True";
                 if (iniFile.KeyExists("activeAwardRuleIds")) activeAwardRuleIds = ParseActiveAwardRuleIds(iniFile.Read("activeAwardRuleIds"));
@@ -581,23 +590,23 @@ namespace WSJTX_Controller
             // Migration (Phase 1): if this config pre-dates Call Filters and the operator had
             // replyDxCheckBox or replyLocalCheckBox enabled, ordinary CQ calls were being admitted.
             // Add DEFAULT to callingEnabled so that admission behaviour is preserved after upgrade.
-            if (!wsjtxClient.callingEnabled.Contains(WsjtxClient.CallCategory.DEFAULT)
+            if (!wsjtxClient.Ranker.callingEnabled.Contains(WsjtxClient.CallCategory.DEFAULT)
                 && (replyDxCheckBox.Checked || replyLocalCheckBox.Checked))
             {
-                wsjtxClient.callingEnabled.Add(WsjtxClient.CallCategory.DEFAULT);
+                wsjtxClient.Ranker.callingEnabled.Add(WsjtxClient.CallCategory.DEFAULT);
                 iniFile.Write("callingPriorities",
-                    FormatCallingPriorities(wsjtxClient.callingEnabled));
+                    FormatCallingPriorities(wsjtxClient.Ranker.callingEnabled));
             }
             // Migration: a config saved before STILL_NEEDED existed won't have it in its
             // callingPriorities list, so Still Need live tagging would be silently disabled
             // for existing installs (ParseCallingPriorities only fills in the new default for
             // configs with no saved list at all). Add it once, same tier as WAS/DXCC/ZONE.
             if (!string.IsNullOrWhiteSpace(callingPrioritiesStr)
-                && !wsjtxClient.callingEnabled.Contains(WsjtxClient.CallCategory.STILL_NEEDED))
+                && !wsjtxClient.Ranker.callingEnabled.Contains(WsjtxClient.CallCategory.STILL_NEEDED))
             {
-                wsjtxClient.callingEnabled.Add(WsjtxClient.CallCategory.STILL_NEEDED);
+                wsjtxClient.Ranker.callingEnabled.Add(WsjtxClient.CallCategory.STILL_NEEDED);
                 iniFile.Write("callingPriorities",
-                    FormatCallingPriorities(wsjtxClient.callingEnabled));
+                    FormatCallingPriorities(wsjtxClient.Ranker.callingEnabled));
             }
             wsjtxClient.ApplyWantedCalls(ParseWantedCalls(wantedCallsStr));
             wsjtxClient.rawPriorityTags = rawPriorityTags;
@@ -637,21 +646,60 @@ namespace WSJTX_Controller
             wsjtxClient.UpdateModeSelection();
             SyncCqIntentFromMode();     // force-sync after wsjtxClient is assigned
 
-            // Logbook button — added below sortOrderButton at y=309
+            // Logbook button — added below sortOrderButton at y=305
             var logbookButton = new System.Windows.Forms.Button
             {
                 Text           = "Logbook",
                 AccessibleName = "Open Ham Radio Center Logbook",
-                Location       = new System.Drawing.Point(10, 339),
-                Size           = new System.Drawing.Size(130, 25),
+                Location       = new System.Drawing.Point(10, 333),
+                Size           = new System.Drawing.Size(492, 24),
+                Anchor         = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Right,
                 TabIndex       = 50,
             };
             logbookButton.Click += (s2, e2) => OpenLogbookWindow();
             this.Controls.Add(logbookButton);
             logbookButton.BringToFront();
 
+            // Weak-signal floor controls — hidden here, reparented into
+            // Options > Receive / Auto Reply > Block List while that dialog is open.
+            ignoreWeakSnrCheckBox = new CheckBox
+            {
+                Text           = "Ignore SNR at or below",
+                AccessibleName = "Ignore stations with SNR at or below the floor",
+                AutoSize       = true,
+                TabIndex       = 68,
+                Visible        = false,
+            };
+            minSnrNumUpDown = new NumericUpDown
+            {
+                Minimum        = -30,
+                Maximum        = 20,
+                Value          = -24,
+                Width          = 50,
+                AccessibleName = "Weak signal SNR floor",
+                TabIndex       = 69,
+                Visible        = false,
+            };
+            minSnrLabel = new Label
+            {
+                Text     = "dB",
+                AutoSize = true,
+                Visible  = false,
+            };
+            if (iniFile != null)
+            {
+                ignoreWeakSnrCheckBox.Checked = iniFile.Read("ignoreWeakSnr") == "True";
+                if (int.TryParse(iniFile.Read("minSnr"), out int savedMinSnr)) minSnrNumUpDown.Value = savedMinSnr;
+            }
+            ignoreWeakSnrCheckBox.CheckedChanged += (s2, e2) => minSnrNumUpDown.Enabled = ignoreWeakSnrCheckBox.Checked;
+            minSnrNumUpDown.Enabled = ignoreWeakSnrCheckBox.Checked;
+            this.Controls.Add(ignoreWeakSnrCheckBox);
+            this.Controls.Add(minSnrNumUpDown);
+            this.Controls.Add(minSnrLabel);
+
             formLoaded = true;
             ApplyAdvancedLayout();
+            ApplyListAppearance();
 
             if (!this.Focused)
             {
@@ -662,6 +710,9 @@ namespace WSJTX_Controller
             {
                 statusText.Focus();
             }
+            // Focusing a textbox that already shows the same text doesn't trigger a fresh
+            // screen-reader announcement; moving the caret does. See RenderStatus for the
+            // same pattern used on every routine status update.
             SendKeys.Send("{UP}");
         }
 
@@ -684,6 +735,8 @@ namespace WSJTX_Controller
                 if (wsjtxClient.port != 0) iniFile.Write("port", wsjtxClient.port.ToString());
                 iniFile.Write("multicast", wsjtxClient.multicast.ToString());
                 iniFile.Write("timeout", ((int)timeoutNumUpDown.Value).ToString());
+                iniFile.Write("ignoreWeakSnr", ignoreWeakSnrCheckBox.Checked.ToString());
+                iniFile.Write("minSnr", ((int)minSnrNumUpDown.Value).ToString());
                 iniFile.Write("useDirected", callDirCqCheckBox.Checked.ToString());
                 if (directedTextBox.Text == separateBySpaces) directedTextBox.Clear();
                 iniFile.Write("directeds", directedTextBox.Text.Trim());
@@ -714,9 +767,9 @@ namespace WSJTX_Controller
                 iniFile.Write("cqOnly", cqOnlyRadioButton.Checked.ToString());
                 iniFile.Write("newOnBand", (bandComboBox.SelectedIndex == 1).ToString());
                 iniFile.Write("myContinent", wsjtxClient.myContinent);
-                iniFile.Write("rankMethod", wsjtxClient.rankMethodIdx.ToString());
-                iniFile.Write("categoryWeights",   FormatCategoryWeights(wsjtxClient.categoryWeight));
-                iniFile.Write("callingPriorities", FormatCallingPriorities(wsjtxClient.callingEnabled));
+                iniFile.Write("rankMethod", wsjtxClient.Ranker.rankMethodIdx.ToString());
+                iniFile.Write("categoryWeights",   FormatCategoryWeights(wsjtxClient.Ranker.categoryWeight));
+                iniFile.Write("callingPriorities", FormatCallingPriorities(wsjtxClient.Ranker.callingEnabled));
                 iniFile.Write("wantedCalls",              FormatWantedCalls(wsjtxClient.wantedCalls));
                 iniFile.Write("wantedCallAnywhereEnabled", wantedCallAnywhereEnabled.ToString());
                 iniFile.Write("rawPriorityTags",          rawPriorityTags.ToString());
@@ -727,10 +780,7 @@ namespace WSJTX_Controller
                 iniFile.Write("cmdPrompts", wsjtxClient.cmdPrompts.ToString());
                 iniFile.Write("usePskReporter", wsjtxClient.usePskReporter.ToString());
                 iniFile.Write("showUsState", showUsStateCheckBox.Checked.ToString());
-                iniFile.Write("advCallLayout", advancedCallLayout.ToString());
-                iniFile.Write("advShowTx1", advShowTx1.ToString());
-                iniFile.Write("advShowTx2", advShowTx2.ToString());
-                iniFile.Write("advShowRaw", advShowRaw.ToString());
+                Settings.SaveToIni(iniFile);
                 iniFile.Write("rawShowCq", rawShowCq.ToString());
                 iniFile.Write("rawShowDirected", rawShowDirected.ToString());
                 iniFile.Write("rawShowReports", rawShowReports.ToString());
@@ -786,7 +836,7 @@ namespace WSJTX_Controller
                 iniFile.Write("useLookupData",           useLookupData.ToString());
                 iniFile.Write("qrzEnabled",              qrzEnabled.ToString());
                 iniFile.Write("qrzUsername",             qrzUsername              ?? "");
-                iniFile.Write("qrzPassword",             qrzPassword              ?? "");
+                iniFile.Write("qrzPassword",             CredentialProtector.Protect(qrzPassword));
                 iniFile.Write("qrzCacheDays",            qrzCacheDays.ToString());
                 iniFile.Write("qrzLookupPolicy",         ((int)qrzLookupPolicy).ToString());
                 iniFile.Write("qrzMinIntervalSeconds",   qrzMinIntervalSeconds.ToString());
@@ -794,15 +844,15 @@ namespace WSJTX_Controller
                 iniFile.Write("lotwBoostEnabled",        lotwBoostEnabled.ToString());
                 iniFile.Write("lotwRefreshDays",         lotwRefreshDays.ToString());
                 iniFile.Write("clubLogRefreshDays",      clubLogRefreshDays.ToString());
-                iniFile.Write("qrzLogbookApiKey",        qrzLogbookApiKey         ?? "");
+                iniFile.Write("qrzLogbookApiKey",        CredentialProtector.Protect(qrzLogbookApiKey));
                 iniFile.Write("lotwLogbookUser",         lotwLogbookUser          ?? "");
-                iniFile.Write("lotwLogbookPass",         lotwLogbookPass          ?? "");
+                iniFile.Write("lotwLogbookPass",         CredentialProtector.Protect(lotwLogbookPass));
                 iniFile.Write("qrzUploadEnabled",        qrzUploadEnabled.ToString());
                 iniFile.Write("qrzUploadRealtime",       qrzUploadRealtime.ToString());
                 iniFile.Write("clubLogUploadEnabled",    clubLogUploadEnabled.ToString());
                 iniFile.Write("clubLogUploadRealtime",   clubLogUploadRealtime.ToString());
                 iniFile.Write("clubLogUploadEmail",      clubLogUploadEmail       ?? "");
-                iniFile.Write("clubLogUploadPassword",   clubLogUploadPassword    ?? "");
+                iniFile.Write("clubLogUploadPassword",   CredentialProtector.Protect(clubLogUploadPassword));
                 iniFile.Write("clubLogUploadCallsign",   clubLogUploadCallsign    ?? "");
                 iniFile.Write("lotwUploadEnabled",       lotwUploadEnabled.ToString());
                 iniFile.Write("activeAwardRuleIds",  FormatActiveAwardRuleIds(activeAwardRuleIds));
@@ -829,6 +879,24 @@ namespace WSJTX_Controller
         public void SaveHotkeyConfig()
         {
             if (iniFile != null) hotkeyConfig?.SaveToIni(iniFile);
+            RefreshHotkeyAccessibleNames();
+        }
+
+        // optionsButton, rowOrderButton, and sortOrderButton show their assigned shortcut
+        // in AccessibleName; keep that in sync whenever hotkeys are loaded or reassigned.
+        private void RefreshHotkeyAccessibleNames()
+        {
+            if (hotkeyConfig == null) return;
+            optionsButton.AccessibleName   = "Options, "                       + FormatKeysForAccessibleName(HotkeyAction.Options);
+            rowOrderButton.AccessibleName  = "Row Display Order, "             + FormatKeysForAccessibleName(HotkeyAction.RowOrder);
+            sortOrderButton.AccessibleName = "Stations Available Sort Order, " + FormatKeysForAccessibleName(HotkeyAction.SortOrder);
+        }
+
+        private string FormatKeysForAccessibleName(HotkeyAction action)
+        {
+            Keys keys = hotkeyConfig[action];
+            if (keys == Keys.None) return "no shortcut assigned";
+            return HotkeyConfig.FormatKeys(keys).Replace("+", " ");
         }
 
         public void CloseComm()
@@ -982,6 +1050,11 @@ namespace WSJTX_Controller
             if (keyData == hotkeyConfig[HotkeyAction.LookupStation] && hotkeyConfig[HotkeyAction.LookupStation] != Keys.None)
             {
                 LookupFocusedCall();
+                return true;
+            }
+            if (keyData == hotkeyConfig[HotkeyAction.OpenLogbook] && hotkeyConfig[HotkeyAction.OpenLogbook] != Keys.None)
+            {
+                OpenLogbookWindow();
                 return true;
             }
 
@@ -1157,12 +1230,12 @@ namespace WSJTX_Controller
 
         private void loggedCheckBox_CheckedChanged(object sender, EventArgs e)
         {
-            if (formLoaded && loggedCheckBox.Checked) wsjtxClient.PlaySoundEvent(true, soundFile_Logged);
+            if (formLoaded && loggedCheckBox.Checked) wsjtxClient.Sounds.PlaySoundEvent(true, soundFile_Logged);
         }
 
         private void mycallCheckBox_CheckedChanged(object sender, EventArgs e)
         {
-            if (formLoaded && mycallCheckBox.Checked) wsjtxClient.PlaySoundEvent(true, soundFile_CallingMe);
+            if (formLoaded && mycallCheckBox.Checked) wsjtxClient.Sounds.PlaySoundEvent(true, soundFile_CallingMe);
         }
 
         private void verLabel_DoubleClick(object sender, EventArgs e)
@@ -1191,6 +1264,7 @@ namespace WSJTX_Controller
 
             statusText.Text = "Window size and position reset to default.";
             if (!statusText.Focused) statusText.Focus();
+            // Force NVDA/JAWS to re-announce the new status text (see RenderStatus).
             BeginInvoke((Action)(() => SendKeys.Send("{UP}")));
         }
 
@@ -1225,11 +1299,39 @@ namespace WSJTX_Controller
         {
             SuspendLayout();
             FormBorderStyle = FormBorderStyle.Sizable;
+            label1.Visible = wsjtxClient.debug;
             label2.Visible = wsjtxClient.debug;
+            label4.Visible = wsjtxClient.debug;
             label5.Visible = wsjtxClient.debug;
+            label6.Visible = wsjtxClient.debug;
             label7.Visible = wsjtxClient.debug;
+            label8.Visible = wsjtxClient.debug;
+            label9.Visible = wsjtxClient.debug;
+            label10.Visible = wsjtxClient.debug;
+            label11.Visible = wsjtxClient.debug;
+            label12.Visible = wsjtxClient.debug;
             label13.Visible = wsjtxClient.debug;
+            label14.Visible = wsjtxClient.debug;
+            label15.Visible = wsjtxClient.debug;
+            label16.Visible = wsjtxClient.debug;
+            label17.Visible = wsjtxClient.debug;
+            label18.Visible = wsjtxClient.debug;
+            label19.Visible = wsjtxClient.debug;
+            label20.Visible = wsjtxClient.debug;
+            label21.Visible = wsjtxClient.debug;
+            label22.Visible = wsjtxClient.debug;
+            label23.Visible = wsjtxClient.debug;
+            label24.Visible = wsjtxClient.debug;
+            label25.Visible = wsjtxClient.debug;
+            label26.Visible = wsjtxClient.debug;
+            label27.Visible = wsjtxClient.debug;
             label28.Visible = wsjtxClient.debug;
+            label29.Visible = wsjtxClient.debug;
+            label30.Visible = wsjtxClient.debug;
+            label31.Visible = wsjtxClient.debug;
+            label32.Visible = wsjtxClient.debug;
+            label33.Visible = wsjtxClient.debug;
+            label34.Visible = wsjtxClient.debug;
             if (wsjtxClient.debug)
             {
 #if DEBUG
@@ -1306,12 +1408,17 @@ namespace WSJTX_Controller
         }
 
         // Loads the HRC database filter sets into WsjtxClient's in-memory caches.
-        // Scoped to the radio's current band so tags reflect per-band award status.
-        // Safe to call any time; silently skips if the DB is unavailable or empty.
+        // Checks the whole log regardless of band -- WAS/DXCC/WAZ don't require a
+        // state/entity/zone to be confirmed on any particular band, so a station
+        // confirmed on 20m must not show as "needed" again just because the radio
+        // is now on 10m. (Previously this always filtered to the current band,
+        // which meant changing bands could wrongly resurrect nearly everything as
+        // "needed" -- see JimmyTests.RuleEngineBandIndependenceTests for the
+        // regression guard.) Safe to call any time; silently skips if the DB is
+        // unavailable or empty.
         public void LoadHrcCache()
         {
             if (wsjtxClient == null) return;
-            string band = wsjtxClient.CurrentBandStr;   // null when frequency is unknown
             try
             {
                 using (var db = new LogbookDb())
@@ -1319,7 +1426,7 @@ namespace WSJTX_Controller
                     HashSet<string> neededStates;
                     HashSet<int>    unconfirmedDxcc;
                     HashSet<int>    neededZones;
-                    db.LoadHrcCache(out neededStates, out unconfirmedDxcc, out neededZones, band);
+                    db.LoadHrcCache(out neededStates, out unconfirmedDxcc, out neededZones);
                     wsjtxClient.hrcNeededStates    = neededStates;
                     wsjtxClient.hrcUnconfirmedDxcc = unconfirmedDxcc;
                     wsjtxClient.hrcNeededZones     = neededZones;
@@ -1329,12 +1436,18 @@ namespace WSJTX_Controller
         }
 
         // Rebuilds WsjtxClient's live-tag cache from every Rule Definition currently checked
-        // in activeAwardRuleIds, scoped to the radio's current band -- mirrors LoadHrcCache()'s
-        // per-band semantics. Several awards can be tracked at once; each gets its own entry in
-        // wsjtxClient.activeAwardTags. Only evaluates the RuleEngine here, at selection/refresh
+        // in activeAwardRuleIds. Several awards can be tracked at once; each gets its own entry
+        // in wsjtxClient.activeAwardTags. Only evaluates the RuleEngine here, at selection/refresh
         // time; decode-time matching is a plain HashSet lookup per active award. Safe to call any
         // time. Rules that can't be found, fail RuleEngine.SupportsLiveTag(def), or have no fixed
         // still-needed checklist (e.g. a Target=COUNT/LEVELS award) are simply left out.
+        //
+        // Only scoped to the current band when the award definition itself restricts to specific
+        // bands ([Match] Bands=) -- mirrors LoadHrcCache()'s per-band semantics for that case. None
+        // of the shipped awards (Colonies13, DXCC, WAS, WAZ, ...) set Bands=, since they all count
+        // a station worked on any band -- for those, evaluating against the current band only was
+        // a bug: work a station on 20m, switch to 15m, and it would wrongly show as still needed
+        // again. Matches the Still Need tab's own "All Bands" default for the same reason.
         public void RefreshStillNeedCache()
         {
             if (wsjtxClient == null) return;
@@ -1347,7 +1460,8 @@ namespace WSJTX_Controller
 
                 try
                 {
-                    var result = RuleEngine.EvaluateBand(def, wsjtxClient.CurrentBandStr);
+                    string band = def.Bands.Count > 0 ? wsjtxClient.CurrentBandStr : null;
+                    var result = RuleEngine.EvaluateBand(def, band);
                     if (result.StillNeeded == null) continue;   // no fixed checklist to tag against
 
                     tags[ruleId] = new WsjtxClient.ActiveAwardTag
@@ -1361,6 +1475,12 @@ namespace WSJTX_Controller
                 catch { /* skip this rule, keep the others */ }
             }
             wsjtxClient.activeAwardTags = tags;
+        }
+
+        public void RefreshLogbookWindowIfOpen()
+        {
+            if (_logbookWindow != null && !_logbookWindow.IsDisposed)
+                _logbookWindow.RefreshCurrentPage();
         }
 
         public void OpenLogbookWindow()
@@ -1426,7 +1546,7 @@ namespace WSJTX_Controller
             TopMost = alwaysOnTop;
             wsjtxClient.suspendComm   = false;
             wsjtxClient.lotwBoostEnabled = lotwBoostEnabled;
-            wsjtxClient.RefreshResourceFileCache();
+            wsjtxClient.Sounds.RefreshResourceFileCache();
             optionsDlg = null;
             lookupManager?.Initialize(
                 useLookupData,
@@ -1484,6 +1604,147 @@ namespace WSJTX_Controller
             statusMsgTimer.Stop();
             msgTextBox.Text = text;
             statusMsgTimer.Start();*/
+        }
+
+        // IJimmyStatusView / IJimmyQueueView / IJimmyLogView (Phase 2.3/2.4 first wave) --
+        // these bodies are moved verbatim from WsjtxClient.ShowStatus()/ShowQueue()/ShowLogged()'s
+        // former UI-touching tails; the business logic that builds headerText/items/colors stays
+        // in WsjtxClient, which now calls these instead of touching controls directly.
+        public void RenderStatus(string headingText, string statusText, Color foreColor, Color backColor)
+        {
+            statusHeadingLabel.Text = headingText;
+            this.statusText.AccessibleName = headingText;
+            this.statusText.ForeColor = foreColor;
+            this.statusText.BackColor = backColor;
+            this.statusText.Text = statusText;
+            this.statusText.SelectionStart = 0;
+            this.statusText.SelectionLength = 0;
+            // Guard: only send if Tilly is actually the active application.
+            // SendKeys.Send uses SendInput(), which delivers to the foreground window;
+            // without this guard a timer tick during focus-loss can send to Notepad.
+            if (this.statusText.Focused && Form.ActiveForm == this) SendKeys.Send("{UP}");  //triggers screen reader
+        }
+
+        public void ShowMessage(string text, bool sound) => ShowMsg(text, sound);
+
+        public void RenderCallQueue(string headerText, List<string> items, SelectionMode selectionMode)
+        {
+            replyListLabel.Text = headerText;
+
+            bool changed = callListBox.SelectionMode != selectionMode || callListBox.Items.Count != items.Count;
+            if (!changed)
+            {
+                for (int i = 0; i < items.Count; i++)
+                {
+                    if ((string)callListBox.Items[i] != items[i]) { changed = true; break; }
+                }
+            }
+            if (!changed) return;
+
+            bool focused = callListBox.Focused;
+            int prevIndex = focused ? callListBox.SelectedIndex : -1;
+
+            if (callListBox.SelectionMode != selectionMode)
+                callListBox.SelectionMode = selectionMode;
+
+            callListBox.BeginUpdate();
+            try
+            {
+                callListBox.Items.Clear();
+                callListBox.Items.AddRange(items.ToArray());
+            }
+            finally { callListBox.EndUpdate(); }
+
+            if (focused && selectionMode != SelectionMode.None && prevIndex >= 0)
+                callListBox.SelectedIndex = Math.Min(prevIndex, callListBox.Items.Count - 1);
+        }
+
+        public void RenderRawDecodes(List<string> items)
+        {
+            bool focused = advRawListBox.Focused;
+            int prevIdx = focused ? advRawListBox.SelectedIndex : -1;
+            bool changed = advRawListBox.Items.Count != items.Count;
+            if (!changed)
+            {
+                for (int i = 0; i < items.Count; i++)
+                {
+                    if ((string)advRawListBox.Items[i] != items[i]) { changed = true; break; }
+                }
+            }
+            if (!changed) return;
+
+            advRawListBox.BeginUpdate();
+            try
+            {
+                advRawListBox.Items.Clear();
+                advRawListBox.Items.AddRange(items.ToArray());
+            }
+            finally { advRawListBox.EndUpdate(); }
+            if (keepListPositionDuringRefresh && focused && prevIdx >= 0 && advRawListBox.Items.Count > 0)
+                advRawListBox.SelectedIndex = Math.Min(prevIdx, advRawListBox.Items.Count - 1);
+        }
+
+        // Note: unlike RenderCallQueue/RenderLoggedList/RenderRawDecodes, this does NOT return
+        // early when nothing changed -- it mirrors WsjtxClient.ShowAdvancedQueue()'s original
+        // structure exactly, which always attempts the selection restore after the list update
+        // (a no-op in practice when nothing changed, but preserved verbatim rather than "cleaned up").
+        public void RenderAdvancedList(bool isTx1Side, string accessibleName, List<string> items)
+        {
+            ListBox lb = isTx1Side ? advTx1ListBox : advTx2ListBox;
+            if (lb.AccessibleName != accessibleName) lb.AccessibleName = accessibleName;
+
+            bool focused = lb.Focused;
+            int prevIdx = focused ? lb.SelectedIndex : -1;
+
+            bool changed = lb.Items.Count != items.Count;
+            if (!changed)
+            {
+                for (int i = 0; i < items.Count; i++)
+                {
+                    if ((string)lb.Items[i] != items[i]) { changed = true; break; }
+                }
+            }
+            if (changed)
+            {
+                lb.BeginUpdate();
+                try
+                {
+                    lb.Items.Clear();
+                    lb.Items.AddRange(items.ToArray());
+                }
+                finally { lb.EndUpdate(); }
+            }
+
+            if (keepListPositionDuringRefresh && focused && prevIdx >= 0 && lb.Items.Count > 0)
+                lb.SelectedIndex = Math.Min(prevIdx, lb.Items.Count - 1);
+        }
+
+        public void RenderLoggedList(string headerText, List<string> items)
+        {
+            loggedLabel.Text = headerText;
+
+            bool changed = logListBox.Items.Count != items.Count;
+            if (!changed)
+            {
+                for (int i = 0; i < items.Count; i++)
+                {
+                    if ((string)logListBox.Items[i] != items[i]) { changed = true; break; }
+                }
+            }
+            if (!changed) return;
+
+            bool focused = logListBox.Focused;
+            int prevIdx = focused ? logListBox.SelectedIndex : -1;
+
+            logListBox.BeginUpdate();
+            try
+            {
+                logListBox.Items.Clear();
+                logListBox.Items.AddRange(items.ToArray());
+            }
+            finally { logListBox.EndUpdate(); }
+            if (keepListPositionDuringRefresh && focused && prevIdx >= 0 && logListBox.Items.Count > 0)
+                logListBox.SelectedIndex = Math.Min(prevIdx, logListBox.Items.Count - 1);
         }
 
         private void IncludeHelpLabel_Click(object sender, EventArgs e)
@@ -1594,6 +1855,7 @@ namespace WSJTX_Controller
 
                 $"{nl}{K(HotkeyAction.AnalyzeSlot)}: Analyze transmit slot (find quietest audio frequency for CQ; requires 'Use best Tx frequency' enabled)." +
                 $"{nl}{K(HotkeyAction.LookupStation)}: Look up selected station (shows callsign, country, state, LoTW status, and more)." +
+                $"{nl}{K(HotkeyAction.OpenLogbook)}: Open the Ham Radio Center logbook." +
 
                 $"{nl}{nl}Radio configuration keys:" +
                 $"{nl}{K(HotkeyAction.TuneMode)}: Toggle Tune mode, to determine correct audio output level to radio ({K(HotkeyAction.AudioUp)} and {K(HotkeyAction.AudioDown)} keys to adjust, {K(HotkeyAction.Prompts)} for fast or complete updates)." +
@@ -1803,7 +2065,7 @@ namespace WSJTX_Controller
 
         private void callAddedCheckBox_CheckedChanged(object sender, EventArgs e)
         {
-            if (formLoaded && callAddedCheckBox.Checked) wsjtxClient.PlaySoundEvent(true, soundFile_CallAdded);
+            if (formLoaded && callAddedCheckBox.Checked) wsjtxClient.Sounds.PlaySoundEvent(true, soundFile_CallAdded);
         }
 
         private void exceptTextBox_KeyPress(object sender, KeyPressEventArgs e)
@@ -2026,6 +2288,7 @@ namespace WSJTX_Controller
                 {
                     statusText.Focus();
                 }
+                // Force NVDA/JAWS to (re-)announce the status text on demand (see RenderStatus).
                 BeginInvoke((Action)(() => SendKeys.Send("{UP}")));
             }
 
@@ -2169,10 +2432,9 @@ namespace WSJTX_Controller
             if (iniFile == null || wsjtxClient == null) return;
 
             using (var dlg = new RankOrderDlg(
-                wsjtxClient.rankOrderList,
-                wsjtxClient.rankBeamMethod,
-                wsjtxClient.categoryWeight,
-                wsjtxClient.callingEnabled))
+                wsjtxClient.Ranker.rankOrderList,
+                wsjtxClient.Ranker.rankBeamMethod,
+                wsjtxClient.Ranker.callingEnabled))
             {
                 if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
@@ -2182,7 +2444,7 @@ namespace WSJTX_Controller
 
                 iniFile.Write("rankOrder",         string.Join(",", dlg.SelectedOrder.Select(m => MethodToRankId(m))));
                 iniFile.Write("rankBeam",          dlg.SelectedBeam.HasValue ? MethodToBeamId(dlg.SelectedBeam.Value) : "none");
-                iniFile.Write("rankMethod",        wsjtxClient.rankMethodIdx.ToString());
+                iniFile.Write("rankMethod",        wsjtxClient.Ranker.rankMethodIdx.ToString());
                 iniFile.Write("categoryWeights",   FormatCategoryWeights(dlg.SelectedCategoryWeights));
                 iniFile.Write("callingPriorities", FormatCallingPriorities(dlg.SelectedCallingPriorities));
 
@@ -2815,6 +3077,22 @@ namespace WSJTX_Controller
                 // Lists widen to fill the window, never below today's default 280px.
                 int listW = Math.Max(280, this.ClientSize.Width - 2 * listX);
 
+                // callListBox is hidden while any advanced list is shown, which would
+                // otherwise leave a large blank rectangle where it used to sit. Give the
+                // logged-calls list that reclaimed space instead of leaving it empty --
+                // restored to its normal narrow, right-pinned spot when back in simple mode.
+                //
+                // logListX must stay strictly greater than callListBox's own X (it's never
+                // moved and stays the leftmost control in this row): JimmyReplay.py identifies
+                // callListBox/logListBox by sorting same-row ListBoxes left-to-right, with no
+                // visibility check, so if this ever sorted before callListBox the test harness
+                // would silently swap which list it thinks is which.
+                int logListX = callListBox.Location.X + 1;
+                loggedLabel.Location = new Point(logListX, 6);
+                logListBox.Location  = new Point(logListX, 24);
+                logListBox.Size      = new Size(listW - 1, 107);
+                logListBox.Anchor    = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+
                 int count = (showTx1 ? 1 : 0) + (showTx2 ? 1 : 0) + (showRaw ? 1 : 0);
 
                 // Extra vertical room the current window height offers beyond the natural
@@ -2852,6 +3130,15 @@ namespace WSJTX_Controller
                     advRawListBox.Size     = new Size(listW, rawH);
                 }
             }
+            else
+            {
+                // Simple mode: callListBox is visible again, so restore logListBox's
+                // normal narrow, right-pinned position beside it.
+                loggedLabel.Location = new Point(366, 6);
+                logListBox.Location  = new Point(366, 24);
+                logListBox.Size      = new Size(140, 107);
+                logListBox.Anchor    = AnchorStyles.Top | AnchorStyles.Right;
+            }
 
             ResumeLayout(false);
 
@@ -2862,6 +3149,57 @@ namespace WSJTX_Controller
 
             if (show && wsjtxClient != null)
                 wsjtxClient.RefreshAdvancedLists();
+        }
+
+        // Shared alternating-row-color painter, used by callListBox/logListBox/advTx1ListBox/
+        // advTx2ListBox/advRawListBox. Purely visual -- item text/accessible behavior is
+        // unchanged, so screen readers are unaffected. Reads Font/BackColor/ForeColor live
+        // from the control at paint time, so Appearance settings apply with no changes here;
+        // AdvListAltRowColor is the one true constant, now settable via ApplyListAppearance().
+        private Color AdvListAltRowColor = Color.FromArgb(233, 233, 233);
+
+        // Applies the current Appearance settings (font size/colors) to all 5 main
+        // lists. Called once at startup (after Settings.LoadFromIni) and again whenever
+        // Options saves. ItemHeight is recalculated from the new font so larger sizes
+        // don't clip -- it was previously a hardcoded 15 sized only for the default 10pt.
+        public void ApplyListAppearance()
+        {
+            var font = new Font("Consolas", Settings.ListFontSize, FontStyle.Bold);
+            int itemHeight = TextRenderer.MeasureText("Ag", font).Height + 2;
+
+            ListBox[] lists = { callListBox, logListBox, advTx1ListBox, advTx2ListBox, advRawListBox };
+            foreach (var lb in lists)
+            {
+                lb.Font = font;
+                lb.BackColor = Settings.ListBackColor;
+                lb.ForeColor = Settings.ListForeColor;
+                lb.ItemHeight = itemHeight;
+            }
+
+            AdvListAltRowColor = Settings.ListAltRowColor;
+
+            foreach (var lb in lists)
+                lb.Invalidate();
+        }
+
+        private void AdvListBox_DrawItem(object sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0) return;
+            var lb = (ListBox)sender;
+            string text = lb.Items[e.Index].ToString();
+
+            bool selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+            Color backColor = selected ? SystemColors.Highlight
+                             : (e.Index % 2 == 0) ? lb.BackColor : AdvListAltRowColor;
+            Color foreColor = selected ? SystemColors.HighlightText : lb.ForeColor;
+
+            using (var backBrush = new SolidBrush(backColor))
+                e.Graphics.FillRectangle(backBrush, e.Bounds);
+
+            TextRenderer.DrawText(e.Graphics, text, lb.Font, e.Bounds, foreColor,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+
+            e.DrawFocusRectangle();
         }
 
         private void AdvTx1ListBox_KeyDown(object sender, KeyEventArgs e)
@@ -2975,4 +3313,5 @@ namespace WSJTX_Controller
 }
 
 
-
+   
+    

@@ -144,13 +144,14 @@
             this.statusText.AccessibleName = "Status:";
             this.statusText.AccessibleRole = System.Windows.Forms.AccessibleRole.None;
             this.statusText.BackColor = System.Drawing.Color.DarkRed;
+            this.statusText.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Right)));
             this.statusText.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.statusText.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.statusText.ForeColor = System.Drawing.Color.White;
             this.statusText.Location = new System.Drawing.Point(14, 217);
             this.statusText.Name = "statusText";
             this.statusText.ReadOnly = true;
-            this.statusText.Size = new System.Drawing.Size(270, 20);
+            this.statusText.Size = new System.Drawing.Size(492, 20);
             this.statusText.TabIndex = 1;
             this.statusText.TextChanged += new System.EventHandler(this.statusText_TextChanged);
             this.statusText.Enter += new System.EventHandler(this.statusText_Enter);
@@ -168,8 +169,9 @@
             // loggedLabel
             // 
             this.loggedLabel.AutoSize = true;
+            this.loggedLabel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.loggedLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.loggedLabel.Location = new System.Drawing.Point(192, 6);
+            this.loggedLabel.Location = new System.Drawing.Point(366, 6);
             this.loggedLabel.Name = "loggedLabel";
             this.loggedLabel.Size = new System.Drawing.Size(67, 13);
             this.loggedLabel.TabIndex = 8;
@@ -319,7 +321,7 @@
             // 
             this.verLabel2.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Underline, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.verLabel2.ForeColor = System.Drawing.Color.DarkBlue;
-            this.verLabel2.Location = new System.Drawing.Point(15, 356);
+            this.verLabel2.Location = new System.Drawing.Point(15, 361);
             this.verLabel2.Name = "verLabel2";
             this.verLabel2.Size = new System.Drawing.Size(110, 14);
             this.verLabel2.TabIndex = 34;
@@ -542,7 +544,7 @@
             this.modeHelpLabel.BackColor = System.Drawing.SystemColors.Control;
             this.modeHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.modeHelpLabel.ForeColor = System.Drawing.SystemColors.ControlText;
-            this.modeHelpLabel.Location = new System.Drawing.Point(214, 179);
+            this.modeHelpLabel.Location = new System.Drawing.Point(255, 141);
             this.modeHelpLabel.Name = "modeHelpLabel";
             this.modeHelpLabel.Size = new System.Drawing.Size(69, 30);
             this.modeHelpLabel.TabIndex = 6;
@@ -822,29 +824,35 @@
             // logListBox
             // 
             this.logListBox.AccessibleName = "auto-logged calls:";
+            this.logListBox.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.logListBox.BackColor = System.Drawing.SystemColors.Window;
             this.logListBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.logListBox.DrawMode = System.Windows.Forms.DrawMode.OwnerDrawFixed;
             this.logListBox.Font = new System.Drawing.Font("Consolas", 10F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.logListBox.FormattingEnabled = true;
             this.logListBox.ItemHeight = 15;
-            this.logListBox.Location = new System.Drawing.Point(214, 24);
+            this.logListBox.Location = new System.Drawing.Point(366, 24);
             this.logListBox.Name = "logListBox";
-            this.logListBox.Size = new System.Drawing.Size(69, 107);
+            this.logListBox.Size = new System.Drawing.Size(140, 107);
             this.logListBox.TabIndex = 4;
+            this.logListBox.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.AdvListBox_DrawItem);
             // 
             // callListBox
             // 
             this.callListBox.AccessibleDescription = "";
             this.callListBox.AccessibleName = "stations calling:";
+            this.callListBox.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Right)));
             this.callListBox.BackColor = System.Drawing.SystemColors.Window;
             this.callListBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.callListBox.DrawMode = System.Windows.Forms.DrawMode.OwnerDrawFixed;
             this.callListBox.Font = new System.Drawing.Font("Consolas", 10F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.callListBox.FormattingEnabled = true;
             this.callListBox.ItemHeight = 15;
             this.callListBox.Location = new System.Drawing.Point(15, 24);
             this.callListBox.Name = "callListBox";
-            this.callListBox.Size = new System.Drawing.Size(185, 107);
+            this.callListBox.Size = new System.Drawing.Size(335, 107);
             this.callListBox.TabIndex = 2;
+            this.callListBox.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.AdvListBox_DrawItem);
             this.callListBox.KeyDown += new System.Windows.Forms.KeyEventHandler(this.CallListBox_KeyDown);
             this.callListBox.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.callListBox_KeyPress);
             this.callListBox.MouseDown += new System.Windows.Forms.MouseEventHandler(this.callListBox_MouseDown);
@@ -1104,10 +1112,11 @@
             // optionsButton
             //
             this.optionsButton.AccessibleName = "Options, Alt O";
+            this.optionsButton.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Right)));
             this.optionsButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.optionsButton.Location = new System.Drawing.Point(10, 249);
             this.optionsButton.Name = "optionsButton";
-            this.optionsButton.Size = new System.Drawing.Size(130, 25);
+            this.optionsButton.Size = new System.Drawing.Size(492, 24);
             this.optionsButton.TabIndex = 104;
             this.optionsButton.TabStop = true;
             this.optionsButton.Text = "Options...";
@@ -1117,10 +1126,11 @@
             // rowOrderButton
             //
             this.rowOrderButton.AccessibleName = "Row Display Order, Alt I";
+            this.rowOrderButton.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Right)));
             this.rowOrderButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.rowOrderButton.Location = new System.Drawing.Point(10, 279);
+            this.rowOrderButton.Location = new System.Drawing.Point(10, 277);
             this.rowOrderButton.Name = "rowOrderButton";
-            this.rowOrderButton.Size = new System.Drawing.Size(280, 25);
+            this.rowOrderButton.Size = new System.Drawing.Size(492, 24);
             this.rowOrderButton.TabIndex = 105;
             this.rowOrderButton.TabStop = true;
             this.rowOrderButton.Text = "Row Display Order...";
@@ -1130,10 +1140,11 @@
             // sortOrderButton
             //
             this.sortOrderButton.AccessibleName = "Stations Available Sort Order, Alt S Button";
+            this.sortOrderButton.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Right)));
             this.sortOrderButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.sortOrderButton.Location = new System.Drawing.Point(10, 309);
+            this.sortOrderButton.Location = new System.Drawing.Point(10, 305);
             this.sortOrderButton.Name = "sortOrderButton";
-            this.sortOrderButton.Size = new System.Drawing.Size(280, 25);
+            this.sortOrderButton.Size = new System.Drawing.Size(492, 24);
             this.sortOrderButton.TabIndex = 106;
             this.sortOrderButton.TabStop = true;
             this.sortOrderButton.Text = "Stations Available Sort Order...";
@@ -1193,7 +1204,7 @@
             this.modeGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.modeGroupBox.Location = new System.Drawing.Point(15, 141);
             this.modeGroupBox.Name = "modeGroupBox";
-            this.modeGroupBox.Size = new System.Drawing.Size(205, 108);
+            this.modeGroupBox.Size = new System.Drawing.Size(230, 70);
             this.modeGroupBox.TabIndex = 3;
             this.modeGroupBox.TabStop = false;
             this.modeGroupBox.Text = "Operating mode:";
@@ -1205,6 +1216,10 @@
             this.cqIntentListenButton.AutoSize = true;
             this.cqIntentListenButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.cqIntentListenButton.Location = new System.Drawing.Point(15, 20);
+            // 2x2 grid (was a single stacked column) -- the original 4-row layout
+            // made this groupbox 108px tall, which overlapped the status bar
+            // whenever it became visible (connected/active mode). This layout
+            // keeps all 4 choices but only needs ~70px of height.
             this.cqIntentListenButton.Name = "cqIntentListenButton";
             this.cqIntentListenButton.Size = new System.Drawing.Size(52, 17);
             this.cqIntentListenButton.TabIndex = 2;
@@ -1218,7 +1233,7 @@
             this.cqIntentCqOnlyButton.AccessibleName = "CQ only, press Alt C to start";
             this.cqIntentCqOnlyButton.AutoSize = true;
             this.cqIntentCqOnlyButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.cqIntentCqOnlyButton.Location = new System.Drawing.Point(15, 40);
+            this.cqIntentCqOnlyButton.Location = new System.Drawing.Point(110, 20);
             this.cqIntentCqOnlyButton.Name = "cqIntentCqOnlyButton";
             this.cqIntentCqOnlyButton.Size = new System.Drawing.Size(63, 17);
             this.cqIntentCqOnlyButton.TabIndex = 3;
@@ -1231,7 +1246,7 @@
             this.cqIntentCqDxOnlyButton.AccessibleName = "CQ DX only, press Alt C to start";
             this.cqIntentCqDxOnlyButton.AutoSize = true;
             this.cqIntentCqDxOnlyButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.cqIntentCqDxOnlyButton.Location = new System.Drawing.Point(15, 60);
+            this.cqIntentCqDxOnlyButton.Location = new System.Drawing.Point(15, 42);
             this.cqIntentCqDxOnlyButton.Name = "cqIntentCqDxOnlyButton";
             this.cqIntentCqDxOnlyButton.Size = new System.Drawing.Size(78, 17);
             this.cqIntentCqDxOnlyButton.TabIndex = 4;
@@ -1244,7 +1259,7 @@
             this.cqIntentCqAndDxButton.AccessibleName = "CQ and CQ DX, press Alt C to start";
             this.cqIntentCqAndDxButton.AutoSize = true;
             this.cqIntentCqAndDxButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.cqIntentCqAndDxButton.Location = new System.Drawing.Point(15, 80);
+            this.cqIntentCqAndDxButton.Location = new System.Drawing.Point(110, 42);
             this.cqIntentCqAndDxButton.Name = "cqIntentCqAndDxButton";
             this.cqIntentCqAndDxButton.Size = new System.Drawing.Size(101, 17);
             this.cqIntentCqAndDxButton.TabIndex = 5;
@@ -1346,6 +1361,7 @@
             this.advTx1ListBox.AccessibleName = "TX1 available stations";
             this.advTx1ListBox.BackColor = System.Drawing.SystemColors.Window;
             this.advTx1ListBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.advTx1ListBox.DrawMode = System.Windows.Forms.DrawMode.OwnerDrawFixed;
             this.advTx1ListBox.Font = new System.Drawing.Font("Consolas", 10F, System.Drawing.FontStyle.Bold);
             this.advTx1ListBox.FormattingEnabled = true;
             this.advTx1ListBox.ItemHeight = 15;
@@ -1354,6 +1370,7 @@
             this.advTx1ListBox.Size = new System.Drawing.Size(280, 77);
             this.advTx1ListBox.TabIndex = 200;
             this.advTx1ListBox.Visible = false;
+            this.advTx1ListBox.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.AdvListBox_DrawItem);
             this.advTx1ListBox.KeyDown += new System.Windows.Forms.KeyEventHandler(this.AdvTx1ListBox_KeyDown);
             this.advTx1ListBox.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.AdvTx1ListBox_KeyPress);
             //
@@ -1371,6 +1388,7 @@
             this.advTx2ListBox.AccessibleName = "TX2 available stations";
             this.advTx2ListBox.BackColor = System.Drawing.SystemColors.Window;
             this.advTx2ListBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.advTx2ListBox.DrawMode = System.Windows.Forms.DrawMode.OwnerDrawFixed;
             this.advTx2ListBox.Font = new System.Drawing.Font("Consolas", 10F, System.Drawing.FontStyle.Bold);
             this.advTx2ListBox.FormattingEnabled = true;
             this.advTx2ListBox.ItemHeight = 15;
@@ -1379,6 +1397,7 @@
             this.advTx2ListBox.Size = new System.Drawing.Size(280, 77);
             this.advTx2ListBox.TabIndex = 201;
             this.advTx2ListBox.Visible = false;
+            this.advTx2ListBox.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.AdvListBox_DrawItem);
             this.advTx2ListBox.KeyDown += new System.Windows.Forms.KeyEventHandler(this.AdvTx2ListBox_KeyDown);
             this.advTx2ListBox.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.AdvTx2ListBox_KeyPress);
             //
@@ -1396,6 +1415,7 @@
             this.advRawListBox.AccessibleName = "Raw decodes";
             this.advRawListBox.BackColor = System.Drawing.SystemColors.Window;
             this.advRawListBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.advRawListBox.DrawMode = System.Windows.Forms.DrawMode.OwnerDrawFixed;
             this.advRawListBox.Font = new System.Drawing.Font("Consolas", 10F, System.Drawing.FontStyle.Bold);
             this.advRawListBox.FormattingEnabled = true;
             this.advRawListBox.ItemHeight = 15;
@@ -1404,6 +1424,7 @@
             this.advRawListBox.Size = new System.Drawing.Size(280, 92);
             this.advRawListBox.TabIndex = 202;
             this.advRawListBox.Visible = false;
+            this.advRawListBox.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.AdvListBox_DrawItem);
             this.advRawListBox.KeyDown += new System.Windows.Forms.KeyEventHandler(this.AdvRawListBox_KeyDown);
             this.advRawListBox.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.AdvRawListBox_KeyPress);
             //
@@ -1412,7 +1433,7 @@
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
-            this.ClientSize = new System.Drawing.Size(301, 390);
+            this.ClientSize = new System.Drawing.Size(520, 390);
             this.Controls.Add(this.advRawListBox);
             this.Controls.Add(this.advRawLabel);
             this.Controls.Add(this.advTx2ListBox);
@@ -1515,7 +1536,7 @@
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.MaximizeBox = true;
             this.MaximumSize = new System.Drawing.Size(0, 0);
-            this.MinimumSize = new System.Drawing.Size(317, 390);
+            this.MinimumSize = new System.Drawing.Size(420, 390);
             this.Name = "Controller";
             this.Activated += new System.EventHandler(this.Controller_Activated);
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Controller_FormClosing);

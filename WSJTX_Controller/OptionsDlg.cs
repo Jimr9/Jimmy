@@ -111,6 +111,7 @@ namespace WSJTX_Controller
         private Dictionary<HotkeyAction, Keys> _pendingKeys;
         private List<HotkeyAction?>             _listActionMap;
         private HotkeyCaptureBox                _sharedCaptureBox;
+        private int                              _lastRealActionIndex = -1;
         private ListBox                         _actionListBox;
 
         // Wanted Calls tab
@@ -119,6 +120,16 @@ namespace WSJTX_Controller
 
         // General tab
         private System.Windows.Forms.CheckBox pskReporterCheckBox;
+
+        // Appearance tab
+        private System.Windows.Forms.ComboBox appearanceThemeCombo;
+        private System.Windows.Forms.NumericUpDown appearanceFontSizeNumeric;
+        private System.Windows.Forms.Button appearanceBackColorButton;
+        private System.Windows.Forms.Button appearanceForeColorButton;
+        private System.Windows.Forms.Button appearanceAltRowColorButton;
+        private Color _appearanceBackColor;
+        private Color _appearanceForeColor;
+        private Color _appearanceAltRowColor;
 
         private Dictionary<Control, Control> originalParents = new Dictionary<Control, Control>();
         private Dictionary<Control, Point> originalLocations = new Dictionary<Control, Point>();
@@ -172,6 +183,7 @@ namespace WSJTX_Controller
             BuildWantedCallsTab();
             BuildSoundsTab();
             BuildLookupTab();
+            BuildAppearanceTab();
             ReparentControlsToDialog();
 
             UpdateAllButtons();
@@ -255,7 +267,9 @@ namespace WSJTX_Controller
             SaveWantedCallsTab();
             SaveSoundsTab();
             SaveLookupTab();
+            SaveAppearanceTab();
             ctrl.ApplyAdvancedLayout();
+            ctrl.ApplyListAppearance();
             Close();
         }
 
@@ -858,7 +872,7 @@ namespace WSJTX_Controller
         private void TestSoundFile(string filePath)
         {
             if (!string.IsNullOrEmpty(filePath))
-                wsjtxClient.TestPlaySound(filePath);
+                wsjtxClient.Sounds.TestPlaySound(filePath);
         }
 
         private void SaveSoundsTab()
@@ -971,6 +985,11 @@ namespace WSJTX_Controller
             ReparentTo(ctrl.exceptTextBox, rcvBlockListGroupBox, new Point(110, 17));
             ReparentTo(ctrl.blockHelpLabel, rcvBlockListGroupBox, new Point(275, 20));
 
+            // Weak-signal floor → same group, to the right of the block list
+            ReparentTo(ctrl.ignoreWeakSnrCheckBox, rcvBlockListGroupBox, new Point(320, 19));
+            ReparentTo(ctrl.minSnrNumUpDown,        rcvBlockListGroupBox, new Point(478, 17));
+            ReparentTo(ctrl.minSnrLabel,            rcvBlockListGroupBox, new Point(530, 20));
+
             // Transmit group → Transmit tab
             ReparentTo(ctrl.freqCheckBox,       rcvTransmitGroupBox, new Point(10, 18));
             ReparentTo(ctrl.AutoFreqHelpLabel,  rcvTransmitGroupBox, new Point(150, 20));
@@ -1050,8 +1069,8 @@ namespace WSJTX_Controller
                 ctrl.alertTextBox.Text.Contains("POTA") &&
                 ctrl.replyDirCqCheckBox.Checked), true);
 
-            SetState(allButton,    (wsjtxClient.rankOrderList.Count > 0 && wsjtxClient.rankOrderList[0] == WsjtxClient.RankMethods.CALL_ORDER), true);
-            SetState(recentButton, (wsjtxClient.rankOrderList.Count > 0 && wsjtxClient.rankOrderList[0] == WsjtxClient.RankMethods.MOST_RECENT), true);
+            SetState(allButton,    (wsjtxClient.Ranker.rankOrderList.Count > 0 && wsjtxClient.Ranker.rankOrderList[0] == WsjtxClient.RankMethods.CALL_ORDER), true);
+            SetState(recentButton, (wsjtxClient.Ranker.rankOrderList.Count > 0 && wsjtxClient.Ranker.rankOrderList[0] == WsjtxClient.RankMethods.MOST_RECENT), true);
 
             if (callCqButton.Checked)
                 label9.Text = "You're now ready to start. Press OK to close this Options dialog, then enable CQ mode using Ctrl, E.";
@@ -1136,7 +1155,7 @@ namespace WSJTX_Controller
         private void allButton_Click(object sender, EventArgs e)
         {
             UpdateAllButtons();
-            if (!(wsjtxClient.rankOrderList.Count > 0 && wsjtxClient.rankOrderList[0] == WsjtxClient.RankMethods.CALL_ORDER) || ctrl.timeoutNumUpDown.Value != 3)
+            if (!(wsjtxClient.Ranker.rankOrderList.Count > 0 && wsjtxClient.Ranker.rankOrderList[0] == WsjtxClient.RankMethods.CALL_ORDER) || ctrl.timeoutNumUpDown.Value != 3)
                 wsjtxClient.ApplySortOrder(new List<WsjtxClient.RankMethods> { WsjtxClient.RankMethods.CALL_ORDER }, null);
             UpdateAllButtons();
         }
@@ -1144,7 +1163,7 @@ namespace WSJTX_Controller
         private void recentButton_Click(object sender, EventArgs e)
         {
             UpdateAllButtons();
-            if (!(wsjtxClient.rankOrderList.Count > 0 && wsjtxClient.rankOrderList[0] == WsjtxClient.RankMethods.MOST_RECENT) || ctrl.timeoutNumUpDown.Value != 1)
+            if (!(wsjtxClient.Ranker.rankOrderList.Count > 0 && wsjtxClient.Ranker.rankOrderList[0] == WsjtxClient.RankMethods.MOST_RECENT) || ctrl.timeoutNumUpDown.Value != 1)
                 wsjtxClient.ApplySortOrder(new List<WsjtxClient.RankMethods> { WsjtxClient.RankMethods.MOST_RECENT }, null);
             UpdateAllButtons();
         }
@@ -1234,6 +1253,7 @@ namespace WSJTX_Controller
             };
             BuildActionList();
             _actionListBox.SelectedIndexChanged += ActionListBox_SelectedIndexChanged;
+            _actionListBox.KeyPress += ActionListBox_KeyPress;
             hotkeysPanel.Controls.Add(_actionListBox);
 
             // "Current shortcut:" static label (no tab stop)
@@ -1303,6 +1323,8 @@ namespace WSJTX_Controller
                 HotkeyAction.SortOrder,
                 HotkeyAction.RowOrder,
                 HotkeyAction.AnalyzeSlot,
+                HotkeyAction.LookupStation,
+                HotkeyAction.OpenLogbook,
                 HotkeyAction.ResetWindowSize,
             };
 
@@ -1369,9 +1391,24 @@ namespace WSJTX_Controller
             int idx = _actionListBox?.SelectedIndex ?? -1;
             if (idx < 0 || idx >= _listActionMap.Count) return;
 
-            // Group header selected — skip forward to the next real action
+            // Group header selected — skip to the next real action in the direction
+            // the selection came from, so Up-arrow at the top of a group moves up
+            // into the previous group instead of bouncing back to where it started.
             if (_listActionMap[idx] == null)
             {
+                bool movingUp = idx < _lastRealActionIndex;
+                if (movingUp)
+                {
+                    for (int prev = idx - 1; prev >= 0; prev--)
+                    {
+                        if (_listActionMap[prev] != null)
+                        {
+                            _actionListBox.SelectedIndex = prev;
+                            return;
+                        }
+                    }
+                }
+
                 for (int next = idx + 1; next < _listActionMap.Count; next++)
                 {
                     if (_listActionMap[next] != null)
@@ -1383,6 +1420,7 @@ namespace WSJTX_Controller
                 return;
             }
 
+            _lastRealActionIndex = idx;
             HotkeyAction action  = _listActionMap[idx].Value;
             string       name    = HotkeyConfig.DisplayNames[action];
 
@@ -1390,6 +1428,33 @@ namespace WSJTX_Controller
             {
                 _sharedCaptureBox.AccessibleName = name + " shortcut key";
                 _sharedCaptureBox.SetValue(_pendingKeys[action]);
+            }
+        }
+
+        // Windows' native listbox jump-to-letter matches on the item's literal first
+        // character, which is always a space here (used for visual indent) — so it
+        // never matches. Do the prefix match ourselves against the display name instead.
+        private void ActionListBox_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            char ch = char.ToUpperInvariant(e.KeyChar);
+            if (!char.IsLetterOrDigit(ch)) return;
+            e.Handled = true;
+
+            int count = _listActionMap.Count;
+            if (count == 0) return;
+            int start = _actionListBox.SelectedIndex;
+
+            for (int step = 1; step <= count; step++)
+            {
+                int idx = (start + step) % count;
+                var action = _listActionMap[idx];
+                if (action == null) continue;
+                string name = HotkeyConfig.DisplayNames[action.Value];
+                if (name.Length > 0 && char.ToUpperInvariant(name[0]) == ch)
+                {
+                    _actionListBox.SelectedIndex = idx;
+                    return;
+                }
             }
         }
 
@@ -2031,6 +2096,205 @@ namespace WSJTX_Controller
             ctrl.clubLogUploadEmail      = _clubLogUploadEmailTb?.Text.Trim()   ?? "";
             ctrl.clubLogUploadPassword   = _clubLogUploadPasswordTb?.Text      ?? "";
             ctrl.clubLogUploadCallsign   = _clubLogUploadCallsignTb?.Text.Trim().ToUpperInvariant() ?? "";
+        }
+
+        // ===== APPEARANCE TAB =====
+
+        private void BuildAppearanceTab()
+        {
+            appearancePanel.Controls.Clear();
+
+            var font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
+            int y = 8;
+            const int left = 10;
+
+            _appearanceBackColor = ctrl.Settings.ListBackColor;
+            _appearanceForeColor = ctrl.Settings.ListForeColor;
+            _appearanceAltRowColor = ctrl.Settings.ListAltRowColor;
+
+            var themeLabel = new System.Windows.Forms.Label
+            {
+                Text = "Theme:",
+                AutoSize = true,
+                Location = new System.Drawing.Point(left, y + 3),
+                Font = font,
+                TabStop = false,
+            };
+            appearancePanel.Controls.Add(themeLabel);
+
+            appearanceThemeCombo = new System.Windows.Forms.ComboBox
+            {
+                DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList,
+                Location = new System.Drawing.Point(left + 60, y),
+                Size = new System.Drawing.Size(160, 22),
+                TabIndex = 0,
+                Font = font,
+                AccessibleName = "Appearance theme",
+                AccessibleDescription = "Choose a preset color theme for the station lists, or pick individual colors below.",
+            };
+            appearanceThemeCombo.Items.AddRange(new object[] { "Default", "Dark", "High Contrast" });
+            appearanceThemeCombo.SelectedIndex = AppearanceThemeIndexForColors(_appearanceBackColor, _appearanceForeColor, _appearanceAltRowColor);
+            appearanceThemeCombo.SelectedIndexChanged += AppearanceThemeCombo_SelectedIndexChanged;
+            appearancePanel.Controls.Add(appearanceThemeCombo);
+            y += 34;
+
+            appearanceBackColorButton = new System.Windows.Forms.Button
+            {
+                Text = "List background color...",
+                Location = new System.Drawing.Point(left, y),
+                Size = new System.Drawing.Size(200, 24),
+                TabIndex = 1,
+                Font = font,
+                AccessibleName = "List background color",
+                AccessibleDescription = "Choose the background color for the station lists.",
+            };
+            appearanceBackColorButton.Click += AppearanceBackColorButton_Click;
+            appearancePanel.Controls.Add(appearanceBackColorButton);
+            y += 30;
+
+            appearanceForeColorButton = new System.Windows.Forms.Button
+            {
+                Text = "List text color...",
+                Location = new System.Drawing.Point(left, y),
+                Size = new System.Drawing.Size(200, 24),
+                TabIndex = 2,
+                Font = font,
+                AccessibleName = "List text color",
+                AccessibleDescription = "Choose the text color for the station lists.",
+            };
+            appearanceForeColorButton.Click += AppearanceForeColorButton_Click;
+            appearancePanel.Controls.Add(appearanceForeColorButton);
+            y += 30;
+
+            appearanceAltRowColorButton = new System.Windows.Forms.Button
+            {
+                Text = "Alternating row color...",
+                Location = new System.Drawing.Point(left, y),
+                Size = new System.Drawing.Size(200, 24),
+                TabIndex = 3,
+                Font = font,
+                AccessibleName = "Alternating row color",
+                AccessibleDescription = "Choose the color used for every other row in the station lists.",
+            };
+            appearanceAltRowColorButton.Click += AppearanceAltRowColorButton_Click;
+            appearancePanel.Controls.Add(appearanceAltRowColorButton);
+            y += 38;
+
+            var fontSizeLabel = new System.Windows.Forms.Label
+            {
+                Text = "List font size:",
+                AutoSize = true,
+                Location = new System.Drawing.Point(left, y + 3),
+                Font = font,
+                TabStop = false,
+            };
+            appearancePanel.Controls.Add(fontSizeLabel);
+
+            appearanceFontSizeNumeric = new System.Windows.Forms.NumericUpDown
+            {
+                Location = new System.Drawing.Point(left + 90, y),
+                Size = new System.Drawing.Size(60, 22),
+                TabIndex = 4,
+                Minimum = 8,
+                Maximum = 18,
+                Value = Math.Max(8, Math.Min(18, ctrl.Settings.ListFontSize)),
+                Font = font,
+                AccessibleName = "List font size",
+                AccessibleDescription = "Font size used in the station lists, from 8 to 18 points.",
+            };
+            appearancePanel.Controls.Add(appearanceFontSizeNumeric);
+            y += 36;
+
+            var restoreDefaultsButton = new System.Windows.Forms.Button
+            {
+                Text = "Restore Defaults",
+                Location = new System.Drawing.Point(left, y),
+                Size = new System.Drawing.Size(140, 24),
+                TabIndex = 5,
+                Font = font,
+                AccessibleName = "Restore appearance defaults",
+                AccessibleDescription = "Resets list colors and font size back to the original Jimmy defaults.",
+            };
+            restoreDefaultsButton.Click += AppearanceRestoreDefaultsButton_Click;
+            appearancePanel.Controls.Add(restoreDefaultsButton);
+        }
+
+        private void AppearanceThemeCombo_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            switch (appearanceThemeCombo.SelectedIndex)
+            {
+                case 0: // Default
+                    _appearanceBackColor = SystemColors.Window;
+                    _appearanceForeColor = SystemColors.WindowText;
+                    _appearanceAltRowColor = Color.FromArgb(233, 233, 233);
+                    break;
+                case 1: // Dark
+                    _appearanceBackColor = Color.FromArgb(30, 30, 30);
+                    _appearanceForeColor = Color.FromArgb(220, 220, 220);
+                    _appearanceAltRowColor = Color.FromArgb(45, 45, 45);
+                    break;
+                case 2: // High Contrast
+                    _appearanceBackColor = Color.Black;
+                    _appearanceForeColor = Color.Yellow;
+                    _appearanceAltRowColor = Color.FromArgb(40, 40, 0);
+                    break;
+            }
+        }
+
+        private void AppearanceBackColorButton_Click(object sender, EventArgs e)
+        {
+            using (var dlg = new System.Windows.Forms.ColorDialog { Color = _appearanceBackColor, FullOpen = true })
+                if (dlg.ShowDialog(this) == System.Windows.Forms.DialogResult.OK)
+                    _appearanceBackColor = dlg.Color;
+        }
+
+        private void AppearanceForeColorButton_Click(object sender, EventArgs e)
+        {
+            using (var dlg = new System.Windows.Forms.ColorDialog { Color = _appearanceForeColor, FullOpen = true })
+                if (dlg.ShowDialog(this) == System.Windows.Forms.DialogResult.OK)
+                    _appearanceForeColor = dlg.Color;
+        }
+
+        private void AppearanceAltRowColorButton_Click(object sender, EventArgs e)
+        {
+            using (var dlg = new System.Windows.Forms.ColorDialog { Color = _appearanceAltRowColor, FullOpen = true })
+                if (dlg.ShowDialog(this) == System.Windows.Forms.DialogResult.OK)
+                    _appearanceAltRowColor = dlg.Color;
+        }
+
+        private void AppearanceRestoreDefaultsButton_Click(object sender, EventArgs e)
+        {
+            _appearanceBackColor = SystemColors.Window;
+            _appearanceForeColor = SystemColors.WindowText;
+            _appearanceAltRowColor = Color.FromArgb(233, 233, 233);
+            appearanceThemeCombo.SelectedIndex = 0;
+            appearanceFontSizeNumeric.Value = 10;
+        }
+
+        // Matches the working colors back to a preset index for the combo's initial
+        // selection. No exact match (i.e. a manually-picked custom color) falls back
+        // to "Default" in the combo -- the combo is just a shortcut, not the source
+        // of truth, so this doesn't lose or alter the actual custom colors.
+        private static int AppearanceThemeIndexForColors(Color back, Color fore, Color alt)
+        {
+            if (ColorsEqual(back, SystemColors.Window) && ColorsEqual(fore, SystemColors.WindowText) && ColorsEqual(alt, Color.FromArgb(233, 233, 233)))
+                return 0;
+            if (ColorsEqual(back, Color.FromArgb(30, 30, 30)) && ColorsEqual(fore, Color.FromArgb(220, 220, 220)) && ColorsEqual(alt, Color.FromArgb(45, 45, 45)))
+                return 1;
+            if (ColorsEqual(back, Color.Black) && ColorsEqual(fore, Color.Yellow) && ColorsEqual(alt, Color.FromArgb(40, 40, 0)))
+                return 2;
+            return 0;
+        }
+
+        private static bool ColorsEqual(Color a, Color b) => a.ToArgb() == b.ToArgb();
+
+        private void SaveAppearanceTab()
+        {
+            if (appearanceFontSizeNumeric == null) return;
+            ctrl.Settings.ListBackColor = _appearanceBackColor;
+            ctrl.Settings.ListForeColor = _appearanceForeColor;
+            ctrl.Settings.ListAltRowColor = _appearanceAltRowColor;
+            ctrl.Settings.ListFontSize = (int)appearanceFontSizeNumeric.Value;
         }
 
         private async void QrzTestBtn_Click(object sender, EventArgs e)

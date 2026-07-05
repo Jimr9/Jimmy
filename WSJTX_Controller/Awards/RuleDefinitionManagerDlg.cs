@@ -573,6 +573,11 @@ namespace WSJTX_Controller
                             iniText, @"(?im)^\s*Id\s*=.*$", "Id=" + targetId);
 
                     string destIniPath = Path.Combine(RuleLoader.RulesFolder, targetId + ".ini");
+
+                    // Overwriting an existing award: keep its prior content in memory so a
+                    // bad import can be rolled back instead of leaving neither version behind.
+                    string previousIniText = File.Exists(destIniPath) ? File.ReadAllText(destIniPath) : null;
+
                     File.WriteAllText(destIniPath, iniText);
 
                     Directory.CreateDirectory(RuleLoader.ListsFolder);
@@ -586,13 +591,20 @@ namespace WSJTX_Controller
                         e => e.StartsWith(targetId + ".ini", StringComparison.OrdinalIgnoreCase));
                     if (newError != null)
                     {
-                        var cleanup = MessageBox.Show(this,
-                            "The imported Rule Definition could not be loaded:\n\n" + newError +
-                            "\n\nRemove the file that was just imported?",
+                        string prompt = "The imported Rule Definition could not be loaded:\n\n" + newError +
+                            (previousIniText != null
+                                ? "\n\nRestore the award that was overwritten by this import?"
+                                : "\n\nRemove the file that was just imported?");
+                        var cleanup = MessageBox.Show(this, prompt,
                             "Import Problem", MessageBoxButtons.YesNo, MessageBoxIcon.Error);
                         if (cleanup == DialogResult.Yes)
                         {
-                            try { File.Delete(destIniPath); } catch { }
+                            try
+                            {
+                                if (previousIniText != null) File.WriteAllText(destIniPath, previousIniText);
+                                else File.Delete(destIniPath);
+                            }
+                            catch { }
                             LoadFromLibrary();
                         }
                     }

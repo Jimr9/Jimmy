@@ -32,6 +32,10 @@ namespace WSJTX_Controller
         public List<string> UniverseItems;   // Target=All only; the full checklist
         public List<string> WorkedItems;     // GroupBy != None only
         public List<string> ConfirmedItems;  // GroupBy != None only
+
+        // Item -> distinct bands it was worked on (band-ordered, low to high), for UI display
+        // ("which band(s) did I work this station/entity/etc. on"). GroupBy != None only.
+        public Dictionary<string, List<string>> WorkedBands;
     }
 
     // Evaluates Rule Definitions against the logbook database.
@@ -270,11 +274,13 @@ namespace WSJTX_Controller
         {
             var workedSet    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var confirmedSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var bandsByItem   = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
             using (var cmd = conn.CreateCommand())
             {
                 cmd.CommandText =
-                    $"SELECT {groupExpr} AS g, MAX(CASE WHEN {confirmExpr} THEN 1 ELSE 0 END) AS conf " +
+                    $"SELECT {groupExpr} AS g, MAX(CASE WHEN {confirmExpr} THEN 1 ELSE 0 END) AS conf, " +
+                    $"GROUP_CONCAT(DISTINCT band) AS bands " +
                     $"FROM qso {where} GROUP BY g;";
                 foreach (var p in parms) cmd.Parameters.Add(p);
                 using (var r = cmd.ExecuteReader())
@@ -286,11 +292,12 @@ namespace WSJTX_Controller
                         if (g.Length == 0) continue;
                         workedSet.Add(g);
                         if (!r.IsDBNull(1) && Convert.ToInt32(r.GetValue(1)) != 0) confirmedSet.Add(g);
+                        if (!r.IsDBNull(2)) bandsByItem[g] = OrderBands(r.GetString(2).Split(','));
                     }
                 }
             }
 
-            FinishGrouped(def, workedSet, confirmedSet, universe, limitTo, result);
+            FinishGrouped(def, workedSet, confirmedSet, bandsByItem, universe, limitTo, result);
         }
 
         // GroupBy=Prefix is computed in C# (see WpxPrefixOf), so it can't use the
@@ -302,10 +309,11 @@ namespace WSJTX_Controller
         {
             var workedSet    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var confirmedSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var bandsByItem  = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
 
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = $"SELECT callsign, wpx_prefix, ({confirmExpr}) FROM qso {where};";
+                cmd.CommandText = $"SELECT callsign, wpx_prefix, ({confirmExpr}), band FROM qso {where};";
                 foreach (var p in parms) cmd.Parameters.Add(p);
                 using (var r = cmd.ExecuteReader())
                 {
@@ -319,15 +327,43 @@ namespace WSJTX_Controller
 
                         workedSet.Add(pfx);
                         if (!r.IsDBNull(2) && Convert.ToInt64(r.GetValue(2)) != 0) confirmedSet.Add(pfx);
+                        if (!r.IsDBNull(3))
+                        {
+                            string band = r.GetString(3);
+                            if (band.Length > 0)
+                            {
+                                if (!bandsByItem.TryGetValue(pfx, out var set))
+                                    bandsByItem[pfx] = set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                set.Add(band);
+                            }
+                        }
                     }
                 }
             }
 
-            FinishGrouped(def, workedSet, confirmedSet, universe, limitTo, result);
+            var orderedBandsByItem = bandsByItem.ToDictionary(kv => kv.Key, kv => OrderBands(kv.Value), StringComparer.OrdinalIgnoreCase);
+            FinishGrouped(def, workedSet, confirmedSet, orderedBandsByItem, universe, limitTo, result);
         }
+
+        // Canonical low-to-high band order (matches AdifImporter's frequency-ascending band
+        // table) so a UI showing "which bands did I work this on" reads naturally instead of
+        // alphabetically (which would put "10m" before "160m").
+        private static readonly string[] BandOrder =
+        {
+            "2200m", "630m", "160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m",
+            "12m", "10m", "6m", "4m", "2m", "1.25m", "70cm", "33cm", "23cm",
+        };
+
+        private static List<string> OrderBands(IEnumerable<string> bands) =>
+            bands.Where(b => !string.IsNullOrEmpty(b))
+                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                 .OrderBy(b => { int i = Array.IndexOf(BandOrder, b.ToLowerInvariant()); return i < 0 ? int.MaxValue : i; })
+                 .ThenBy(b => b, StringComparer.OrdinalIgnoreCase)
+                 .ToList();
 
         private static void FinishGrouped(
             RuleDefinition def, HashSet<string> workedSet, HashSet<string> confirmedSet,
+            Dictionary<string, List<string>> bandsByItem,
             HashSet<string> universe, HashSet<string> limitTo, RuleResult result)
         {
             if (def.Confirmation == RuleConfirmation.None) confirmedSet = workedSet;
@@ -356,6 +392,10 @@ namespace WSJTX_Controller
             result.Confirmed = confirmedSet.Count;
             result.WorkedItems    = workedSet.OrderBy(w => w, StringComparer.OrdinalIgnoreCase).ToList();
             result.ConfirmedItems = confirmedSet.OrderBy(w => w, StringComparer.OrdinalIgnoreCase).ToList();
+            result.WorkedBands    = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in workedSet)
+                if (bandsByItem.TryGetValue(item, out var bands))
+                    result.WorkedBands[item] = bands;
 
             if (def.Target == RuleTargetType.All && universe != null)
             {

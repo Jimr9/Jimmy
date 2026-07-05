@@ -65,6 +65,7 @@ MSG_STATUS       = 1
 MSG_QSO_LOGGED   = 5
 MSG_ENQUEUE_V3   = 18
 MSG_ENABLE_TX    = 17
+MSG_LOGGED_ADIF  = 12
 
 # ─── Win32 API Constants ──────────────────────────────────────────────────────
 GWL_STYLE         = -16
@@ -478,6 +479,27 @@ def build_qso_logged(dx_call, dx_grid="EM63"):
         _qstr("") + _qstr(MY_CALL) + _qstr(MY_GRID) +
         _qstr("") + _qstr("")
     )
+
+
+def build_logged_adif(dx_call, band="20m", qso_date=None):
+    """LoggedAdifMessage — WSJT-X sends this alongside QsoLoggedMessage for every
+    logged QSO. Jimmy's HandleLiveAdifLogged() treats it as a fallback trigger for
+    the same log/awards-refresh path, so a single dropped QsoLoggedMessage doesn't
+    silently keep a QSO out of the log (see group14 below)."""
+    if qso_date is None:
+        qso_date = datetime.datetime.utcnow().strftime("%Y%m%d")
+    adif = (
+        "<adif_ver:5>3.0.7<programid:6>WSJT-X<EOH>"
+        f"<call:{len(dx_call)}>{dx_call} "
+        f"<band:{len(band)}>{band} "
+        "<mode:3>FT8 "
+        f"<qso_date:8>{qso_date} "
+        "<time_on:6>235900 <time_off:6>235930 "
+        "<rst_sent:3>-05 <rst_rcvd:3>-09 "
+        "<station_callsign:6>KB0UZT <my_gridsquare:4>EN34 <eor>"
+    )
+    return (MAGIC + _u32(2) + _u32(MSG_LOGGED_ADIF) +
+            _qstr(WSJT_ID) + _qstr(adif))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1100,6 +1122,54 @@ def group13_still_need_live_tag_baseline(sock, v):
          ) if v.available else None)
 
 
+def group14_logged_adif_fallback(sock, v):
+    """T29-T30: LoggedAdifMessage fallback for a logged QSO.
+
+    WSJT-X sends both QsoLoggedMessage and LoggedAdifMessage for every logged
+    QSO. Jimmy normally acts on QsoLoggedMessage; HandleLiveAdifLogged() is a
+    fallback so a single dropped QsoLoggedMessage packet doesn't silently keep
+    a QSO out of the log/awards (this is what actually happened with a real
+    TM13COL QSO — WSJT-X logged it locally but its QsoLoggedMessage broadcast
+    never reached Jimmy, and nothing caught it before this fix).
+
+    T29: LoggedAdifMessage ALONE (simulates a dropped QsoLoggedMessage) must
+         still get the call into logListBox.
+    T30: QsoLoggedMessage + LoggedAdifMessage together (the normal case) for a
+         second call must not double up — still just one logListBox entry,
+         no duplicate-processing error.
+    """
+    print("  ─ Group 14: LoggedAdifMessage fallback for a logged QSO ─")
+
+    ADIF_ONLY_CALL = "W1ADIF"   # unique call — never sent via QsoLoggedMessage
+    BOTH_MSG_CALL  = "W2BOTH"   # unique call — sent via both message types
+
+    send(sock,
+         f"LoggedAdifMessage only: {ADIF_ONLY_CALL} (QsoLoggedMessage never arrives)",
+         "Expect: Logged sound; logListBox gains the call from ADIF fallback alone",
+         build_logged_adif(ADIF_ONLY_CALL),
+         delay=2.0,
+         verify_fn=lambda: (
+             v.check_log_contains(ADIF_ONLY_CALL,
+                 f"T29: {ADIF_ONLY_CALL} in logListBox from LoggedAdifMessage alone"),
+         ) if v.available else None)
+
+    send(sock,
+         f"QsoLoggedMessage + LoggedAdifMessage together: {BOTH_MSG_CALL}",
+         "Expect: normal case (both messages) still logs once, no duplicate-processing error",
+         build_qso_logged(BOTH_MSG_CALL),
+         delay=0.5)
+
+    send(sock,
+         f"(same QSO) LoggedAdifMessage: {BOTH_MSG_CALL}",
+         "Second message for the same QSO must be a no-op, not a second log entry",
+         build_logged_adif(BOTH_MSG_CALL),
+         delay=2.0,
+         verify_fn=lambda: (
+             v.check_log_contains(BOTH_MSG_CALL,
+                 f"T30: {BOTH_MSG_CALL} in logListBox (both messages, still just one QSO)"),
+         ) if v.available else None)
+
+
 def run_tests(sock, v):
     print("──── Test Decode Messages ────")
     print(f"  Format: [DESTINATION] [SOURCE] [payload]")
@@ -1119,12 +1189,13 @@ def run_tests(sock, v):
     group11_fox_hound_detection(sock, v)
     group12_hrc_filter_baseline(sock, v)
     group13_still_need_live_tag_baseline(sock, v)
+    group14_logged_adif_fallback(sock, v)
 
     # ── To add a new replay test group ──────────────────────────────────────
     # 1. Define a new function, e.g.:
-    #      def group14_your_scenario(sock, v):
+    #      def group15_your_scenario(sock, v):
     #          send(sock, "Label", "Description", build_enqueue("..."),
-    #               verify_fn=lambda: v.check_queue_contains("K4YT", "T29: ..."))
+    #               verify_fn=lambda: v.check_queue_contains("K4YT", "T31: ..."))
     # 2. Call it here, above this comment block.
     # Tests are auto-numbered by the global _test_num counter.
     # ────────────────────────────────────────────────────────────────────────

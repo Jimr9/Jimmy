@@ -33,6 +33,7 @@ namespace WSJTX_Controller
         RowOrder,
         AnalyzeSlot,
         LookupStation,
+        OpenLogbook,
         ResetWindowSize,
         // Accessibility Navigation
         NavStatus,
@@ -91,6 +92,7 @@ namespace WSJTX_Controller
             [HotkeyAction.RowOrder]        = Keys.Alt | Keys.I,
             [HotkeyAction.AnalyzeSlot]     = Keys.None,
             [HotkeyAction.LookupStation]   = Keys.None,
+            [HotkeyAction.OpenLogbook]     = Keys.None,
             [HotkeyAction.ResetWindowSize] = Keys.Control | Keys.Shift | Keys.R,
             [HotkeyAction.NavStatus]       = Keys.Control | Keys.S,
             [HotkeyAction.NavCallList]     = Keys.Control | Keys.W,
@@ -142,6 +144,7 @@ namespace WSJTX_Controller
             [HotkeyAction.RowOrder]        = "Row Order Editor",
             [HotkeyAction.AnalyzeSlot]     = "Analyze Transmit Slot",
             [HotkeyAction.LookupStation]   = "Lookup Selected Station",
+            [HotkeyAction.OpenLogbook]     = "Open Ham Radio Center Logbook",
             [HotkeyAction.ResetWindowSize] = "Reset Window Size to Default",
             [HotkeyAction.NavStatus]       = "Focus Status Area",
             [HotkeyAction.NavCallList]     = "Focus Available Stations List",
@@ -169,6 +172,7 @@ namespace WSJTX_Controller
         {
             HotkeyAction.AnalyzeSlot,
             HotkeyAction.LookupStation,
+            HotkeyAction.OpenLogbook,
             HotkeyAction.NavAdvTx1,
             HotkeyAction.NavAdvTx2,
             HotkeyAction.NavAdvRaw,

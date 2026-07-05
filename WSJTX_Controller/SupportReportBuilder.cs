@@ -358,7 +358,7 @@ namespace WSJTX_Controller
             sb.AppendLine();
 
             var sortList = diag?.CallQueueDetails != null && ctrl?.wsjtxClient != null
-                ? ctrl.wsjtxClient.rankOrderList
+                ? ctrl.wsjtxClient.Ranker.rankOrderList
                 : null;
             sb.AppendLine("Sort order: " + Safe(() =>
                 sortList != null && sortList.Count > 0

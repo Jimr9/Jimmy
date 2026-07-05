@@ -22,7 +22,11 @@ namespace WSJTX_Controller
         public string   State        { get; set; }
         public string   Country      { get; set; }
         public string   Continent    { get; set; }
+        public string   County       { get; set; }
         public int      CqZone       { get; set; }
+        public int      ItuZone      { get; set; }
+        public string   QslManager   { get; set; }
+        public string   Email        { get; set; }
         public int      AdifEntity   { get; set; }
         public bool     IsLoTWUser   { get; set; }
         public DateTime?LoTWActivity { get; set; }
@@ -137,11 +141,16 @@ namespace WSJTX_Controller
             var qrz = Qrz.GetCached(call);
             if (qrz != null)
             {
-                info.Name      = qrz.Name;
-                info.Grid      = qrz.Grid;
-                info.State     = qrz.State;
-                info.Country   = qrz.Country;
-                info.Continent = qrz.Continent;
+                info.Name       = qrz.Name;
+                info.Grid       = qrz.Grid;
+                info.State      = qrz.State;
+                info.Country    = qrz.Country;
+                info.Continent  = qrz.Continent;
+                info.County     = qrz.County;
+                info.CqZone     = qrz.CqZone;
+                info.ItuZone    = qrz.ItuZone;
+                info.QslManager = qrz.QslManager;
+                info.Email      = qrz.Email;
                 sources.Add("QRZ cache");
             }
 

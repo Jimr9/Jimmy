@@ -16,6 +16,7 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
     <!-- Reference Jimmy.exe as a library to test its parser types directly. -->
     <!-- Build Jimmy first (run build.bat or test.bat). -->
     <Reference Include="Jimmy">

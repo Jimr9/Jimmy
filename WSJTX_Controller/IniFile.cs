@@ -24,8 +24,10 @@ namespace WSJTX_Controller
 
         public string Read(string Key, string Section = null)
         {
-            var RetVal = new StringBuilder(255);
-            GetPrivateProfileString(Section ?? EXE, Key, "", RetVal, 255, Path);
+            // 2048 chars (not the old 255) so a DPAPI-encrypted, base64-encoded credential
+            // never gets silently truncated -- a truncated blob fails to decrypt.
+            var RetVal = new StringBuilder(2048);
+            GetPrivateProfileString(Section ?? EXE, Key, "", RetVal, 2048, Path);
             return RetVal.ToString();
         }
 

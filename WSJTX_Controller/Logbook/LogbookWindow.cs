@@ -411,6 +411,19 @@ namespace WSJTX_Controller
             };
             manageBtn.Click += (s, e) => OpenRuleDefinitionManager();
             _awardsPanel.Controls.Add(manageBtn);
+
+            var refreshBtn = new Button
+            {
+                Text           = "Refresh",
+                Font           = font,
+                Location       = new Point(196, 34),
+                Size           = new Size(90, 24),
+                TabIndex       = 4,
+                AccessibleName = "Refresh award progress",
+                AccessibleDescription = "Re-checks award progress against QSOs logged since this page was last shown.",
+            };
+            refreshBtn.Click += (s, e) => PopulateAwards();
+            _awardsPanel.Controls.Add(refreshBtn);
         }
 
         // Opens the Rule Definition Manager and, if anything changed, refreshes
@@ -508,6 +521,19 @@ namespace WSJTX_Controller
                 _onActiveAwardRuleIdsChanged?.Invoke(_neededDefs[idx].Id, _neededActiveCb.Checked);
             };
             _stillNeedPanel.Controls.Add(_neededActiveCb);
+
+            var neededRefreshBtn = new Button
+            {
+                Text           = "Refresh",
+                Font           = font,
+                Location       = new Point(600, 6),
+                Size           = new Size(100, 23),
+                TabIndex       = 5,
+                AccessibleName = "Refresh needed list",
+                AccessibleDescription = "Re-checks the needed list against QSOs logged since this page was last shown.",
+            };
+            neededRefreshBtn.Click += (s, e) => PopulateNeeded();
+            _stillNeedPanel.Controls.Add(neededRefreshBtn);
 
             _neededLv = MakeListView(font);
             _neededLv.Location = new Point(8, 58);
@@ -836,11 +862,14 @@ namespace WSJTX_Controller
         private void BuildAwardColumns(RuleDefinition def)
         {
             bool showWorkedCol = def.Target == RuleTargetType.All && def.GroupBy != RuleGroupBy.None;
+            bool showBandsCol  = def.GroupBy != RuleGroupBy.None;
             string itemHeader  = def.GroupBy == RuleGroupBy.None ? "Endorsement" : GroupByHeader(def.GroupBy);
 
             _awardsLv.Columns.Add(itemHeader, 150);
             if (def.GroupBy == RuleGroupBy.Dxcc)
                 _awardsLv.Columns.Add("Country", 170);
+            if (showBandsCol)
+                _awardsLv.Columns.Add("Band(s) worked", 150);
             if (showWorkedCol)
                 _awardsLv.Columns.Add("Worked", 70);
             _awardsLv.Columns.Add(def.Confirmation == RuleConfirmation.None ? "Logged" : "Confirmed", 90);
@@ -852,6 +881,7 @@ namespace WSJTX_Controller
         private void BuildAwardRows(RuleDefinition def, RuleResult result)
         {
             bool showWorkedCol   = def.Target == RuleTargetType.All && def.GroupBy != RuleGroupBy.None;
+            bool showBandsCol    = def.GroupBy != RuleGroupBy.None;
             bool hasEndorsements = result.Endorsements != null && result.Endorsements.Count > 0;
 
             _awardsLv.ShowGroups = hasEndorsements;
@@ -890,6 +920,12 @@ namespace WSJTX_Controller
 
                     bool isWorked    = worked.Contains(value);
                     bool isConfirmed = confirmed.Contains(value);
+                    if (showBandsCol)
+                    {
+                        List<string> bands;
+                        row.SubItems.Add(result.WorkedBands != null && result.WorkedBands.TryGetValue(value, out bands)
+                            ? string.Join(", ", bands) : "—");
+                    }
                     if (showWorkedCol)
                         row.SubItems.Add(isWorked ? "Yes" : "—");
                     row.SubItems.Add(isConfirmed ? "Confirmed" : (isWorked ? "Not confirmed" : "—"));
@@ -905,6 +941,7 @@ namespace WSJTX_Controller
                     var row = new ListViewItem($"{end.Kind}: {end.Value}") { Group = endGroup };
 
                     if (def.GroupBy == RuleGroupBy.Dxcc) row.SubItems.Add("");
+                    if (showBandsCol) row.SubItems.Add("");
                     if (showWorkedCol) row.SubItems.Add(end.Worked.ToString());
 
                     string status = def.Target == RuleTargetType.Levels
@@ -1323,7 +1360,9 @@ namespace WSJTX_Controller
             }
         }
 
-        private void RefreshCurrentPage()
+        // Called both by the F5 shortcut below and externally by Controller when a
+        // QSO is logged live, so an open Awards/Still Need page reflects it immediately.
+        public void RefreshCurrentPage()
         {
             if      (_activePage == _myLogPanel)     PopulateMyLog();
             else if (_activePage == _awardsPanel)    PopulateAwards();
