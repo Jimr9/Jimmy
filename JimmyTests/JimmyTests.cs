@@ -114,6 +114,7 @@ static class JimmyTests
         CallQueueRankerBeamRankTests();
         JimmySettingsRoundTripTests();
         JimmySettingsDefaultsTests();
+        FindPreservedSelectionIndexTests();
 
         Console.WriteLine();
         Console.WriteLine($"=== {passed} passed, {failed} failed ===");
@@ -1175,6 +1176,51 @@ static class JimmyTests
         {
             try { File.Delete(tmpIni); } catch { }
         }
+    }
+
+    // ── Controller.FindPreservedSelectionIndex: list-selection identity tracking ──
+    // Regression coverage for the WM3PEN/N8BB mismatch (2026-07-06): a list refresh
+    // must never silently leave the selection on an unrelated station just because
+    // it landed at the same numeric position as the one the operator was actually on.
+    static void FindPreservedSelectionIndexTests()
+    {
+        Console.WriteLine("\n── Controller.FindPreservedSelectionIndex ──");
+
+        var oldKeys = new List<string> { "KF8CXC", "N8BB", "WM3PEN", "VK9DX" };
+
+        // Station moved to a different position -- must follow it, not the old slot.
+        var reordered = new List<string> { "N8BB", "KF8CXC", "VK9DX", "WM3PEN" };
+        int idx = Controller.FindPreservedSelectionIndex(oldKeys, 2, reordered);
+        Check("Selected station (WM3PEN, was index 2) found at its new index 3", idx == 3, true);
+
+        // Station removed entirely -- must return -1 (deselect), never guess a neighbor.
+        var withoutIt = new List<string> { "KF8CXC", "N8BB", "VK9DX" };
+        idx = Controller.FindPreservedSelectionIndex(oldKeys, 2, withoutIt);
+        Check("Selected station removed from list -> -1 (deselect, not a guess)", idx == -1, true);
+
+        // Nothing changed -- same index.
+        idx = Controller.FindPreservedSelectionIndex(oldKeys, 2, oldKeys);
+        Check("Unchanged list -> same index preserved", idx == 2, true);
+
+        // Invalid prior selection index -- no crash, no selection.
+        idx = Controller.FindPreservedSelectionIndex(oldKeys, -1, reordered);
+        Check("No prior selection (-1) -> -1", idx == -1, true);
+        idx = Controller.FindPreservedSelectionIndex(oldKeys, 99, reordered);
+        Check("Out-of-range prior index -> -1, not a crash", idx == -1, true);
+
+        // Empty new list -- can't possibly still be selected.
+        idx = Controller.FindPreservedSelectionIndex(oldKeys, 2, new List<string>());
+        Check("Empty new list -> -1", idx == -1, true);
+
+        // The exact scenario from the live bug report: WM3PEN selected at index 2 in
+        // the old list; after a reorder, N8BB ends up at that same index 2 instead,
+        // while WM3PEN moves to index 1. The old (buggy) code clamped the raw index
+        // and would have silently selected N8BB. Confirm the fix follows WM3PEN
+        // instead of landing on whatever now occupies its old slot.
+        var liveOld = new List<string> { "KF8CXC", "N8BB", "WM3PEN", "VK9DX" };
+        var liveNewReordered = new List<string> { "KF8CXC", "WM3PEN", "N8BB", "VK9DX" };
+        idx = Controller.FindPreservedSelectionIndex(liveOld, 2, liveNewReordered);
+        Check("WM3PEN/N8BB regression: follows WM3PEN to its new index 1, not N8BB's index 2", idx == 1 && liveNewReordered[idx] == "WM3PEN", true);
     }
 
     // Walks up from the test binary's directory looking for Jimmy.sln, then

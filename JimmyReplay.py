@@ -338,6 +338,24 @@ class JimmyVerifier:
             print(f"           (not failed — requires: {config_note})")
             print(f"           queue={items}")
 
+    def check_status_contains_warn(self, fragment, label, config_note):
+        """Soft status check: PASS if found; WARNING (not FAIL) if not.
+
+        Use for tests whose outcome depends on manual, real-time setup this
+        script cannot reliably drive by itself (e.g. a live UI action plus a
+        confirmation dialog) rather than a code defect. Does not increment
+        the fail counter when absent.
+        """
+        self.wait_for_status(fragment, timeout=3.0)
+        t  = self.status_text()
+        ok = fragment.lower() in t.lower()
+        if ok:
+            self._report(True, label, f"status='{t}'")
+        else:
+            print(f"    ⚠ WARN  {label}")
+            print(f"           (not failed — requires: {config_note})")
+            print(f"           status='{t}'")
+
     def check_log_contains(self, fragment, label):
         # logListBox shows auto-logged calls formatted as "K 4 Y T, Country".
         # Jimmy spaces out callsign characters, so strip spaces from both
@@ -396,9 +414,13 @@ def build_heartbeat():
             _qstr(WSJT_ID) + _u32(3) + _qstr(WSJT_VERSION) + _qstr(WSJT_REVISION))
 
 
-def build_status(check=""):
+def build_status(check="", tx_halt_clk=False, tx_enable_button=False, tx_enable_clk=False):
     # TxFirst=False → Jimmy transmits in odd periods, receives in even.
     # SinceMidnight=0ms in decode messages (even period) matches this.
+    #
+    # tx_halt_clk/tx_enable_button/tx_enable_clk let a test simulate WSJT-X
+    # changing its own Enable Tx button state independently of Jimmy (e.g. the
+    # Wait and Reply feature auto-resuming a stalled QSO) -- see group15 below.
     return (
         MAGIC + _u32(2) + _u32(MSG_STATUS) +
         _qstr(WSJT_ID) +
@@ -427,9 +449,9 @@ def build_status(check=""):
         _flag(False) +           # TxFirst: False → Jimmy TX in odd periods
         _flag(False) +           # DblClk
         _qstr(check) +           # Check field: echo CmdCheck from cmd:7
-        _flag(False) +           # Tx halt clock
-        _flag(False) +           # Tx enable button
-        _flag(False) +           # Tx enable clock
+        _flag(tx_halt_clk) +     # Tx halt clock
+        _flag(tx_enable_button) +  # Tx enable button
+        _flag(tx_enable_clk) +  # Tx enable clock
         _qstr("NA") +            # My continent
         _flag(False)             # Metric units
     )
@@ -1170,6 +1192,115 @@ def group14_logged_adif_fallback(sock, v):
          ) if v.available else None)
 
 
+def group15_wait_and_reply_cooperation(sock, v):
+    """T32-T33: WSJT-X's own Enable Tx button being externally halted, then
+    re-enabled without Jimmy having asked for it (i.e. WSJT-X's Wait and Reply
+    feature resuming a stalled QSO) -- Jimmy must resume the stalled call
+    itself instead of silently going stale. Uses a dedicated callsign
+    (W3WAIT) so it can't collide with call state left over from earlier
+    groups.
+
+    T33 (the actual HandleUnsolicitedTxResume() check) only gets a real
+    workout if Jimmy is genuinely cycling in CQ mode with an active
+    callInProg when the halt/resume messages arrive -- by default a fresh
+    Jimmy launch sits paused in Listen mode, so this reports a WARNING (not
+    a FAIL) rather than a hard failure when that isn't the case, the same
+    way T17 (Group 8) already handles a similar environment-dependent gap.
+    To get a real PASS: in Jimmy, select "CQ only" and press Alt+C, then
+    answer "No" to the "Run recommended analysis" dialog if it appears --
+    confirmed via manual testing that this reaches the CALL_CQ code path,
+    though cqPaused clearing (and thus callInProg actually being set before
+    T34/T35 fire) needs a bit more investigation; see MEMORY for details.
+    Automated click/hotkey injection into Jimmy's window was tried (direct
+    BM_CLICK, SendInput, and AttachThreadInput-forced foreground) and none
+    of it reliably reached Jimmy from a background script, so this is not
+    attempted automatically.
+    """
+    print("  ─ Group 15: Wait and Reply cooperation (external Tx halt/resume) ─")
+
+    WAIT_CALL = "W3WAIT"
+
+    send(sock,
+         f"Grid reply: KB0UZT {WAIT_CALL} EM63",
+         f"{WAIT_CALL} queued with 'to you' tag, expected to become the active call",
+         build_enqueue(f"{MY_CALL} {WAIT_CALL} EM63"),
+         verify_fn=lambda: (
+             v.check_queue_contains(WAIT_CALL,
+                 f"T32: {WAIT_CALL} in callQueue, ready to become active"),
+         ) if v.available else None)
+
+    send(sock,
+         f"Signal report: KB0UZT {WAIT_CALL} -05",
+         "Keeps the exchange going so Jimmy starts actively replying",
+         build_enqueue(f"{MY_CALL} {WAIT_CALL} -05"),
+         delay=3.0)
+
+    send(sock,
+         "WSJT-X externally halts Tx (TxHaltClk)",
+         "Simulates the operator or WSJT-X itself halting -- not via Jimmy's own Halt Tx",
+         build_status(tx_halt_clk=True),
+         delay=1.0)
+
+    send(sock,
+         "WSJT-X externally re-enables Tx (TxEnableClk, button now true)",
+         "Simulates Wait and Reply auto-resuming the stalled QSO -- Jimmy did not call EnableTx() itself",
+         build_status(tx_enable_clk=True, tx_enable_button=True),
+         delay=1.0,
+         verify_fn=lambda: (
+             v.check_status_contains_warn("resumed",
+                 f"T33: status announces WSJT-X resumed calling {WAIT_CALL} automatically",
+                 "Jimmy actually cycling in CQ mode with an active callInProg (see group docstring)"),
+         ) if v.available else None)
+
+
+def group16_busy_station_gating(sock, v):
+    """T36-T37: A station whose most recent decode shows them replying to a
+    different station (not myCall, not a CQ) is tracked via lastCallActivity
+    (WsjtxClient.IsStationBusyElsewhere()), so ReplyTo() can skip transmitting
+    to them this cycle instead of calling into the void. Gated by the new
+    'Don't transmit to a station currently busy with another station' Options
+    checkbox (Advanced UI tab), which defaults to OFF.
+
+    T36: BUSY_CALL CQs and is queued normally (baseline -- queuing itself is
+         unaffected by the busy-tracking addition, regardless of the toggle).
+    T37: BUSY_CALL is then heard replying to a third station (K5OTHER, not
+         myCall, not a CQ) -- exactly the decode lastCallActivity must
+         capture. The actual transmit-skip in ReplyTo() only fires if:
+         (a) the new Options checkbox is checked (default OFF, cannot be
+             toggled remotely by this script -- same limitation as T17's
+             SOTA alert text box), and
+         (b) Jimmy is actively CQ-cycling with BUSY_CALL selected as the next
+             call to transmit to (same cqPaused/CQ-cycling precondition gap
+             documented for Group 15 -- see project memory).
+    Given both, T37 checks for the "is busy, will retry next cycle" status
+    message; otherwise this is a WARNING, not a FAIL, exactly like T17/T33.
+    """
+    print("  ─ Group 16: Busy-station transmit gating (IsStationBusyElsewhere) ─")
+
+    BUSY_CALL = "W4BUSY"
+
+    send(sock,
+         f"CQ {BUSY_CALL} EM63",
+         f"{BUSY_CALL} queued normally (baseline -- busy-tracking doesn't affect queuing)",
+         build_enqueue(f"CQ {BUSY_CALL} EM63"),
+         verify_fn=lambda: (
+             v.check_queue_contains(BUSY_CALL,
+                 f"T36: {BUSY_CALL} in callQueue from CQ"),
+         ) if v.available else None)
+
+    send(sock,
+         f"{BUSY_CALL} replies to a different station: K5OTHER {BUSY_CALL} -08",
+         "Directed at K5OTHER (not myCall, not a CQ) -- lastCallActivity should now show busy",
+         build_enqueue(f"K5OTHER {BUSY_CALL} -08"),
+         delay=2.0,
+         verify_fn=lambda: (
+             v.check_status_contains_warn(f"{BUSY_CALL} is busy",
+                 f"T37: status shows '{BUSY_CALL} is busy, will retry next cycle'",
+                 "'Don't transmit to a station currently busy' checked in Options, AND "
+                 "Jimmy actively CQ-cycling with W4BUSY selected next (see project memory: cqPaused gap)"),
+         ) if v.available else None)
+
+
 def run_tests(sock, v):
     print("──── Test Decode Messages ────")
     print(f"  Format: [DESTINATION] [SOURCE] [payload]")
@@ -1190,12 +1321,14 @@ def run_tests(sock, v):
     group12_hrc_filter_baseline(sock, v)
     group13_still_need_live_tag_baseline(sock, v)
     group14_logged_adif_fallback(sock, v)
+    group15_wait_and_reply_cooperation(sock, v)
+    group16_busy_station_gating(sock, v)
 
     # ── To add a new replay test group ──────────────────────────────────────
     # 1. Define a new function, e.g.:
-    #      def group15_your_scenario(sock, v):
+    #      def group17_your_scenario(sock, v):
     #          send(sock, "Label", "Description", build_enqueue("..."),
-    #               verify_fn=lambda: v.check_queue_contains("K4YT", "T31: ..."))
+    #               verify_fn=lambda: v.check_queue_contains("K4YT", "T38: ..."))
     # 2. Call it here, above this comment block.
     # Tests are auto-numbered by the global _test_num counter.
     # ────────────────────────────────────────────────────────────────────────
@@ -1237,12 +1370,12 @@ def main():
     print("  Checklist:")
     print("  [1] WSJT-X is closed")
     print("  [2] Jimmy is running (Debug build)")
-    print("  [3] Jimmy mode = CQ")
-    print("  [4] Advanced Call Layout enabled (Options)")
-    print("  [5] (optional) 'SOTA' in directed CQ alert text box → T17 PASS")
+    print("  [3] Advanced Call Layout enabled (Options)")
+    print("  [4] (optional) 'SOTA' in directed CQ alert text box → T17 PASS")
     print("      Without it, T17 prints WARNING instead of PASS or FAIL")
-    print("  [6] T25-T26 (Group 12) always pass regardless of HRC database state")
-    print("  [7] T27-T28 (Group 13) always pass regardless of Still Need selection")
+    print("  [5] T25-T26 (Group 12) always pass regardless of HRC database state")
+    print("  [6] T27-T28 (Group 13) always pass regardless of Still Need selection")
+    print("  [7] T33/T35 need Jimmy actively CQ-cycling to get a full PASS instead of a WARNING")
     print()
 
     if not ensure_jimmy_udp_ready():

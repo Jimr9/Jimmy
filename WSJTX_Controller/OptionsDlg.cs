@@ -64,6 +64,7 @@ namespace WSJTX_Controller
         private System.Windows.Forms.CheckBox rawNewestFirstCheckBox;
         private System.Windows.Forms.CheckBox keepTransmitListDuringTxCheckBox;
         private System.Windows.Forms.CheckBox keepListPositionDuringRefreshCheckBox;
+        private System.Windows.Forms.CheckBox dontTransmitToBusyStationCheckBox;
         private List<System.Windows.Forms.Control> _advUiDependentControls;
 
         // Sounds tab state
@@ -483,6 +484,20 @@ namespace WSJTX_Controller
             advUiPanel.Controls.Add(keepListPositionDuringRefreshCheckBox);
             y += 24;
 
+            dontTransmitToBusyStationCheckBox = new System.Windows.Forms.CheckBox
+            {
+                Text = "Don't transmit to a station currently busy with another station",
+                AccessibleName = "Don't transmit to a station currently busy with another station",
+                AccessibleDescription = "Skips transmitting this cycle if the selected station's most recent decode shows them replying to someone else; retries automatically next cycle. Off by default.",
+                AutoSize = true,
+                Location = new System.Drawing.Point(left + 8, y),
+                TabIndex = 24,
+                Checked = ctrl.dontTransmitToBusyStation,
+                Font = font
+            };
+            advUiPanel.Controls.Add(dontTransmitToBusyStationCheckBox);
+            y += 24;
+
             // ── Group: Message types ──────────────────────────────────────────────
             var msgGroup = new System.Windows.Forms.GroupBox
             {
@@ -604,6 +619,7 @@ namespace WSJTX_Controller
             ctrl.rawNewestFirst    = rawNewestFirstCheckBox?.Checked ?? false;
             ctrl.keepTransmitListDuringTx = keepTransmitListDuringTxCheckBox?.Checked ?? false;
             ctrl.keepListPositionDuringRefresh = keepListPositionDuringRefreshCheckBox?.Checked ?? false;
+            ctrl.dontTransmitToBusyStation = dontTransmitToBusyStationCheckBox?.Checked ?? false;
             int rawMax = (int)(rawMaxRowsNumeric?.Value ?? 100);
             ctrl.rawMaxRows = Math.Max(10, Math.Min(5000, rawMax));
             int maxQueued = (int)(_maxQueuedCallsNumeric?.Value ?? 4);

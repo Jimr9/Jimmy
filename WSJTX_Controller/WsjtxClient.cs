@@ -75,6 +75,7 @@ namespace WSJTX_Controller
         private List<string> sentReportList = new List<string>();
         private List<string> sentCallList = new List<string>();
         private Dictionary<string, List<EnqueueDecodeMessage>> allCallDict = new Dictionary<string, List<EnqueueDecodeMessage>>();            //all calls to this station plus CQs (and replies: grids) processed
+        private Dictionary<string, EnqueueDecodeMessage> lastCallActivity = new Dictionary<string, EnqueueDecodeMessage>();   //most recent decode seen from each call, unfiltered (unlike allCallDict) -- used by IsStationBusyElsewhere()
         private Dictionary<string, int> timeoutCallDict = new Dictionary<string, int>();    //calls sent to myCall immed after timeout
         private List<string> blockList = new List<string>();
         private List<string> unwantedCqList = new List<string>();      //caller is unwanted directed CQ
@@ -670,6 +671,29 @@ namespace WSJTX_Controller
             }
 
             return false;
+        }
+
+        // WSJT-X re-enabled its own "Enable Tx" button without Jimmy having asked for it --
+        // most likely WSJT-X's own "Wait and Reply" feature resuming a stalled QSO after the
+        // other station finally replied (see StatusMessage.TxEnableClk handling above). Mirrors
+        // EnableMode()'s resume bookkeeping for the stalled callInProg, but skips re-sending
+        // EnableTx() since WSJT-X already enabled itself -- and announces a distinct status
+        // message so the operator can tell this was automatic, not their own action.
+        private void HandleUnsolicitedTxResume()
+        {
+            if (callInProg == null) return;      //nothing Jimmy was waiting on to resume
+
+            txTimeout = false;
+            xmitCycleCount = 0;
+            timedOutCall = null;
+            ClearCallTimeout(callInProg);
+            txEnabled = true;         //sync belief to match WSJT-X's actual state (no EnableTx() resend needed)
+            cqPaused = false;
+            UpdateMaxTxRepeat();
+            StartStatusTimer();
+            Sounds.PlaySoundEvent(ctrl.soundEnabled_TxEnabled, ctrl.soundFile_TxEnabled);
+            StatusView.ShowMessage($"WSJT-X resumed calling {callInProg} automatically", false);
+            DebugOutput($"{Time()} HandleUnsolicitedTxResume, callInProg:'{callInProg}' cqPaused:{cqPaused} txMode:{txMode}");
         }
 
         public void RankMethodIdxChanged(int idx)
@@ -1915,6 +1939,7 @@ namespace WSJTX_Controller
                         if (opMode >= OpModes.START)
                         {
                             DebugOutput($"{nl}{Time()} WSJT-X event, TxHaltClk, cqPaused:{cqPaused} txMode:{txMode} processDecodeTimer.Enabled:{processDecodeTimer.Enabled}");
+                            txEnabled = false;        //sync belief -- WSJT-X halted Tx on its own, not via Jimmy's own EnableTx()/DisableTx()
                             Pause(false, true);       //WSJT-X already halted Tx
                         }
                     }
@@ -1926,10 +1951,17 @@ namespace WSJTX_Controller
                         if (opMode >= OpModes.START)
                         {
                             DebugOutput($"{nl}{Time()} WSJT-X event, wsjtxTxEnableButton:{wsjtxTxEnableButton}, txEnabled:{txEnabled} cqPaused:{cqPaused} txMode:{txMode} processDecodeTimer.Enabled:{processDecodeTimer.Enabled}");
-                            if (!txEnabled)    //tx button unchecked
-                            { 
-                                //HaltTx();
-                                Console.Beep();
+                            if (!txEnabled)    //Jimmy didn't ask for this -- WSJT-X changed its own Enable Tx button
+                            {
+                                if (wsjtxTxEnableButton)    //button just became enabled on WSJT-X's own initiative (e.g. Wait and Reply)
+                                {
+                                    HandleUnsolicitedTxResume();
+                                }
+                                else                        //button just became disabled
+                                {
+                                    //HaltTx();
+                                    Console.Beep();
+                                }
                             }
                         }
                     }
@@ -2305,6 +2337,7 @@ namespace WSJTX_Controller
             }
 
             bool toMyCall = dmsg.IsCallTo(myCall);
+            lastCallActivity[deCall] = dmsg;    //most recent decode from deCall, regardless of who it's directed to -- see IsStationBusyElsewhere()
             dmsg.OffAir = true;     //default: play sound
 
             //do some processing not directly related to replying immediately
@@ -3974,6 +4007,7 @@ namespace WSJTX_Controller
             // each remaining display row back to its true queue position so that
             // Enter/double-click/right-click still address the correct queue entry.
             var newItems = new List<string>();
+            var newKeys = new List<string>();
             var newQueueIndices = new List<int>();
             SelectionMode newMode;
 
@@ -3983,6 +4017,7 @@ namespace WSJTX_Controller
                 newItems.Add(callInProg == null
                     ? "[No stations calling or in progress]"
                     : "[No stations calling]");
+                newKeys.Add(null);      // keep keys parallel to items even for the placeholder row
             }
             else
             {
@@ -3996,6 +4031,7 @@ namespace WSJTX_Controller
                     if (callDict.TryGetValue(call, out d))
                     {
                         newItems.Add(BuildCallWaitingRow(call, d));
+                        newKeys.Add(call);
                         newQueueIndices.Add(queuePos);
                     }
                     queuePos++;
@@ -4007,7 +4043,7 @@ namespace WSJTX_Controller
             // AddCall (and global clears). ShowQueue never touches them so that
             // RemoveCall and TrimCallQueue cannot erase the opposite side's display.
 
-            QueueView.RenderCallQueue($"Stations calling: {displayQ}", newItems, newMode);
+            QueueView.RenderCallQueue($"Stations calling: {displayQ}", newItems, newKeys, newMode);
         }
 
         public void RefreshCallWaitingRows()
@@ -4035,18 +4071,30 @@ namespace WSJTX_Controller
             bool rebuildTx1 = evenSide == null || evenSide == true;
             bool rebuildTx2 = evenSide == null || evenSide == false;
 
+            // While a side is our active Tx slot and the user has "keep transmit list
+            // during Tx" unchecked, keep that side's snapshot forcibly empty here instead
+            // of repopulating it -- otherwise any decode/queue change that happens mid-
+            // transmission (very common) silently refills it before the Tx cycle even
+            // ends, undoing ProcessTxStart()'s clear. Resumes populating normally the
+            // moment transmitting goes false (Tx end) for that side.
+            bool suppressTx1 = !ctrl.keepTransmitListDuringTx && transmitting && txFirst;
+            bool suppressTx2 = !ctrl.keepTransmitListDuringTx && transmitting && !txFirst;
+
             if (rebuildTx1)
             {
                 _tx1SnapshotRows  = new List<string>();
                 _tx1SnapshotCalls = new List<string>();
-                foreach (string call in callQueue)
+                if (!suppressTx1)
                 {
-                    if (StringComparer.OrdinalIgnoreCase.Equals(call, callInProg)) continue;
-                    EnqueueDecodeMessage d;
-                    if (!callDict.TryGetValue(call, out d)) continue;
-                    if (!IsEvenCall(d)) continue;
-                    _tx1SnapshotCalls.Add(call);
-                    _tx1SnapshotRows.Add(BuildCallWaitingRow(call, d));
+                    foreach (string call in callQueue)
+                    {
+                        if (StringComparer.OrdinalIgnoreCase.Equals(call, callInProg)) continue;
+                        EnqueueDecodeMessage d;
+                        if (!callDict.TryGetValue(call, out d)) continue;
+                        if (!IsEvenCall(d)) continue;
+                        _tx1SnapshotCalls.Add(call);
+                        _tx1SnapshotRows.Add(BuildCallWaitingRow(call, d));
+                    }
                 }
             }
 
@@ -4054,14 +4102,17 @@ namespace WSJTX_Controller
             {
                 _tx2SnapshotRows  = new List<string>();
                 _tx2SnapshotCalls = new List<string>();
-                foreach (string call in callQueue)
+                if (!suppressTx2)
                 {
-                    if (StringComparer.OrdinalIgnoreCase.Equals(call, callInProg)) continue;
-                    EnqueueDecodeMessage d;
-                    if (!callDict.TryGetValue(call, out d)) continue;
-                    if (IsEvenCall(d)) continue;
-                    _tx2SnapshotCalls.Add(call);
-                    _tx2SnapshotRows.Add(BuildCallWaitingRow(call, d));
+                    foreach (string call in callQueue)
+                    {
+                        if (StringComparer.OrdinalIgnoreCase.Equals(call, callInProg)) continue;
+                        EnqueueDecodeMessage d;
+                        if (!callDict.TryGetValue(call, out d)) continue;
+                        if (IsEvenCall(d)) continue;
+                        _tx2SnapshotCalls.Add(call);
+                        _tx2SnapshotRows.Add(BuildCallWaitingRow(call, d));
+                    }
                 }
             }
 
@@ -4073,7 +4124,10 @@ namespace WSJTX_Controller
                 var display = tx1HasItems
                     ? _tx1SnapshotRows
                     : new List<string> { "No available stations" };
-                QueueView.RenderAdvancedList(true, tx1Name, display);
+                var keys = tx1HasItems
+                    ? _tx1SnapshotCalls
+                    : new List<string> { null };
+                QueueView.RenderAdvancedList(true, tx1Name, display, keys);
             }
 
             if (ctrl.advShowTx2 && rebuildTx2)
@@ -4084,7 +4138,10 @@ namespace WSJTX_Controller
                 var display = tx2HasItems
                     ? _tx2SnapshotRows
                     : new List<string> { "No available stations" };
-                QueueView.RenderAdvancedList(false, tx2Name, display);
+                var keys = tx2HasItems
+                    ? _tx2SnapshotCalls
+                    : new List<string> { null };
+                QueueView.RenderAdvancedList(false, tx2Name, display, keys);
             }
         }
 
@@ -4205,6 +4262,10 @@ namespace WSJTX_Controller
         private void ShowRawDecodes()
         {
             var items = new List<string>();
+            // Parallel to items; a decode's callsign alone isn't a unique-enough identity here
+            // (the same station can appear in several rows -- CQ, reply, report, ...), so the
+            // key includes enough of the decode to disambiguate the specific row.
+            var keys = new List<string>();
             foreach (var d in _rawDecodeHistory)
             {
                 if (!PassesRawDecodeFilter(d)) continue;
@@ -4256,11 +4317,12 @@ namespace WSJTX_Controller
                 }
 
                 items.Add(sb.ToString());
+                keys.Add($"{d.DeCall()}|{d.Message}|{d.SinceMidnight.Ticks}");
             }
-            if (ctrl.rawNewestFirst) items.Reverse();
-            if (items.Count == 0) items.Add("[No decodes this period]");
+            if (ctrl.rawNewestFirst) { items.Reverse(); keys.Reverse(); }
+            if (items.Count == 0) { items.Add("[No decodes this period]"); keys.Add(null); }
 
-            QueueView.RenderRawDecodes(items);
+            QueueView.RenderRawDecodes(items, keys);
         }
 
         private bool PassesRawDecodeFilter(EnqueueDecodeMessage d)
@@ -4810,19 +4872,24 @@ namespace WSJTX_Controller
         private void ShowLogged()
         {
             var logItems = new List<string>();
+            var logKeys = new List<string>();
             if (logList.Count == 0)
             {
                 logItems.Add("[No calls auto-logged]");
+                logKeys.Add(null);
             }
             else
             {
                 var rList = logList.GetRange(0, logList.Count);
                 rList.Reverse();
                 foreach (string call in rList)
+                {
                     logItems.Add($"{Spacify(call)}, {Country(call)}");
+                    logKeys.Add(call);
+                }
             }
 
-            LogView.RenderLoggedList($"Auto-logged calls: {logList.Count}", logItems);
+            LogView.RenderLoggedList($"Auto-logged calls: {logList.Count}", logItems, logKeys);
         }
 
         //process an automatically-generated request to add a decode to call reply queue
@@ -6299,6 +6366,32 @@ namespace WSJTX_Controller
             DebugOutput($"{Time()} AddAllCallDict, call:{call} msg.Message:{emsg.Message}");
         }
 
+        // True if call's most recently seen decode shows them actively engaged with a
+        // different station (not myCall, not a bare CQ) within the last couple of TX
+        // periods -- i.e. they aren't listening for us right now. CheckNextXmit() already
+        // re-evaluates the whole Tx decision every cycle, so skipping a transmit on this
+        // basis can't lose the opportunity, just defers it to the next cycle's re-check.
+        private bool IsStationBusyElsewhere(string call)
+        {
+            if (call == null) return false;
+            if (!lastCallActivity.TryGetValue(call, out EnqueueDecodeMessage dmsg)) return false;
+
+            string toCall = dmsg.ToCall();
+            // A 73/RR73/Rogers means the OTHER exchange is ending -- the station is about to
+            // be free, not busy. Mirrors AddSelectedCall's existing "ready" vs "busy"
+            // distinction (toCallStatus) for a station already in callInProg.
+            if (toCall == null || toCall == "CQ" || toCall == myCall
+                || dmsg.Is73orRR73() || dmsg.IsRogers()) return false;
+
+            if (trPeriod == null) return false;
+            var ts = new TimeSpan(0, 0, (2 * (int)trPeriod) / 1000);      //allow up to ~2 periods before considered stale
+            var age = DateTime.UtcNow - (dmsg.RxDate + dmsg.SinceMidnight);
+            DebugOutput($"{spacer}IsStationBusyElsewhere: call:{call} toCall:{toCall} msg:'{dmsg.Message}' age:{age.TotalSeconds:F1}s ts:{ts.TotalSeconds:F1}s");
+            if (age > ts) return false;
+
+            return true;
+        }
+
         //remove old rec'd calls
         private bool TrimAllCallDict()
         {
@@ -7413,6 +7506,13 @@ namespace WSJTX_Controller
             string nCall = dmsg.DeCall();
             string toCall = WsjtxMessage.ToCall(dmsg.Message);
             DebugOutput($"{Time()} ReplyTo, nCall:'{nCall}' toCall:{toCall}");
+
+            if (ctrl.dontTransmitToBusyStation && IsStationBusyElsewhere(nCall))
+            {
+                DebugOutput($"{Time()} ReplyTo, skipped: {nCall} is busy with another station, will retry next cycle");
+                StatusView.ShowMessage($"Waiting -- {nCall} is busy, will retry next cycle", false);
+                return;
+            }
 
             if (WsjtxMessage.IsCQ(dmsg.Message))                  //save the grid for logging
             {

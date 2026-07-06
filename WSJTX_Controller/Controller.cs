@@ -17,6 +17,7 @@ using System.IO;
 using System.Reflection;
 using Microsoft.Win32;
 using System.Text.RegularExpressions;
+using System.Net.Mail;
 
 
 namespace WSJTX_Controller
@@ -58,6 +59,7 @@ namespace WSJTX_Controller
         public int maxQueuedCallsBase = 5;
         public bool keepTransmitListDuringTx = false;
         public bool keepListPositionDuringRefresh = false;
+        public bool dontTransmitToBusyStation = false;
 
         // Sound settings: enabled flags and file paths for each sound event
         // CallAdded/CallingMe/Logged enabled state is controlled by existing checkboxes
@@ -462,6 +464,7 @@ namespace WSJTX_Controller
                     maxQueuedCallsBase = maxQueued;
                 keepTransmitListDuringTx = iniFile.Read("keepTransmitListDuringTx") == "True";
                 keepListPositionDuringRefresh = iniFile.Read("keepListPositionDuringRefresh") == "True";
+                dontTransmitToBusyStation = iniFile.Read("dontTransmitToBusyStation") == "True";
 
                 // Sound settings: migrate old enabled keys for backward compat
                 // Enabled state for CallAdded/CallingMe/Logged already read above from playCallAdded/playMyCall/playLogged
@@ -803,6 +806,7 @@ namespace WSJTX_Controller
                 iniFile.Write("maxQueuedCalls", maxQueuedCallsBase.ToString());
                 iniFile.Write("keepTransmitListDuringTx", keepTransmitListDuringTx.ToString());
                 iniFile.Write("keepListPositionDuringRefresh", keepListPositionDuringRefresh.ToString());
+                iniFile.Write("dontTransmitToBusyStation", dontTransmitToBusyStation.ToString());
                 // Sound settings
                 iniFile.Write("soundFile_CallAdded",        soundFile_CallAdded   ?? "");
                 iniFile.Write("soundFile_CallingMe",        soundFile_CallingMe   ?? "");
@@ -1595,15 +1599,17 @@ namespace WSJTX_Controller
 
         public void ShowMsg(string text, bool sound)
         {
-            //tempOnly
-            /*if (sound)
-            {
-                SystemSounds.Beep.Play();
-            }
+            if (sound) SystemSounds.Beep.Play();
 
-            statusMsgTimer.Stop();
-            msgTextBox.Text = text;
-            statusMsgTimer.Start();*/
+            statusText.Text = text;
+            statusText.SelectionStart = 0;
+            statusText.SelectionLength = 0;
+            // Force NVDA/JAWS to announce this immediately, same guard as RenderStatus --
+            // ShowStatus() will naturally overwrite this text on the next status rebuild
+            // (see ToggleTxFirst for the same accepted pattern), which is fine: by then
+            // the screen reader has already started speaking this message.
+            if (statusText.Focused && Form.ActiveForm == this)
+                SendKeys.Send("{UP}");
         }
 
         // IJimmyStatusView / IJimmyQueueView / IJimmyLogView (Phase 2.3/2.4 first wave) --
@@ -1627,7 +1633,21 @@ namespace WSJTX_Controller
 
         public void ShowMessage(string text, bool sound) => ShowMsg(text, sound);
 
-        public void RenderCallQueue(string headerText, List<string> items, SelectionMode selectionMode)
+        // Finds where the previously-selected row (identified by oldKeys[oldSelectedIndex])
+        // landed in the new list, by identity rather than raw position. Returns -1 (no
+        // selection) if oldSelectedIndex was invalid or that key is no longer present --
+        // a safe failure mode, since guessing a nearby replacement risks silently landing
+        // on an unrelated station (see the WM3PEN/N8BB mismatch this was built to fix).
+        public static int FindPreservedSelectionIndex(List<string> oldKeys, int oldSelectedIndex, List<string> newKeys)
+        {
+            if (oldKeys == null || newKeys == null) return -1;
+            if (oldSelectedIndex < 0 || oldSelectedIndex >= oldKeys.Count) return -1;
+            return newKeys.IndexOf(oldKeys[oldSelectedIndex]);
+        }
+
+        private List<string> _callQueueKeys = new List<string>();
+
+        public void RenderCallQueue(string headerText, List<string> items, List<string> keys, SelectionMode selectionMode)
         {
             replyListLabel.Text = headerText;
 
@@ -1643,6 +1663,8 @@ namespace WSJTX_Controller
 
             bool focused = callListBox.Focused;
             int prevIndex = focused ? callListBox.SelectedIndex : -1;
+            int newIndex = FindPreservedSelectionIndex(_callQueueKeys, prevIndex, keys);
+            _callQueueKeys = keys;
 
             if (callListBox.SelectionMode != selectionMode)
                 callListBox.SelectionMode = selectionMode;
@@ -1655,11 +1677,13 @@ namespace WSJTX_Controller
             }
             finally { callListBox.EndUpdate(); }
 
-            if (focused && selectionMode != SelectionMode.None && prevIndex >= 0)
-                callListBox.SelectedIndex = Math.Min(prevIndex, callListBox.Items.Count - 1);
+            if (focused && selectionMode != SelectionMode.None && newIndex >= 0)
+                callListBox.SelectedIndex = newIndex;
         }
 
-        public void RenderRawDecodes(List<string> items)
+        private List<string> _rawDecodeKeys = new List<string>();
+
+        public void RenderRawDecodes(List<string> items, List<string> keys)
         {
             bool focused = advRawListBox.Focused;
             int prevIdx = focused ? advRawListBox.SelectedIndex : -1;
@@ -1673,6 +1697,9 @@ namespace WSJTX_Controller
             }
             if (!changed) return;
 
+            int newIdx = keepListPositionDuringRefresh ? FindPreservedSelectionIndex(_rawDecodeKeys, prevIdx, keys) : -1;
+            _rawDecodeKeys = keys;
+
             advRawListBox.BeginUpdate();
             try
             {
@@ -1680,21 +1707,27 @@ namespace WSJTX_Controller
                 advRawListBox.Items.AddRange(items.ToArray());
             }
             finally { advRawListBox.EndUpdate(); }
-            if (keepListPositionDuringRefresh && focused && prevIdx >= 0 && advRawListBox.Items.Count > 0)
-                advRawListBox.SelectedIndex = Math.Min(prevIdx, advRawListBox.Items.Count - 1);
+            if (keepListPositionDuringRefresh && focused && newIdx >= 0 && advRawListBox.Items.Count > 0)
+                advRawListBox.SelectedIndex = newIdx;
         }
+
+        private List<string> _tx1Keys = new List<string>();
+        private List<string> _tx2Keys = new List<string>();
 
         // Note: unlike RenderCallQueue/RenderLoggedList/RenderRawDecodes, this does NOT return
         // early when nothing changed -- it mirrors WsjtxClient.ShowAdvancedQueue()'s original
         // structure exactly, which always attempts the selection restore after the list update
         // (a no-op in practice when nothing changed, but preserved verbatim rather than "cleaned up").
-        public void RenderAdvancedList(bool isTx1Side, string accessibleName, List<string> items)
+        public void RenderAdvancedList(bool isTx1Side, string accessibleName, List<string> items, List<string> keys)
         {
             ListBox lb = isTx1Side ? advTx1ListBox : advTx2ListBox;
             if (lb.AccessibleName != accessibleName) lb.AccessibleName = accessibleName;
 
             bool focused = lb.Focused;
             int prevIdx = focused ? lb.SelectedIndex : -1;
+            List<string> oldKeys = isTx1Side ? _tx1Keys : _tx2Keys;
+            int newIdx = keepListPositionDuringRefresh ? FindPreservedSelectionIndex(oldKeys, prevIdx, keys) : -1;
+            if (isTx1Side) _tx1Keys = keys; else _tx2Keys = keys;
 
             bool changed = lb.Items.Count != items.Count;
             if (!changed)
@@ -1715,11 +1748,13 @@ namespace WSJTX_Controller
                 finally { lb.EndUpdate(); }
             }
 
-            if (keepListPositionDuringRefresh && focused && prevIdx >= 0 && lb.Items.Count > 0)
-                lb.SelectedIndex = Math.Min(prevIdx, lb.Items.Count - 1);
+            if (keepListPositionDuringRefresh && focused && newIdx >= 0 && lb.Items.Count > 0)
+                lb.SelectedIndex = newIdx;
         }
 
-        public void RenderLoggedList(string headerText, List<string> items)
+        private List<string> _loggedKeys = new List<string>();
+
+        public void RenderLoggedList(string headerText, List<string> items, List<string> keys)
         {
             loggedLabel.Text = headerText;
 
@@ -1735,6 +1770,8 @@ namespace WSJTX_Controller
 
             bool focused = logListBox.Focused;
             int prevIdx = focused ? logListBox.SelectedIndex : -1;
+            int newIdx = FindPreservedSelectionIndex(_loggedKeys, prevIdx, keys);
+            _loggedKeys = keys;
 
             logListBox.BeginUpdate();
             try
@@ -1743,8 +1780,8 @@ namespace WSJTX_Controller
                 logListBox.Items.AddRange(items.ToArray());
             }
             finally { logListBox.EndUpdate(); }
-            if (keepListPositionDuringRefresh && focused && prevIdx >= 0 && logListBox.Items.Count > 0)
-                logListBox.SelectedIndex = Math.Min(prevIdx, logListBox.Items.Count - 1);
+            if (focused && newIdx >= 0 && logListBox.Items.Count > 0)
+                logListBox.SelectedIndex = newIdx;
         }
 
         private void IncludeHelpLabel_Click(object sender, EventArgs e)
@@ -3312,6 +3349,3 @@ namespace WSJTX_Controller
     }
 }
 
-
-   
-    

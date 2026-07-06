@@ -29,23 +29,29 @@ namespace WSJTX_Controller
         // Mirrors WsjtxClient.ShowQueue()'s list-rendering tail: change-detection, focus/selection
         // preservation, and BeginUpdate/EndUpdate batching. Queue-index bookkeeping
         // (_callListBoxQueueIndices) stays in WsjtxClient -- it's queue state, not view state.
-        void RenderCallQueue(string headerText, List<string> items, SelectionMode selectionMode);
+        // `keys` is parallel to `items` (same order/count) and identifies each row's station so
+        // selection can be preserved by identity across a rebuild instead of by raw position --
+        // see Controller.FindPreservedSelectionIndex().
+        void RenderCallQueue(string headerText, List<string> items, List<string> keys, SelectionMode selectionMode);
 
         // Mirrors WsjtxClient.ShowRawDecodes()'s list-rendering tail (advRawListBox). No header
-        // label update here -- the raw decodes panel has none, unlike the call queue.
-        void RenderRawDecodes(List<string> items);
+        // label update here -- the raw decodes panel has none, unlike the call queue. `keys` is
+        // parallel to `items`; since the same callsign can appear in several distinct rows (CQ,
+        // reply, report, ...), each key must disambiguate the specific decode, not just the call.
+        void RenderRawDecodes(List<string> items, List<string> keys);
 
         // Mirrors WsjtxClient.ShowAdvancedQueue()'s per-side tail (advTx1ListBox/advTx2ListBox):
         // AccessibleName update (only when the call count actually changed), then the same
         // change-detection + BeginUpdate/EndUpdate + focus/selection-preservation shape as the
-        // other Render* methods here.
-        void RenderAdvancedList(bool isTx1Side, string accessibleName, List<string> items);
+        // other Render* methods here. `keys` is parallel to `items` (the callsign for each row).
+        void RenderAdvancedList(bool isTx1Side, string accessibleName, List<string> items, List<string> keys);
     }
 
     public interface IJimmyLogView
     {
         // Mirrors WsjtxClient.ShowLogged()'s list-rendering tail (same shape as RenderCallQueue,
         // without the queue-index bookkeeping since the logged list has no queue positions).
-        void RenderLoggedList(string headerText, List<string> items);
+        // `keys` is parallel to `items` (the callsign for each row).
+        void RenderLoggedList(string headerText, List<string> items, List<string> keys);
     }
 }

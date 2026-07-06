@@ -2,7 +2,7 @@
 <!--
   Jimmy installer - WiX 4 source
   Product  : Jimmy (WSJT-X Controller)
-  Version  : 1.71.0
+  Version  : 1.72.0
   Mfr      : KB0UZT
   Install  : C:\Program Files\KB0UZT\Jimmy\
   Shortcuts: Desktop + Start Menu (optional checkboxes, both on by default)
@@ -14,7 +14,7 @@
 
   <Package
     Name="Jimmy"
-    Version="1.71.0"
+    Version="1.72.0"
     Manufacturer="KB0UZT"
     Language="1033"
     Codepage="1252"
@@ -45,7 +45,16 @@
     <Property Id="DESKTOP_SHORTCUT" Value="1" Secure="yes" />
     <Property Id="STARTMENU_SHORTCUT" Value="1" Secure="yes" />
 
-    <!-- .NET Framework 4.7.2 check -->
+    <!-- .NET Framework 4.7.2 check. 461808 is Microsoft's documented minimum
+         Release registry value for 4.7.2 (see learn.microsoft.com "How to:
+         Determine which .NET Framework versions are installed"). WiX v4's
+         RegistrySearch only supports Type="raw" (string); there is no
+         integer type, so the numeric comparison is forced in the Launch
+         Condition itself via the "#" prefix (standard Windows Installer
+         condition syntax for treating a property's string value as a
+         number). Without the "#" and a real threshold, a plain existence/
+         truthy check would also pass for any older 4.x Full install (4.0
+         through 4.6.2), which does not actually satisfy this requirement. -->
     <Property Id="NETFX472RELEASE">
       <RegistrySearch Id="NetFx472Search"
         Root="HKLM"
@@ -53,7 +62,7 @@
         Name="Release"
         Type="raw" />
     </Property>
-    <Launch Condition="NETFX472RELEASE" Message="Jimmy requires .NET Framework 4.7.2 or later. Please install it and run this installer again." />
+    <Launch Condition="NETFX472RELEASE &gt;=#461808" Message="Jimmy requires .NET Framework 4.7.2 or later.&#xA;&#xA;Download it from: https://dotnet.microsoft.com/en-us/download/dotnet-framework/net472&#xA;&#xA;Install it, then run this installer again." />
 
     <Feature Id="DefaultFeature" Title="Jimmy" Level="1">
       <ComponentGroupRef Id="MainComponents" />
