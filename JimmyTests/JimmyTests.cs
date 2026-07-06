@@ -105,6 +105,9 @@ static class JimmyTests
         RuleEngineDateRangeTests();
         RuleEngineBandIndependenceTests();
         RuleEngineWorkedBandsTests();
+        RuleEngineCountTargetStillNeededTests();
+        AdifRecordBuilderTests();
+        LogbookDbAuthoritativeSourceOverrideTests();
         Colonies13RosterRegressionTest();
         CallQueueRankerCategoryTierTests();
         CallQueueRankerSortMethodTests();
@@ -884,6 +887,180 @@ static class JimmyTests
         catch (Exception ex)
         {
             Console.WriteLine($"  FAIL  RuleEngineWorkedBandsTests threw: {ex.GetType().Name}: {ex.Message}");
+            failed++;
+        }
+        finally
+        {
+            try { File.Delete(tmpDb); } catch { }
+        }
+    }
+
+    // ── RuleEngine: Count-target rules never produce a StillNeeded checklist ───
+    // Regression guard for the DXCC "Still Need" live-tagging bug: WsjtxClient's HRC
+    // suppression gates (IsHrcWasNeeded/IsHrcDxccUnconfirmed/IsHrcZoneNeeded) only
+    // retire the old HRC tracking once the equivalent Rule Definition is actually
+    // present in activeAwardTags -- and Controller.RefreshStillNeedCache() only adds
+    // a rule to activeAwardTags when result.StillNeeded != null. The shipped
+    // DXCC.ini is Target=COUNT, so this confirms it (and any Count/Levels-target
+    // rule) can never satisfy that guard, regardless of GroupBy/SupportsLiveTag --
+    // i.e. checking "DXCC" in the Still Need tab must not silently suppress the
+    // older, still-working DXCC_UNCONFIRMED HRC category.
+    static void RuleEngineCountTargetStillNeededTests()
+    {
+        Console.WriteLine("\n── RuleEngine: Count-target rules never populate StillNeeded ──");
+        string tmpDb = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_RuleEngineCountTarget_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDb))
+            {
+                InsertQso(db, "K2DXCC", "", dxcc: 291, zone: 5, band: "20m", lotwRcvd: "Y");
+
+                // Shaped exactly like the shipped DXCC.ini: GroupBy=Dxcc, Target=Count.
+                var dxccLike = new RuleDefinition
+                {
+                    Id = "DXCC", Name = "Test DXCC", FormatVersion = 1, Enabled = true,
+                    GroupBy = RuleGroupBy.Dxcc, Target = RuleTargetType.Count, Threshold = 100,
+                    Confirmation = RuleConfirmation.Any,
+                };
+                var countResult = RuleEngine.Evaluate(dxccLike, tmpDb, null);
+                Check("SupportsLiveTag(DXCC-like, GroupBy=Dxcc) is true (GroupBy alone doesn't exclude it)",
+                      RuleEngine.SupportsLiveTag(dxccLike), true);
+                Check("Target=Count result has StillNeeded == null (can't satisfy RefreshStillNeedCache's guard)",
+                      countResult.StillNeeded == null, true);
+
+                // Different GroupBy, but Target=All (shaped like the shipped WAS.ini) -- this is
+                // the case that SHOULD be able to enter activeAwardTags and retire an HRC category.
+                var allTargetLike = new RuleDefinition
+                {
+                    Id = "TEST_WAS_ALL", Name = "Test WAS All", FormatVersion = 1, Enabled = true,
+                    GroupBy = RuleGroupBy.State, Target = RuleTargetType.All, Threshold = 0,
+                    Confirmation = RuleConfirmation.Any, Universe = "US_50_STATES",
+                };
+                var allResult = RuleEngine.Evaluate(allTargetLike, tmpDb, null);
+                Check("Target=All result (known-working universe) has a real StillNeeded list, not null",
+                      allResult.StillNeeded != null, true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL  RuleEngineCountTargetStillNeededTests threw: {ex.GetType().Name}: {ex.Message}");
+            failed++;
+        }
+        finally
+        {
+            try { File.Delete(tmpDb); } catch { }
+        }
+    }
+
+    // ── AdifRecordBuilder: shared field list used by RequestLog + HandleLiveQsoLogged ──
+    // Regression guard for RequestLog (Jimmy's own self-initiated logging path) now
+    // reusing this shared builder instead of a separate hand-rolled ADIF string --
+    // confirms the field it uniquely needed (qso_date_off, for a QSO spanning a UTC
+    // midnight boundary) survived the switch, and that omitted/empty fields
+    // (name/comment/tx_pwr/operator -- not available to RequestLog) are correctly
+    // left out rather than emitted blank.
+    static void AdifRecordBuilderTests()
+    {
+        Console.WriteLine("\n── AdifRecordBuilder: field list ──");
+
+        string full = AdifRecordBuilder.Build(
+            "K4YT", "20m", 14074000, "FT8",
+            "20260706", "235900", "000030",
+            "-05", "-09", "EM63", "", "",
+            "", "", "KB0UZT", "EN34",
+            qsoDateOff: "20260707");
+
+        Check("Build(): includes call", full.Contains("<call:4>K4YT"), true);
+        Check("Build(): includes band", full.Contains("<band:3>20m"), true);
+        Check("Build(): includes qso_date (on)", full.Contains("<qso_date:8>20260706"), true);
+        Check("Build(): includes qso_date_off when the QSO crosses a UTC day boundary", full.Contains("<qso_date_off:8>20260707"), true);
+        Check("Build(): includes time_off", full.Contains("<time_off:6>000030"), true);
+        Check("Build(): includes station_callsign", full.Contains("<station_callsign:6>KB0UZT"), true);
+        Check("Build(): terminates with <eor>", full.TrimEnd().EndsWith("<eor>"), true);
+        Check("Build(): omits empty name/comment/tx_pwr/operator rather than emitting them blank",
+              !full.Contains("<name:") && !full.Contains("<comment:") && !full.Contains("<tx_pwr:") && !full.Contains("<operator:"), true);
+
+        string withoutDateOff = AdifRecordBuilder.Build(
+            "K4YT", "20m", 14074000, "FT8",
+            "20260706", "235900", "235930",
+            "-05", "-09", "EM63", "", "",
+            "", "", "KB0UZT", "EN34");
+        Check("Build(): qso_date_off omitted entirely when not supplied (same-day QSO, existing callers unaffected)",
+              !withoutDateOff.Contains("<qso_date_off:"), true);
+    }
+
+    // ── LogbookDb.Upsert: authoritative source overrides Jimmy's own guess ─────
+    // country/dxcc/continent/cq_zone are populated at live-logging time from
+    // Jimmy's own local Club Log cache (EnrichWithClubLogGeoData) -- a guess, not
+    // an authoritative fact. A later sync from QRZ/LoTW/Club Log must always be
+    // able to correct that guess, even if a (possibly wrong) value is already
+    // present. A second self-sourced (WSJTX) or MANUAL write must NOT clobber an
+    // already-synced authoritative value -- it only fills in if still blank.
+    // Uses SearchByCallsign (country/dxcc) as the read-back path since those are
+    // the only two of the four affected columns already exposed publicly; all
+    // four columns share the identical CASE WHEN shape, so this covers the logic.
+    static void LogbookDbAuthoritativeSourceOverrideTests()
+    {
+        Console.WriteLine("\n── LogbookDb.Upsert: authoritative source overrides guess ──");
+        string tmpDb = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_Upsert_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDb))
+            {
+                string key = AdifImporter.BuildDedupKey("W1AW", "20m", "FT8", "20260706", "1200");
+                void DoUpsert(string source, string country, int dxcc)
+                {
+                    db.Upsert("W1AW", "20m", "FT8", "20260706", "1200", "1215",
+                        14_074_000, "-10", "-05", "", country, dxcc, 0,
+                        "", "", "", "", "", "", "",
+                        "", "", "", "",
+                        source, "", key,
+                        "", 0, "", "", "", "", "", "", "", "", "", "");
+                }
+                (string country, int dxcc) Read()
+                {
+                    var rec = db.SearchByCallsign("W1AW").First();
+                    return (rec.Country, rec.Dxcc);
+                }
+
+                // Jimmy's own guess, written at live-logging time (source=WSJTX)
+                DoUpsert("WSJTX", "Wrong Guess", 1);
+                var afterGuess = Read();
+                Check("initial WSJTX guess stored", afterGuess.country == "Wrong Guess" && afterGuess.dxcc == 1, true);
+
+                // A second self-sourced write must NOT clobber the (still-a-guess) value --
+                // a different WSJTX guess must not overwrite the first (blank-only-backfill).
+                DoUpsert("WSJTX", "Another Guess", 2);
+                var afterSecondGuess = Read();
+                Check("second WSJTX write does not overwrite existing guess (blank-only-backfill)",
+                      afterSecondGuess.country == "Wrong Guess" && afterSecondGuess.dxcc == 1, true);
+
+                // QRZ sync arrives with the real data -- must overwrite the wrong guess
+                DoUpsert("QRZ", "United States", 291);
+                var afterQrz = Read();
+                Check("QRZ sync overwrites wrong guess: country", afterQrz.country == "United States", true);
+                Check("QRZ sync overwrites wrong guess: dxcc", afterQrz.dxcc == 291, true);
+
+                // A subsequent WSJTX/self-log re-send must NOT be able to clobber the
+                // now-authoritative QRZ value back to a guess.
+                DoUpsert("WSJTX", "Wrong Guess Again", 1);
+                var afterReguess = Read();
+                Check("WSJTX write after QRZ sync cannot overwrite authoritative value",
+                      afterReguess.country == "United States" && afterReguess.dxcc == 291, true);
+
+                // A later LoTW sync must still be able to override an existing (even if already
+                // authoritative-sourced) value -- authoritative sources always win over each other.
+                DoUpsert("LOTW", "United States Corrected", 291);
+                var afterLotw = Read();
+                Check("LOTW sync can overwrite a previously-QRZ-sourced value",
+                      afterLotw.country == "United States Corrected", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL  LogbookDbAuthoritativeSourceOverrideTests threw: {ex.GetType().Name}: {ex.Message}");
             failed++;
         }
         finally

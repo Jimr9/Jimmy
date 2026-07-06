@@ -13,13 +13,17 @@ namespace WSJTX_Controller
     public class LogbookWindow : Form
     {
         // ── Dependencies ──────────────────────────────────────────────────────────
-        private readonly IniFile  _ini;
-        private readonly string   _qrzApiKey;
-        private readonly string   _lotwUser;
-        private readonly string   _lotwPass;
-        private readonly string   _clubLogEmail;
-        private readonly string   _clubLogPassword;
-        private readonly string   _clubLogCallsign;
+        // Credentials are read live (via these delegates), not snapshotted once at
+        // construction, so a change made in Options while this window is already open
+        // takes effect immediately instead of requiring a close/reopen -- matches the
+        // same live-read pattern LiveQsoUploadOrchestrator already uses for the same reason.
+        private readonly IniFile    _ini;
+        private readonly Func<string> _qrzApiKey;
+        private readonly Func<string> _lotwUser;
+        private readonly Func<string> _lotwPass;
+        private readonly Func<string> _clubLogEmail;
+        private readonly Func<string> _clubLogPassword;
+        private readonly Func<string> _clubLogCallsign;
         private readonly Action   _onImportComplete;
         private readonly HashSet<string> _activeAwardRuleIds;
         private readonly Action<string, bool> _onActiveAwardRuleIdsChanged;
@@ -98,19 +102,19 @@ namespace WSJTX_Controller
 
         // ── Constructor ───────────────────────────────────────────────────────────
 
-        public LogbookWindow(IniFile ini, string qrzApiKey, string lotwUser, string lotwPass,
-            string clubLogEmail = null, string clubLogPassword = null, string clubLogCallsign = null,
+        public LogbookWindow(IniFile ini, Func<string> qrzApiKey, Func<string> lotwUser, Func<string> lotwPass,
+            Func<string> clubLogEmail = null, Func<string> clubLogPassword = null, Func<string> clubLogCallsign = null,
             Action onImportComplete = null,
             HashSet<string> initialActiveAwardRuleIds = null,
             Action<string, bool> onActiveAwardRuleIdsChanged = null)
         {
             _ini              = ini;
-            _qrzApiKey        = qrzApiKey ?? "";
-            _lotwUser         = lotwUser  ?? "";
-            _lotwPass         = lotwPass  ?? "";
-            _clubLogEmail     = clubLogEmail    ?? "";
-            _clubLogPassword  = clubLogPassword ?? "";
-            _clubLogCallsign  = clubLogCallsign ?? "";
+            _qrzApiKey        = qrzApiKey        ?? (() => "");
+            _lotwUser         = lotwUser         ?? (() => "");
+            _lotwPass         = lotwPass         ?? (() => "");
+            _clubLogEmail     = clubLogEmail     ?? (() => "");
+            _clubLogPassword  = clubLogPassword  ?? (() => "");
+            _clubLogCallsign  = clubLogCallsign  ?? (() => "");
             _onImportComplete = onImportComplete;
             _activeAwardRuleIds = initialActiveAwardRuleIds ?? new HashSet<string>();
             _onActiveAwardRuleIdsChanged = onActiveAwardRuleIdsChanged;
@@ -286,7 +290,7 @@ namespace WSJTX_Controller
                 Location       = new Point(134, y),
                 Font           = font,
                 TabIndex       = 2,
-                Enabled        = !string.IsNullOrWhiteSpace(_qrzApiKey),
+                Enabled        = !string.IsNullOrWhiteSpace(_qrzApiKey()),
             };
             _syncQrzBtn.Click += QrzRefreshBtn_Click;
 
@@ -298,7 +302,7 @@ namespace WSJTX_Controller
                 Location       = new Point(280, y),
                 Font           = font,
                 TabIndex       = 3,
-                Enabled        = !string.IsNullOrWhiteSpace(_lotwUser) && !string.IsNullOrWhiteSpace(_lotwPass),
+                Enabled        = !string.IsNullOrWhiteSpace(_lotwUser()) && !string.IsNullOrWhiteSpace(_lotwPass()),
             };
             _syncLotwBtn.Click += LoTWRefreshBtn_Click;
 
@@ -310,9 +314,9 @@ namespace WSJTX_Controller
                 Location       = new Point(428, y),
                 Font           = font,
                 TabIndex       = 4,
-                Enabled        = !string.IsNullOrWhiteSpace(_clubLogEmail) &&
-                                  !string.IsNullOrWhiteSpace(_clubLogPassword) &&
-                                  !string.IsNullOrWhiteSpace(_clubLogCallsign),
+                Enabled        = !string.IsNullOrWhiteSpace(_clubLogEmail()) &&
+                                  !string.IsNullOrWhiteSpace(_clubLogPassword()) &&
+                                  !string.IsNullOrWhiteSpace(_clubLogCallsign()),
             };
             _syncClubLogBtn.Click += ClubLogRefreshBtn_Click;
 
@@ -705,7 +709,7 @@ namespace WSJTX_Controller
             try
             {
                 // QRZ status
-                if (string.IsNullOrWhiteSpace(_qrzApiKey))
+                if (string.IsNullOrWhiteSpace(_qrzApiKey()))
                     _srcQrzStatusLbl.Text = "QRZ Logbook API key not configured.  (Options > Logbook)";
                 else
                 {
@@ -715,23 +719,23 @@ namespace WSJTX_Controller
                 }
 
                 // LoTW status
-                if (string.IsNullOrWhiteSpace(_lotwUser))
+                if (string.IsNullOrWhiteSpace(_lotwUser()))
                     _srcLotwStatusLbl.Text = "LoTW credentials not configured.  (Options > Logbook)";
                 else
                 {
                     string dt = ReadableDate(_ini?.Read("LogbookLastLoTWRefresh"));
                     int cnt   = _db.TotalQsos("LOTW");
-                    _srcLotwStatusLbl.Text = $"Username: {_lotwUser}.  Last refresh: {dt}.  QSOs: {cnt:N0}.";
+                    _srcLotwStatusLbl.Text = $"Username: {_lotwUser()}.  Last refresh: {dt}.  QSOs: {cnt:N0}.";
                 }
 
                 // Club Log status
-                if (string.IsNullOrWhiteSpace(_clubLogEmail) || string.IsNullOrWhiteSpace(_clubLogPassword) || string.IsNullOrWhiteSpace(_clubLogCallsign))
+                if (string.IsNullOrWhiteSpace(_clubLogEmail()) || string.IsNullOrWhiteSpace(_clubLogPassword()) || string.IsNullOrWhiteSpace(_clubLogCallsign()))
                     _srcClubLogStatusLbl.Text = "Club Log upload credentials not configured.  (Options > Logbook)";
                 else
                 {
                     string dt = ReadableDate(_ini?.Read("LogbookLastClubLogRefresh"));
                     int cnt   = _db.TotalQsos("CLUBLOG");
-                    _srcClubLogStatusLbl.Text = $"Callsign: {_clubLogCallsign}.  Last refresh: {dt}.  QSOs: {cnt:N0}.";
+                    _srcClubLogStatusLbl.Text = $"Callsign: {_clubLogCallsign()}.  Last refresh: {dt}.  QSOs: {cnt:N0}.";
                 }
 
                 // History
@@ -1150,7 +1154,7 @@ namespace WSJTX_Controller
         private async void QrzRefreshBtn_Click(object sender, EventArgs e)
         {
             if (_db == null) { SetStatus("Database not available."); return; }
-            if (string.IsNullOrWhiteSpace(_qrzApiKey)) { SetStatus("QRZ API key not configured."); return; }
+            if (string.IsNullOrWhiteSpace(_qrzApiKey())) { SetStatus("QRZ API key not configured."); return; }
 
             SetStatus("Fetching QRZ Logbook…");
             SetBusy(true);
@@ -1160,7 +1164,7 @@ namespace WSJTX_Controller
                 DateTime? since = (_db.TotalQsos("QRZ") > 0)
                     ? ParseMetaDate(_ini?.Read("LogbookLastQrzRefresh"))
                     : null;
-                string adif = await client.FetchAdifAsync(_qrzApiKey, since).ConfigureAwait(true);
+                string adif = await client.FetchAdifAsync(_qrzApiKey(), since).ConfigureAwait(true);
                 if (adif == null)
                 {
                     string msg = "QRZ error: " + (client.LastError ?? "Unknown error") + " (see debug log for details)";
@@ -1190,7 +1194,7 @@ namespace WSJTX_Controller
         private async void LoTWRefreshBtn_Click(object sender, EventArgs e)
         {
             if (_db == null) { SetStatus("Database not available."); return; }
-            if (string.IsNullOrWhiteSpace(_lotwUser)) { SetStatus("LoTW credentials not configured."); return; }
+            if (string.IsNullOrWhiteSpace(_lotwUser())) { SetStatus("LoTW credentials not configured."); return; }
 
             SetBusy(true);
             try
@@ -1203,7 +1207,7 @@ namespace WSJTX_Controller
                 // LoTW splits confirmed and unconfirmed QSOs into separate API responses.
                 // Fetch both and concatenate; AdifParser handles multiple <EOH> tags.
                 SetStatus("Fetching LoTW confirmed QSOs…");
-                string adif1 = await client.FetchReportAsync(_lotwUser, _lotwPass, since, confirmedOnly: true).ConfigureAwait(true);
+                string adif1 = await client.FetchReportAsync(_lotwUser(), _lotwPass(), since, confirmedOnly: true).ConfigureAwait(true);
                 if (adif1 == null)
                 {
                     string msg = "LoTW error: " + (client.LastError ?? "Unknown error");
@@ -1213,7 +1217,7 @@ namespace WSJTX_Controller
                 }
 
                 SetStatus("Fetching LoTW unconfirmed QSOs…");
-                string adif2 = await client.FetchReportAsync(_lotwUser, _lotwPass, since, confirmedOnly: false).ConfigureAwait(true);
+                string adif2 = await client.FetchReportAsync(_lotwUser(), _lotwPass(), since, confirmedOnly: false).ConfigureAwait(true);
                 if (adif2 == null) adif2 = "";
 
                 await RunImportFromText(adif1 + "\r\n" + adif2, "LOTW", "LogbookLastLoTWRefresh").ConfigureAwait(true);
@@ -1229,7 +1233,7 @@ namespace WSJTX_Controller
         private async void ClubLogRefreshBtn_Click(object sender, EventArgs e)
         {
             if (_db == null) { SetStatus("Database not available."); return; }
-            if (string.IsNullOrWhiteSpace(_clubLogEmail) || string.IsNullOrWhiteSpace(_clubLogPassword) || string.IsNullOrWhiteSpace(_clubLogCallsign))
+            if (string.IsNullOrWhiteSpace(_clubLogEmail()) || string.IsNullOrWhiteSpace(_clubLogPassword()) || string.IsNullOrWhiteSpace(_clubLogCallsign()))
             {
                 SetStatus("Club Log upload credentials not configured.");
                 return;
@@ -1245,7 +1249,7 @@ namespace WSJTX_Controller
                 DateTime? since = (_db.TotalQsos("CLUBLOG") > 0)
                     ? ParseMetaDate(_ini?.Read("LogbookLastClubLogRefresh"))
                     : null;
-                string adif = await client.FetchAdifAsync(_clubLogEmail, _clubLogPassword, _clubLogCallsign, since?.Year).ConfigureAwait(true);
+                string adif = await client.FetchAdifAsync(_clubLogEmail(), _clubLogPassword(), _clubLogCallsign(), since?.Year).ConfigureAwait(true);
                 if (adif == null)
                 {
                     string msg = "Club Log error: " + (client.LastError ?? "Unknown error");
@@ -1458,10 +1462,10 @@ namespace WSJTX_Controller
         private void SetBusy(bool busy)
         {
             _syncImportBtn.Enabled  = !busy;
-            _syncQrzBtn.Enabled     = !busy && !string.IsNullOrWhiteSpace(_qrzApiKey);
-            _syncLotwBtn.Enabled    = !busy && !string.IsNullOrWhiteSpace(_lotwUser) && !string.IsNullOrWhiteSpace(_lotwPass);
-            _syncClubLogBtn.Enabled = !busy && !string.IsNullOrWhiteSpace(_clubLogEmail) &&
-                                       !string.IsNullOrWhiteSpace(_clubLogPassword) && !string.IsNullOrWhiteSpace(_clubLogCallsign);
+            _syncQrzBtn.Enabled     = !busy && !string.IsNullOrWhiteSpace(_qrzApiKey());
+            _syncLotwBtn.Enabled    = !busy && !string.IsNullOrWhiteSpace(_lotwUser()) && !string.IsNullOrWhiteSpace(_lotwPass());
+            _syncClubLogBtn.Enabled = !busy && !string.IsNullOrWhiteSpace(_clubLogEmail()) &&
+                                       !string.IsNullOrWhiteSpace(_clubLogPassword()) && !string.IsNullOrWhiteSpace(_clubLogCallsign());
         }
 
         private string SetStatus_Text;

@@ -1496,8 +1496,9 @@ namespace WSJTX_Controller
             }
             try
             {
-                _logbookWindow = new LogbookWindow(iniFile, qrzLogbookApiKey, lotwLogbookUser, lotwLogbookPass,
-                    clubLogUploadEmail, clubLogUploadPassword, clubLogUploadCallsign,
+                _logbookWindow = new LogbookWindow(iniFile,
+                    () => qrzLogbookApiKey, () => lotwLogbookUser, () => lotwLogbookPass,
+                    () => clubLogUploadEmail, () => clubLogUploadPassword, () => clubLogUploadCallsign,
                     onImportComplete: () => BeginInvoke(new Action(() => { LoadHrcCache(); RefreshStillNeedCache(); })),
                     initialActiveAwardRuleIds: activeAwardRuleIds,
                     onActiveAwardRuleIdsChanged: (ruleId, isTracked) =>

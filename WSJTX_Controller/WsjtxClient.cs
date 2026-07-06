@@ -5593,7 +5593,19 @@ namespace WSJTX_Controller
             string band = FreqToBandStr(dialFrequency / 1e6);
             if (band == null) band = "Unknown";
 
-            string adifRecord = $"<call:{call.Length}>{call} <gridsquare:{grid.Length}>{grid} <mode:{mode.Length}>{mode} <rst_sent:{rstSent.Length}>{rstSent} <rst_rcvd:{rstRecd.Length}>{rstRecd} <qso_date:{qsoDateOn.Length}>{qsoDateOn} <time_on:{qsoTimeOn.Length}>{qsoTimeOn} <qso_date_off:{qsoDateOff.Length}>{qsoDateOff} <time_off:{qsoTimeOff.Length}>{qsoTimeOff} <band:{band.Length}>{band} <freq:{freq.Length}>{freq} <station_callsign:{myCall.Length}>{myCall} <my_gridsquare:{myGrid.Length}>{myGrid}";
+            // Reuses the same shared builder as HandleLiveQsoLogged/HandleLiveAdifLogged (see
+            // AdifRecordBuilder.cs) instead of maintaining a separate hand-rolled field list here --
+            // this is the record actually sent to WSJT-X (cmd:255) and, via ImportLiveLoggedQso,
+            // uploaded verbatim to QRZ/Club Log in real time, so any field the shared builder
+            // supports now flows through for Jimmy-initiated logging too. name/comment/tx_pwr/
+            // operator/exchange are passed empty -- WSJT-X's own QsoLoggedMessage carries those
+            // (typed into WSJT-X's own logging dialog); Jimmy's self-initiated log here has no
+            // equivalent source for them today.
+            string adifRecord = AdifRecordBuilder.Build(
+                call, band, (long)(dialFrequency + txOffset), mode,
+                qsoDateOn, qsoTimeOn, qsoTimeOff, rstSent, rstRecd, grid,
+                name: "", comment: "", txPwr: "", operatorCall: "",
+                stationCall: myCall, myGrid: myGrid, qsoDateOff: qsoDateOff);
 
             //request add record to log / worked before (using explicit parameters, unlike typical WSJT-X logging)
             //send ADIF record to WSJT-X for re-broadcast to logging pgms
@@ -7636,12 +7648,18 @@ namespace WSJTX_Controller
         // All three read only in-memory HashSets populated at startup / after import.
         // If the HRC database is unavailable, the sets remain empty and these return false.
 
-        // Each guarded by activeAwardRuleIds so it auto-retires the moment the equivalent
-        // generic award (WAS/DXCC/WAZ) is checked in the new Still Need list -- no double
-        // alerts, and nothing changes for anyone who hasn't checked the new equivalent.
+        // Each guarded by activeAwardTags (the realized, actually-live-tagging cache) rather
+        // than activeAwardRuleIds (the raw checkbox state), so it auto-retires only once the
+        // equivalent generic award (WAS/DXCC/WAZ) is BOTH checked in the new Still Need list
+        // AND actually producing usable live tags -- e.g. checking "DXCC" alone does not
+        // suppress this, since the shipped DXCC.ini is Target=COUNT and so never enters
+        // activeAwardTags (RuleResult.StillNeeded is only ever populated for Target=All; see
+        // Controller.RefreshStillNeedCache()). Previously checked activeAwardRuleIds directly,
+        // which silently disabled DXCC-needed alerts the moment the box was checked even though
+        // the new system was never actually going to tag anything in its place.
         private bool IsHrcWasNeeded(EnqueueDecodeMessage d)
         {
-            if (hrcNeededStates.Count == 0 || ctrl.activeAwardRuleIds.Contains("WAS")) return false;
+            if (hrcNeededStates.Count == 0 || activeAwardTags.ContainsKey("WAS")) return false;
             string grid = WsjtxMessage.Grid(d.Message);
             if (string.IsNullOrEmpty(grid)) return false;
             string state = GridToUsState(grid);
@@ -7650,7 +7668,7 @@ namespace WSJTX_Controller
 
         private bool IsHrcDxccUnconfirmed(EnqueueDecodeMessage d)
         {
-            if (hrcUnconfirmedDxcc.Count == 0 || ctrl.activeAwardRuleIds.Contains("DXCC")) return false;
+            if (hrcUnconfirmedDxcc.Count == 0 || activeAwardTags.ContainsKey("DXCC")) return false;
             string call = d.DeCall();
             if (string.IsNullOrEmpty(call)) return false;
             var entity = lookupManager.GetClubLogEntity(call);
@@ -7659,7 +7677,7 @@ namespace WSJTX_Controller
 
         private bool IsHrcZoneNeeded(EnqueueDecodeMessage d)
         {
-            if (hrcNeededZones.Count == 0 || ctrl.activeAwardRuleIds.Contains("WAZ")) return false;
+            if (hrcNeededZones.Count == 0 || activeAwardTags.ContainsKey("WAZ")) return false;
             string call = d.DeCall();
             if (string.IsNullOrEmpty(call)) return false;
             var entity = lookupManager.GetClubLogEntity(call);

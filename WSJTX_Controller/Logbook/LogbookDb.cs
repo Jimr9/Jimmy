@@ -308,13 +308,26 @@ ON CONFLICT(dedup_key) DO UPDATE SET
     lotw_qsl_rcvd = CASE WHEN qso.lotw_qsl_rcvd='Y' THEN 'Y' WHEN excluded.source='LOTW' AND excluded.lotw_qsl_rcvd!='' THEN excluded.lotw_qsl_rcvd ELSE qso.lotw_qsl_rcvd END,
     qrz_qsl_sent  = CASE WHEN excluded.source='QRZ'  AND excluded.qrz_qsl_sent !='' THEN excluded.qrz_qsl_sent  ELSE qso.qrz_qsl_sent  END,
     qrz_qsl_rcvd  = CASE WHEN qso.qrz_qsl_rcvd='Y'  THEN 'Y' WHEN excluded.source='QRZ'  AND excluded.qrz_qsl_rcvd !='' THEN excluded.qrz_qsl_rcvd  ELSE qso.qrz_qsl_rcvd  END,
-    country  = CASE WHEN (qso.country ='' OR qso.country  IS NULL) AND excluded.country !='' THEN excluded.country  ELSE qso.country  END,
+    -- country/dxcc/continent/cq_zone are the fields Jimmy itself guesses from its own
+    -- cached Club Log country data at live-logging time (EnrichWithClubLogGeoData), purely
+    -- so Awards/Still-Need tracking has something to show immediately -- Jimmy is never the
+    -- authoritative source for this metadata (see project logging philosophy). So unlike the
+    -- other blank-only-backfill columns below: a real download from QRZ/LoTW/Club Log always
+    -- overwrites Jimmy's own guess here, even if a (possibly wrong) guess is already present --
+    -- otherwise a wrong guess could never be corrected once written. A guess from Jimmy's own
+    -- live logging (source='WSJTX') or a manual import still only fills in if currently blank,
+    -- same as before.
+    country  = CASE WHEN excluded.source IN ('QRZ','LOTW','CLUBLOG') AND excluded.country !='' THEN excluded.country
+                    WHEN (qso.country ='' OR qso.country  IS NULL) AND excluded.country !='' THEN excluded.country  ELSE qso.country  END,
     state    = CASE WHEN (qso.state   ='' OR qso.state    IS NULL) AND excluded.state   !='' THEN excluded.state    ELSE qso.state    END,
     name     = CASE WHEN (qso.name    ='' OR qso.name     IS NULL) AND excluded.name    !='' THEN excluded.name     ELSE qso.name     END,
     grid     = CASE WHEN (qso.grid    ='' OR qso.grid     IS NULL) AND excluded.grid    !='' THEN excluded.grid     ELSE qso.grid     END,
-    dxcc     = CASE WHEN (qso.dxcc    =0  OR qso.dxcc     IS NULL) AND excluded.dxcc    >0   THEN excluded.dxcc     ELSE qso.dxcc     END,
-    cq_zone  = CASE WHEN (qso.cq_zone =0  OR qso.cq_zone  IS NULL) AND excluded.cq_zone >0   THEN excluded.cq_zone  ELSE qso.cq_zone  END,
-    continent    = CASE WHEN (qso.continent   ='' OR qso.continent    IS NULL) AND excluded.continent   !='' THEN excluded.continent   ELSE qso.continent    END,
+    dxcc     = CASE WHEN excluded.source IN ('QRZ','LOTW','CLUBLOG') AND excluded.dxcc >0 THEN excluded.dxcc
+                    WHEN (qso.dxcc    =0  OR qso.dxcc     IS NULL) AND excluded.dxcc    >0   THEN excluded.dxcc     ELSE qso.dxcc     END,
+    cq_zone  = CASE WHEN excluded.source IN ('QRZ','LOTW','CLUBLOG') AND excluded.cq_zone >0 THEN excluded.cq_zone
+                    WHEN (qso.cq_zone =0  OR qso.cq_zone  IS NULL) AND excluded.cq_zone >0   THEN excluded.cq_zone  ELSE qso.cq_zone  END,
+    continent    = CASE WHEN excluded.source IN ('QRZ','LOTW','CLUBLOG') AND excluded.continent !='' THEN excluded.continent
+                         WHEN (qso.continent   ='' OR qso.continent    IS NULL) AND excluded.continent   !='' THEN excluded.continent   ELSE qso.continent    END,
     itu_zone     = CASE WHEN (qso.itu_zone    =0  OR qso.itu_zone     IS NULL) AND excluded.itu_zone    >0   THEN excluded.itu_zone    ELSE qso.itu_zone     END,
     county       = CASE WHEN (qso.county      ='' OR qso.county       IS NULL) AND excluded.county      !='' THEN excluded.county      ELSE qso.county       END,
     iota         = CASE WHEN (qso.iota        ='' OR qso.iota         IS NULL) AND excluded.iota        !='' THEN excluded.iota         ELSE qso.iota         END,
