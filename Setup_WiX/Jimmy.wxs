@@ -2,7 +2,7 @@
 <!--
   Jimmy installer - WiX 4 source
   Product  : Jimmy (WSJT-X Controller)
-  Version  : 1.73.0
+  Version  : 1.74.0
   Mfr      : KB0UZT
   Install  : C:\Program Files\KB0UZT\Jimmy\
   Shortcuts: Desktop + Start Menu (optional checkboxes, both on by default)
@@ -14,7 +14,7 @@
 
   <Package
     Name="Jimmy"
-    Version="1.73.0"
+    Version="1.74.0"
     Manufacturer="KB0UZT"
     Language="1033"
     Codepage="1252"
@@ -205,6 +205,33 @@
       </Component>
       <Component Id="RuleDef_WAS">
         <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WAS.ini" />
+      </Component>
+      <Component Id="RuleDef_WAS_6M">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WAS_6M.ini" />
+      </Component>
+      <Component Id="RuleDef_WAS_10M">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WAS_10M.ini" />
+      </Component>
+      <Component Id="RuleDef_WAS_12M">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WAS_12M.ini" />
+      </Component>
+      <Component Id="RuleDef_WAS_15M">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WAS_15M.ini" />
+      </Component>
+      <Component Id="RuleDef_WAS_17M">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WAS_17M.ini" />
+      </Component>
+      <Component Id="RuleDef_WAS_20M">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WAS_20M.ini" />
+      </Component>
+      <Component Id="RuleDef_WAS_40M">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WAS_40M.ini" />
+      </Component>
+      <Component Id="RuleDef_WAS_80M">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WAS_80M.ini" />
+      </Component>
+      <Component Id="RuleDef_WAS_160M">
+        <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WAS_160M.ini" />
       </Component>
       <Component Id="RuleDef_WAZ">
         <File Source="..\WSJTX_Controller\bin\Release\RuleDefinitions\WAZ.ini" />

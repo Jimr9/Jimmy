@@ -118,6 +118,8 @@ static class JimmyTests
         JimmySettingsRoundTripTests();
         JimmySettingsDefaultsTests();
         FindPreservedSelectionIndexTests();
+        BandAppliesToLiveTagTests();
+        RuleEngineFixedBandRestrictionTests();
 
         Console.WriteLine();
         Console.WriteLine($"=== {passed} passed, {failed} failed ===");
@@ -1398,6 +1400,88 @@ static class JimmyTests
         var liveNewReordered = new List<string> { "KF8CXC", "WM3PEN", "N8BB", "VK9DX" };
         idx = Controller.FindPreservedSelectionIndex(liveOld, 2, liveNewReordered);
         Check("WM3PEN/N8BB regression: follows WM3PEN to its new index 1, not N8BB's index 2", idx == 1 && liveNewReordered[idx] == "WM3PEN", true);
+    }
+
+    // ── Controller.BandAppliesToLiveTag: per-band award live-tag gating ─────────
+    // A band-restricted award (e.g. the WAS_*M per-band awards, [Match] Bands=6m)
+    // must only live-tag decodes while the radio is actually on one of its bands.
+    // RefreshStillNeedCache() previously substituted whatever band the radio was
+    // currently on for ANY band-restricted award, which would silently tag
+    // decodes on the wrong band as satisfying an unrelated single-band award.
+    static void BandAppliesToLiveTagTests()
+    {
+        Console.WriteLine("\n── Controller.BandAppliesToLiveTag ──");
+
+        Check("No band restriction (empty list): always applies, regardless of current band",
+              Controller.BandAppliesToLiveTag(new List<string>(), "20m"), true);
+        Check("No band restriction, current band unknown (null/blank): still always applies",
+              Controller.BandAppliesToLiveTag(new List<string>(), ""), true);
+
+        var sixMeterOnly = new List<string> { "6m" };
+        Check("Band-restricted award: applies when current band matches (6m == 6m)",
+              Controller.BandAppliesToLiveTag(sixMeterOnly, "6m"), true);
+        Check("Band-restricted award: matching is case-insensitive",
+              Controller.BandAppliesToLiveTag(sixMeterOnly, "6M"), true);
+        Check("Band-restricted award: does NOT apply on an unrelated band (operating on 15m, award is 6m-only)",
+              Controller.BandAppliesToLiveTag(sixMeterOnly, "15m"), false);
+        Check("Band-restricted award: does NOT apply when current band is unknown",
+              Controller.BandAppliesToLiveTag(sixMeterOnly, ""), false);
+
+        var multiBand = new List<string> { "160m", "80m", "40m" };
+        Check("Multi-band restriction: applies to any listed band",
+              Controller.BandAppliesToLiveTag(multiBand, "80m"), true);
+        Check("Multi-band restriction: does not apply to a band not in the list",
+              Controller.BandAppliesToLiveTag(multiBand, "20m"), false);
+    }
+
+    // ── RuleEngine: fixed single-band award restriction ([Match] Bands=) ────────
+    // Mirrors the shape of the new WAS_*M per-band awards (GroupBy=State,
+    // Universe=US_50_STATES, Target=All, Bands=<one band>). Confirms the award's
+    // own Bands restriction is honored by a plain Evaluate() call (no band
+    // override) -- the path the Awards tab and Still Need tab's static checklist
+    // both use -- so a state worked only on a different band does not count.
+    static void RuleEngineFixedBandRestrictionTests()
+    {
+        Console.WriteLine("\n── RuleEngine: fixed single-band award (Bands=) ──");
+        string tmpDb = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_RuleEngineFixedBand_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDb))
+            {
+                // TX worked AND confirmed on 6m -- must count for a 6m-only WAS award.
+                InsertQso(db, "W5TX", "TX", dxcc: 291, zone: 5, band: "6m", lotwRcvd: "Y");
+                // CA worked only on 20m -- must NOT count for a 6m-only WAS award.
+                InsertQso(db, "W6CA", "CA", dxcc: 291, zone: 3, band: "20m");
+
+                var was6m = new RuleDefinition
+                {
+                    Id = "TEST_WAS_6M", Name = "Test WAS 6m", FormatVersion = 1, Enabled = true,
+                    GroupBy = RuleGroupBy.State, Universe = "US_50_STATES",
+                    Bands = new List<string> { "6m" },
+                    Target = RuleTargetType.All, Confirmation = RuleConfirmation.Any,
+                };
+
+                var result = RuleEngine.Evaluate(was6m, tmpDb, null);
+                Check("Fixed Bands=6m: state worked on 6m counts",
+                      result.WorkedItems != null && result.WorkedItems.Contains("TX"), true);
+                Check("Fixed Bands=6m: state worked only on 20m does NOT count",
+                      result.WorkedItems == null || !result.WorkedItems.Contains("CA"), true);
+                Check("Fixed Bands=6m: still-needed checklist includes CA (not confirmed on 6m)",
+                      result.StillNeeded != null && result.StillNeeded.Contains("CA"), true);
+                Check("Fixed Bands=6m: still-needed checklist does not include TX (confirmed on 6m)",
+                      result.StillNeeded != null && !result.StillNeeded.Contains("TX"), true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL  RuleEngineFixedBandRestrictionTests threw: {ex.GetType().Name}: {ex.Message}");
+            failed++;
+        }
+        finally
+        {
+            try { File.Delete(tmpDb); } catch { }
+        }
     }
 
     // Walks up from the test binary's directory looking for Jimmy.sln, then

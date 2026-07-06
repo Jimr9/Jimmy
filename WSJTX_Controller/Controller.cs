@@ -944,6 +944,14 @@ namespace WSJTX_Controller
                 return true;
             }
 
+            // Logbook is a self-contained window/database with no WSJT-X dependency, so its
+            // hotkey must not sit behind the WsjtxConnecting() gate below -- otherwise it's
+            // silently ignored (no error, no announcement) whenever WSJT-X hasn't launched yet.
+            if (keyData == hotkeyConfig[HotkeyAction.OpenLogbook] && hotkeyConfig[HotkeyAction.OpenLogbook] != Keys.None)
+            {
+                OpenLogbookWindow();
+                return true;
+            }
 
             if (!wsjtxClient.WsjtxConnecting()) return false;
 
@@ -1054,11 +1062,6 @@ namespace WSJTX_Controller
             if (keyData == hotkeyConfig[HotkeyAction.LookupStation] && hotkeyConfig[HotkeyAction.LookupStation] != Keys.None)
             {
                 LookupFocusedCall();
-                return true;
-            }
-            if (keyData == hotkeyConfig[HotkeyAction.OpenLogbook] && hotkeyConfig[HotkeyAction.OpenLogbook] != Keys.None)
-            {
-                OpenLogbookWindow();
                 return true;
             }
 
@@ -1447,11 +1450,15 @@ namespace WSJTX_Controller
         // still-needed checklist (e.g. a Target=COUNT/LEVELS award) are simply left out.
         //
         // Only scoped to the current band when the award definition itself restricts to specific
-        // bands ([Match] Bands=) -- mirrors LoadHrcCache()'s per-band semantics for that case. None
-        // of the shipped awards (Colonies13, DXCC, WAS, WAZ, ...) set Bands=, since they all count
-        // a station worked on any band -- for those, evaluating against the current band only was
-        // a bug: work a station on 20m, switch to 15m, and it would wrongly show as still needed
+        // bands ([Match] Bands=) -- mirrors LoadHrcCache()'s per-band semantics for that case. Most
+        // shipped awards (Colonies13, DXCC, WAS, WAZ, ...) don't set Bands=, since they all count a
+        // station worked on any band -- for those, evaluating against the current band only was a
+        // bug: work a station on 20m, switch to 15m, and it would wrongly show as still needed
         // again. Matches the Still Need tab's own "All Bands" default for the same reason.
+        // A handful of awards DO set Bands= to a single fixed band (e.g. the WAS_*M per-band
+        // awards), so BandAppliesToLiveTag() gates the whole thing on the current band actually
+        // being one of the award's own bands -- otherwise the current band would get silently
+        // substituted for the award's band, tagging decodes on the wrong band as "needed" for it.
         public void RefreshStillNeedCache()
         {
             if (wsjtxClient == null) return;
@@ -1461,6 +1468,7 @@ namespace WSJTX_Controller
             {
                 var def = RuleLibrary.Definitions.FirstOrDefault(d => d.Enabled && d.Id == ruleId);
                 if (!RuleEngine.SupportsLiveTag(def)) continue;
+                if (!BandAppliesToLiveTag(def.Bands, wsjtxClient.CurrentBandStr)) continue;
 
                 try
                 {
@@ -1644,6 +1652,20 @@ namespace WSJTX_Controller
             if (oldKeys == null || newKeys == null) return -1;
             if (oldSelectedIndex < 0 || oldSelectedIndex >= oldKeys.Count) return -1;
             return newKeys.IndexOf(oldKeys[oldSelectedIndex]);
+        }
+
+        // Whether a band-restricted award ([Match] Bands=) should live-tag decodes on the
+        // radio's current band. An award with no band restriction always applies (band is
+        // irrelevant to it). An award restricted to specific bands only applies when the
+        // current band is actually one of them -- otherwise RefreshStillNeedCache() must skip
+        // it rather than substitute the current band for the award's own band, which would
+        // silently tag decodes on the wrong band as satisfying that award (e.g. tagging a 15m
+        // station as "Needed" for a 160m-only award while operating on 15m).
+        public static bool BandAppliesToLiveTag(List<string> defBands, string currentBand)
+        {
+            if (defBands == null || defBands.Count == 0) return true;
+            if (string.IsNullOrEmpty(currentBand)) return false;
+            return defBands.Any(b => b.Equals(currentBand, StringComparison.OrdinalIgnoreCase));
         }
 
         private List<string> _callQueueKeys = new List<string>();

@@ -4636,8 +4636,11 @@ namespace WSJTX_Controller
                             n = SnapshotPriorityCount(CallPriority.WANTED_CQ, visibleCalls);
                             string want = n > 0 ? $", {n} wanted" : "";
 
+                            string needed = string.Concat(SnapshotNeededAwardCounts(visibleCalls)
+                                .Select(kv => $", {kv.Value} {kv.Key}"));
+
                             string callsWaiting = (!transmitting || qsoState == WsjtxMessage.QsoStates.CALLING)
-                                ? $", {count} {callsStr}{pri}{cty}{want}"
+                                ? $", {count} {callsStr}{pri}{cty}{want}{needed}"
                                 : "";
                             string prompt = (cmdPrompts && modePrompt) ? ((txMode == TxModes.CALL_CQ) ? $", Alt E to enable transmit" : (!transmitting && qcw > 0 ? $", Control W for list or Alt N for next" : "")) : "";
 
@@ -4650,7 +4653,7 @@ namespace WSJTX_Controller
                             curTxMode = transmitting ? "Transmitting" : "Receiving";
                             string cond = (!transmitting && txMode == TxModes.CALL_CQ) ? (!cqPaused ? ((uploadResult != null || txEnableChanged) ? ", transmit enabled" : "") : ", transmit disabled") : "";
 
-                            if (newTxFirst) curTxMode = (txFirst ? "Tx first selected, " : "Tx second selected, ") + curTxMode;
+                            if (newTxFirst) curTxMode = (txFirst ? "TX1 selected, " : "TX2 selected, ") + curTxMode;
 
                             if (newPskReporter)
                             {
@@ -8031,6 +8034,39 @@ namespace WSJTX_Controller
                 if (callDict.TryGetValue(call, out d) && d.Priority == (int)p) count++;
             }
             return count;
+        }
+
+        // Counts visible decodes by their "Needed" tag text (WAS Needed, DXCC Unconf, Zone
+        // Needed, or a specific checked Rule Definition's own name + " Needed"), grouped by
+        // exact tag text since several different awards can be checked/matched at once. Feeds
+        // the periodic status summary so it names which award(s) have a station waiting, not
+        // just a bare count -- mirrors SnapshotPriorityCount's visible-vs-all fallback, but
+        // keys on Category + CategoryTag() instead of Priority, since these four categories
+        // are only ever assigned in DeriveCategory()'s default case (Priority itself doesn't
+        // distinguish them -- see DeriveCategory()'s comment on Category being separate from
+        // Priority). Reuses CategoryTag() rather than a separate naming scheme so the status
+        // bar never disagrees with what the row itself displays.
+        private Dictionary<string, int> SnapshotNeededAwardCounts(HashSet<string> visibleCalls)
+        {
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            IEnumerable<string> calls = visibleCalls;
+            if (calls == null) calls = callDict.Keys;
+
+            foreach (var call in calls)
+            {
+                if (StringComparer.OrdinalIgnoreCase.Equals(call, callInProg)) continue;
+                EnqueueDecodeMessage d;
+                if (!callDict.TryGetValue(call, out d)) continue;
+                if (d.Category != CallCategory.WAS_NEEDED && d.Category != CallCategory.DXCC_UNCONFIRMED &&
+                    d.Category != CallCategory.ZONE_NEEDED && d.Category != CallCategory.STILL_NEEDED) continue;
+
+                string tag = CategoryTag(d);
+                if (string.IsNullOrEmpty(tag)) continue;
+                int n;
+                counts.TryGetValue(tag, out n);
+                counts[tag] = n + 1;
+            }
+            return counts;
         }
 
         private string PeekVisibleCall(out EnqueueDecodeMessage dmsg, HashSet<string> visibleCalls)

@@ -794,8 +794,6 @@ namespace WSJTX_Controller
             PopulateAwardsCombo();
             _awardsLv.Items.Clear();
             _awardsLv.Columns.Clear();
-            _awardsLv.Groups.Clear();
-            _awardsLv.ShowGroups = false;
 
             if (_awardsDefs.Count == 0)
             {
@@ -880,23 +878,14 @@ namespace WSJTX_Controller
         }
 
         // Renders the per-item checklist (states/entities/zones/etc.) and, when the
-        // definition has an [Endorsements] section, a separate "Endorsements" group
-        // of per-band/per-mode sub-results below it.
+        // definition has an [Endorsements] section, a divider row followed by
+        // per-band/per-mode sub-results below it (see the divider comment below for
+        // why this is a plain row rather than a native ListView group).
         private void BuildAwardRows(RuleDefinition def, RuleResult result)
         {
             bool showWorkedCol   = def.Target == RuleTargetType.All && def.GroupBy != RuleGroupBy.None;
             bool showBandsCol    = def.GroupBy != RuleGroupBy.None;
             bool hasEndorsements = result.Endorsements != null && result.Endorsements.Count > 0;
-
-            _awardsLv.ShowGroups = hasEndorsements;
-            ListViewGroup mainGroup = null, endGroup = null;
-            if (hasEndorsements)
-            {
-                mainGroup = new ListViewGroup("main", def.GroupBy == RuleGroupBy.None ? "Summary" : "Checklist");
-                endGroup  = new ListViewGroup("end", "Endorsements");
-                _awardsLv.Groups.Add(mainGroup);
-                _awardsLv.Groups.Add(endGroup);
-            }
 
             if (def.GroupBy != RuleGroupBy.None)
             {
@@ -912,7 +901,6 @@ namespace WSJTX_Controller
                 foreach (var value in items)
                 {
                     var row = new ListViewItem(value);
-                    if (mainGroup != null) row.Group = mainGroup;
 
                     if (dxccNames != null)
                     {
@@ -940,9 +928,17 @@ namespace WSJTX_Controller
 
             if (hasEndorsements)
             {
+                // Plain divider row instead of a native ListView group -- a real ListView
+                // group (ShowGroups=true) exposes a distinct accessibility-tree node that
+                // some JAWS versions mis-announce when focus crosses back into the first
+                // group's first row (full window/tab/list structure re-announced instead
+                // of just the row). A flat list with a text divider avoids that node
+                // entirely while still visually separating the two sections.
+                _awardsLv.Items.Add(new ListViewItem("— Endorsements —"));
+
                 foreach (var end in result.Endorsements)
                 {
-                    var row = new ListViewItem($"{end.Kind}: {end.Value}") { Group = endGroup };
+                    var row = new ListViewItem($"{end.Kind}: {end.Value}");
 
                     if (def.GroupBy == RuleGroupBy.Dxcc) row.SubItems.Add("");
                     if (showBandsCol) row.SubItems.Add("");
