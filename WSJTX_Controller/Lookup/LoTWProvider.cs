@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace WSJTX_Controller
 {
-    public class LoTWProvider
+    public class LoTWProvider : ILookupProvider
     {
         private readonly string _dir;
         private readonly string _csvFile;
@@ -18,6 +18,7 @@ namespace WSJTX_Controller
 
         private const string Url = "https://lotw.arrl.org/lotw-user-activity.csv";
 
+        public string   SourceName => "LoTW";
         public bool     IsEnabled  { get; private set; }
         public string   LastError  { get; private set; }
         public DateTime LastUpdate { get; private set; }
@@ -50,6 +51,18 @@ namespace WSJTX_Controller
             if (!IsEnabled || string.IsNullOrEmpty(call)) return null;
             DateTime dt;
             return _users.TryGetValue(call, out dt) ? (DateTime?)dt : null;
+        }
+
+        // In-memory dictionary lookup only -- safe for the per-decode hot path.
+        public void Contribute(LookupRecord record, string call)
+        {
+            if (!IsEnabled || string.IsNullOrEmpty(call) || UserCount == 0) return;
+            DateTime activity;
+            if (!_users.TryGetValue(call, out activity)) return;
+
+            record.IsLoTWUser       = true;
+            record.LoTWLastActivity = activity;
+            record.Sources.Add(SourceName);
         }
 
         public bool NeedsRefresh(int days) =>

@@ -18,7 +18,7 @@ namespace WSJTX_Controller
         public bool   Deleted   { get; set; }
     }
 
-    public class ClubLogProvider
+    public class ClubLogProvider : ILookupProvider
     {
         private readonly string _dir;
         private readonly string _dataFile;
@@ -32,6 +32,7 @@ namespace WSJTX_Controller
         // https://cdn.clublog.org/").
         private const string BaseUrl = "https://cdn.clublog.org/cty.php";
 
+        public string   SourceName  => "Club Log";
         public bool     IsEnabled   { get; private set; }
         public string   LastError   { get; private set; }
         public DateTime LastUpdate  { get; private set; }
@@ -147,6 +148,25 @@ namespace WSJTX_Controller
                 }
             }
             return null;
+        }
+
+        // Synchronous, offline (FindByCallsign only reads already-downloaded
+        // cty.xml data) -- safe for the per-decode hot path.
+        public void Contribute(LookupRecord record, string call)
+        {
+            var entity = FindByCallsign(call);
+            if (entity == null) return;
+
+            if (string.IsNullOrEmpty(record.Country))   record.Country   = entity.Name;
+            if (record.Dxcc == 0)                       record.Dxcc      = entity.Adif;
+            if (string.IsNullOrEmpty(record.Continent)) record.Continent = entity.Continent;
+            if (record.CqZone == 0)                     record.CqZone    = entity.CqZone;
+            if (string.IsNullOrEmpty(record.Prefix))    record.Prefix    = entity.Prefix;
+            // FindByCallsign only ever matches non-deleted entities (see its own
+            // filter), so this is always false via this path today -- kept
+            // faithful to the data rather than hardcoded, in case that changes.
+            record.IsDeletedEntity = entity.Deleted;
+            record.Sources.Add(SourceName);
         }
 
         private void ParseFile(string path)

@@ -14,25 +14,6 @@ namespace WSJTX_Controller
         UnidentifiedQueue = 2, // QRZ supplements offline data for queued stations it cannot identify
     }
 
-    public class LookupInfo
-    {
-        public string   Callsign     { get; set; }
-        public string   Name         { get; set; }
-        public string   Grid         { get; set; }
-        public string   State        { get; set; }
-        public string   Country      { get; set; }
-        public string   Continent    { get; set; }
-        public string   County       { get; set; }
-        public int      CqZone       { get; set; }
-        public int      ItuZone      { get; set; }
-        public string   QslManager   { get; set; }
-        public string   Email        { get; set; }
-        public int      AdifEntity   { get; set; }
-        public bool     IsLoTWUser   { get; set; }
-        public DateTime?LoTWActivity { get; set; }
-        public string   Sources      { get; set; }  // comma list: "QRZ cache", "LoTW", "Club Log"
-    }
-
     public class LookupManager
     {
         private bool            _useLookupData;
@@ -42,6 +23,21 @@ namespace WSJTX_Controller
         public QrzProvider     Qrz     { get; }
         public LoTWProvider    LoTW    { get; }
         public ClubLogProvider ClubLog { get; }
+
+        // Every ILookupProvider that can contribute to a Build(call), in
+        // priority order (earlier providers' fields win -- matches the
+        // precedence GetInfoForDialog has always used: QRZ > Club Log > LoTW).
+        // Providers not owned by LookupManager itself (e.g. Controller's
+        // DxSpotWatcher) are added via RegisterProvider once constructed.
+        private readonly List<ILookupProvider> _providers = new List<ILookupProvider>();
+
+        // Adds a provider not owned by LookupManager (e.g. DxSpotWatcher, whose
+        // lifecycle Controller manages) to the Build(call) merge. Appended after
+        // the built-in providers, so it only fills fields they left blank.
+        public void RegisterProvider(ILookupProvider provider)
+        {
+            if (provider != null) _providers.Add(provider);
+        }
 
         public bool             Enabled => _useLookupData &&
                                           (Qrz.IsEnabled || LoTW.IsEnabled || ClubLog.IsEnabled);
@@ -69,6 +65,10 @@ namespace WSJTX_Controller
             Qrz     = new QrzProvider(root);
             LoTW    = new LoTWProvider(root);
             ClubLog = new ClubLogProvider(root);
+
+            _providers.Add(Qrz);
+            _providers.Add(ClubLog);
+            _providers.Add(LoTW);
         }
 
         public void Initialize(
@@ -115,76 +115,45 @@ namespace WSJTX_Controller
 
         // ── Synchronous lookups (no network) ────────────────────────────────────
 
-        public CallsignLookupResult GetCachedInfo(string call) =>
-            _useLookupData ? Qrz.GetCached(call) : null;
-
         public bool IsLoTWUser(string call) =>
             _useLookupData && LoTW.IsUser(call);
 
         public DateTime? LoTWLastActivity(string call) =>
             _useLookupData ? LoTW.LastActivity(call) : null;
 
-        public ClubLogEntity GetClubLogEntity(string call) =>
-            _useLookupData ? ClubLog.FindByCallsign(call) : null;
+        // ── Provider-agnostic lookup ─────────────────────────────────────────────
 
-        // ── Lookup dialog aggregation ────────────────────────────────────────────
-
-        // Build a LookupInfo for the dialog by merging all sources (no network).
-        // Caller should await LookupQrzAsync first if a live lookup is desired.
-        public LookupInfo GetInfoForDialog(string call)
+        // Merges every enabled provider's cached/offline knowledge of a callsign
+        // into one LookupRecord. Synchronous and network-free (each provider's
+        // Contribute() only reads its own local cache) -- safe to call from the
+        // per-decode hot path as well as the Lookup dialog. This is the single
+        // merge point for "what do we know about this station" -- no other code
+        // should call a specific provider directly.
+        public LookupRecord Build(string call)
         {
-            if (string.IsNullOrEmpty(call)) return null;
-            var info    = new LookupInfo { Callsign = call.ToUpperInvariant() };
-            var sources = new System.Collections.Generic.List<string>();
+            var record = new LookupRecord { Callsign = string.IsNullOrEmpty(call) ? call : call.ToUpperInvariant() };
+            if (string.IsNullOrEmpty(call)) return record;
 
-            // QRZ cache (highest detail)
-            var qrz = Qrz.GetCached(call);
-            if (qrz != null)
-            {
-                info.Name       = qrz.Name;
-                info.Grid       = qrz.Grid;
-                info.State      = qrz.State;
-                info.Country    = qrz.Country;
-                info.Continent  = qrz.Continent;
-                info.County     = qrz.County;
-                info.CqZone     = qrz.CqZone;
-                info.ItuZone    = qrz.ItuZone;
-                info.QslManager = qrz.QslManager;
-                info.Email      = qrz.Email;
-                sources.Add("QRZ cache");
-            }
+            foreach (var provider in _providers)
+                if (provider.IsEnabled)
+                    provider.Contribute(record, call);
 
-            // Club Log (country/DXCC if QRZ didn't supply)
-            var cl = ClubLog.FindByCallsign(call);
-            if (cl != null)
-            {
-                if (string.IsNullOrEmpty(info.Country))   info.Country   = cl.Name;
-                if (string.IsNullOrEmpty(info.Continent)) info.Continent = cl.Continent;
-                if (info.CqZone   == 0) info.CqZone   = cl.CqZone;
-                if (info.AdifEntity == 0) info.AdifEntity = cl.Adif;
-                sources.Add("Club Log");
-            }
-
-            // LoTW
-            if (LoTW.IsEnabled && LoTW.UserCount > 0)
-            {
-                info.IsLoTWUser  = LoTW.IsUser(call);
-                info.LoTWActivity = LoTW.LastActivity(call);
-                sources.Add("LoTW");
-            }
-
-            info.Sources = sources.Count > 0
-                ? string.Join(", ", sources)
-                : "No lookup data available";
-            return info;
+            return record;
         }
+
+        // Build a LookupRecord for the dialog by merging all sources (no
+        // network). Caller should await LookupQrzAsync first if a live lookup
+        // is desired. Unlike Build(call), this deliberately ignores the "Use
+        // Lookup Data" master switch: the dialog is an explicit, user-initiated
+        // request to see whatever's cached, not an automatic feature.
+        public LookupRecord GetInfoForDialog(string call) => Build(call);
 
         // ── QRZ async ────────────────────────────────────────────────────────────
 
-        public Task<CallsignLookupResult> LookupQrzAsync(string call) =>
+        public Task<LookupRecord> LookupQrzAsync(string call) =>
             _useLookupData && Qrz.IsEnabled
                 ? Qrz.LookupAsync(call)
-                : Task.FromResult<CallsignLookupResult>(null);
+                : Task.FromResult<LookupRecord>(null);
 
         public bool QrzNeedsLookup(string call) =>
             _useLookupData && Qrz.NeedsLookup(call);

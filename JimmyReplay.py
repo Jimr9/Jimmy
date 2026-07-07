@@ -76,7 +76,16 @@ LB_GETCOUNT       = 0x018B
 LB_GETTEXTLEN     = 0x018A
 LB_GETTEXT        = 0x0189
 
-_user32 = ctypes.windll.user32
+_user32   = ctypes.windll.user32
+_kernel32 = ctypes.windll.kernel32
+
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+# OpenProcess returns a HANDLE (pointer-sized) -- ctypes' default restype is a
+# 32-bit c_int, which silently truncates/misreads a 64-bit handle value on
+# 64-bit Windows. Declare it explicitly so process lookups can't go wrong.
+_kernel32.OpenProcess.restype  = ctypes.wintypes.HANDLE
+_kernel32.OpenProcess.argtypes = [ctypes.wintypes.DWORD, ctypes.wintypes.BOOL, ctypes.wintypes.DWORD]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Win32 Helpers
@@ -115,6 +124,28 @@ def _cls(hwnd):
 
 def _style(hwnd):
     return _user32.GetWindowLongW(hwnd, GWL_STYLE)
+
+def _owning_process_name(hwnd):
+    """Executable name (no path/extension case folded) of the process that
+    owns hwnd, e.g. "jimmy" for C:\\...\\Jimmy.exe. Returns "" if it can't be
+    determined (process exited, access denied, etc.) -- callers should treat
+    that as "not a match" rather than raise.
+    """
+    pid = ctypes.wintypes.DWORD()
+    _user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    if not pid.value:
+        return ""
+    handle = _kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+    if not handle:
+        return ""
+    try:
+        buf  = ctypes.create_unicode_buffer(260)
+        size = ctypes.wintypes.DWORD(260)
+        if not _kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+            return ""
+        return os.path.splitext(os.path.basename(buf.value))[0].lower()
+    finally:
+        _kernel32.CloseHandle(handle)
 
 def _read_text(hwnd):
     n = _user32.SendMessageW(hwnd, WM_GETTEXTLENGTH, 0, 0)
@@ -173,10 +204,16 @@ class JimmyVerifier:
         self._find()
 
     def _find(self):
+        # Title-prefix match alone is ambiguous -- e.g. a VS Code window titled
+        # "Jimmy - Visual Studio Code" for this workspace also starts with
+        # "Jimmy", and EnumWindows returns windows in Z-order, so whichever
+        # "Jimmy..."-titled window happens to be frontmost can win instead of
+        # the real app. Confirm ownership by the actual process image name
+        # (Jimmy.exe) so window focus/Z-order can never pick the wrong window.
         hits = []
         @_EnumWndProc
         def cb(hwnd, _):
-            if _wnd_title(hwnd).startswith("Jimmy"):
+            if _wnd_title(hwnd).startswith("Jimmy") and _owning_process_name(hwnd) == "jimmy":
                 hits.append(hwnd)
             return True
         _user32.EnumWindows(cb, 0)

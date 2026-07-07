@@ -28,9 +28,12 @@ namespace WSJTX_Controller
     //
     // All MQTTnet callbacks run on a background thread. Updated fires there too -- subscribers
     // must marshal back to the UI thread (e.g. Control.BeginInvoke) before touching any control.
-    public class DxSpotWatcher : IDisposable
+    public class DxSpotWatcher : IDisposable, ILookupProvider
     {
         private const string Broker = "mqtt.pskreporter.info";
+
+        public string SourceName => "DX Spot Watch";
+        public bool   IsEnabled  => true;
 
         private readonly IManagedMqttClient _client;
         private readonly Dictionary<string, SpotInfo> _lastSpots = new Dictionary<string, SpotInfo>(StringComparer.OrdinalIgnoreCase);
@@ -163,6 +166,20 @@ namespace WSJTX_Controller
                     .Select(c => new KeyValuePair<string, SpotInfo>(c, _lastSpots.TryGetValue(c, out var s) ? s : null))
                     .ToList();
             }
+        }
+
+        // Dictionary lookup only, already lock-protected -- safe for the
+        // per-decode hot path. Only ever contributes for calls actually on the
+        // watch list; a no-op for everything else.
+        public void Contribute(LookupRecord record, string call)
+        {
+            SpotInfo spot;
+            lock (_lock)
+            {
+                if (!_lastSpots.TryGetValue(call, out spot)) return;
+            }
+            record.LastSpot = spot;
+            record.Sources.Add(SourceName);
         }
 
         public void Dispose()

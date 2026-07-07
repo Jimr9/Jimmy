@@ -146,14 +146,14 @@ namespace WSJTX_Controller
             _countyValue.Text    = info.County     ?? "—";
             _cqzoneValue.Text    = info.CqZone > 0 ? info.CqZone.ToString() : "—";
             _ituzoneValue.Text   = info.ItuZone > 0 ? info.ItuZone.ToString() : "—";
-            _adifValue.Text      = info.AdifEntity > 0 ? info.AdifEntity.ToString() : "—";
+            _adifValue.Text      = info.Dxcc > 0 ? info.Dxcc.ToString() : "—";
             _qslManagerValue.Text= info.QslManager ?? "—";
             _emailValue.Text     = info.Email      ?? "—";
             _lotwValue.Text      = info.IsLoTWUser ? "Yes" : ((_manager.LoTW.IsEnabled && _manager.LoTW.UserCount > 0) ? "No" : "—");
-            _activityValue.Text  = info.LoTWActivity.HasValue
-                                   ? info.LoTWActivity.Value.ToLocalTime().ToString("d")
+            _activityValue.Text  = info.LoTWLastActivity.HasValue
+                                   ? info.LoTWLastActivity.Value.ToLocalTime().ToString("d")
                                    : "—";
-            _sourcesValue.Text   = info.Sources ?? "—";
+            _sourcesValue.Text   = info.SourcesText;
 
             bool canQrz = _manager.Qrz.IsEnabled &&
                           (_manager.Policy == QrzLookupPolicy.FocusedOnly ||

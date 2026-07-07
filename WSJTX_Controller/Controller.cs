@@ -627,6 +627,7 @@ namespace WSJTX_Controller
             wsjtxClient.usePskReporter = usePskReporter;
 
             lookupManager = new LookupManager();
+            lookupManager.RegisterProvider(dxSpotWatcher);
             lookupManager.Initialize(
                 useLookupData,
                 qrzEnabled, qrzUsername, qrzPassword, qrzCacheDays,

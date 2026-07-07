@@ -4168,10 +4168,10 @@ namespace WSJTX_Controller
         {
             string snr = $", {d.Snr.ToString("+#;-#;0")}";
             string countryName = d.Country;
-            if (countryName.Length == 0 && lookupManager != null)
+            if (countryName.Length == 0 && lookupManager != null && lookupManager.Enabled)
             {
-                var clEntity = lookupManager.GetClubLogEntity(call);
-                if (clEntity != null) countryName = clEntity.Name;
+                var rec = lookupManager.Build(call);
+                if (!string.IsNullOrEmpty(rec.Country)) countryName = rec.Country;
             }
             string country = countryName.Length > 0 ? $", {countryName}" : "";
 
@@ -4184,10 +4184,10 @@ namespace WSJTX_Controller
                 d.Priority != (int)CallPriority.NEW_COUNTRY)
             {
                 string state = GridToUsState(g);
-                if (state == null && lookupManager != null)
+                if (state == null && lookupManager != null && lookupManager.Enabled)
                 {
-                    var cached = lookupManager.GetCachedInfo(call);
-                    if (!string.IsNullOrEmpty(cached?.State)) state = cached.State;
+                    var rec = lookupManager.Build(call);
+                    if (!string.IsNullOrEmpty(rec.State)) state = rec.State;
                 }
                 if (state != null) country = $", {state}";
             }
@@ -7686,18 +7686,18 @@ namespace WSJTX_Controller
         {
             if (hrcUnconfirmedDxcc.Count == 0 || activeAwardTags.ContainsKey("DXCC")) return false;
             string call = d.DeCall();
-            if (string.IsNullOrEmpty(call)) return false;
-            var entity = lookupManager.GetClubLogEntity(call);
-            return entity != null && entity.Adif > 0 && hrcUnconfirmedDxcc.Contains(entity.Adif);
+            if (string.IsNullOrEmpty(call) || !lookupManager.Enabled) return false;
+            var rec = lookupManager.Build(call);
+            return rec.Dxcc > 0 && hrcUnconfirmedDxcc.Contains(rec.Dxcc);
         }
 
         private bool IsHrcZoneNeeded(EnqueueDecodeMessage d)
         {
             if (hrcNeededZones.Count == 0 || activeAwardTags.ContainsKey("WAZ")) return false;
             string call = d.DeCall();
-            if (string.IsNullOrEmpty(call)) return false;
-            var entity = lookupManager.GetClubLogEntity(call);
-            return entity != null && entity.CqZone > 0 && hrcNeededZones.Contains(entity.CqZone);
+            if (string.IsNullOrEmpty(call) || !lookupManager.Enabled) return false;
+            var rec = lookupManager.Build(call);
+            return rec.CqZone > 0 && hrcNeededZones.Contains(rec.CqZone);
         }
 
         // Matches a decode against every actively-checked award (activeAwardTags), built by
@@ -7731,8 +7731,8 @@ namespace WSJTX_Controller
 
                     case RuleGroupBy.CqZone:
                     {
-                        var entity = lookupManager.GetClubLogEntity(call);
-                        match = entity != null && entity.CqZone > 0 && tag.Set.Contains(entity.CqZone.ToString());
+                        var rec = lookupManager.Enabled ? lookupManager.Build(call) : null;
+                        match = rec != null && rec.CqZone > 0 && tag.Set.Contains(rec.CqZone.ToString());
                         break;
                     }
 
@@ -7745,8 +7745,8 @@ namespace WSJTX_Controller
 
                     case RuleGroupBy.Dxcc:
                     {
-                        var entity = lookupManager.GetClubLogEntity(call);
-                        match = entity != null && entity.Adif > 0 && tag.Set.Contains(entity.Adif.ToString());
+                        var rec = lookupManager.Enabled ? lookupManager.Build(call) : null;
+                        match = rec != null && rec.Dxcc > 0 && tag.Set.Contains(rec.Dxcc.ToString());
                         break;
                     }
 

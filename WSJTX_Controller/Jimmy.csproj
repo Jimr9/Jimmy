@@ -186,7 +186,8 @@
     </Compile>
     <Compile Include="UsGridStateMap.cs" />
     <Compile Include="WsjtxClient.cs" />
-    <Compile Include="Lookup\CallsignLookupResult.cs" />
+    <Compile Include="Lookup\LookupRecord.cs" />
+    <Compile Include="Lookup\ILookupProvider.cs" />
     <Compile Include="Lookup\QrzProvider.cs" />
     <Compile Include="Lookup\LoTWProvider.cs" />
     <Compile Include="Lookup\ClubLogProvider.cs" />

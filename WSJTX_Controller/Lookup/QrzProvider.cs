@@ -41,7 +41,7 @@ namespace WSJTX_Controller
         }
     }
 
-    public class QrzProvider
+    public class QrzProvider : ILookupProvider
     {
         private readonly string _cacheFile;
         private Dictionary<string, QrzCacheEntry> _cache =
@@ -57,6 +57,7 @@ namespace WSJTX_Controller
             new XmlSerializer(typeof(QrzCacheFile));
         private bool _cacheLoaded;
 
+        public string SourceName   => "QRZ";
         public bool   IsEnabled    { get; private set; }
         public string Username     { get; private set; } = "";
         public string LastError    { get; private set; }
@@ -80,7 +81,7 @@ namespace WSJTX_Controller
             if (!_cacheLoaded) { LoadCache(); _cacheLoaded = true; }
         }
 
-        public CallsignLookupResult GetCached(string call)
+        public LookupRecord GetCached(string call)
         {
             if (!IsEnabled || string.IsNullOrEmpty(call)) return null;
             lock (_cacheLock)
@@ -90,6 +91,26 @@ namespace WSJTX_Controller
                 if ((DateTime.UtcNow - e.CachedAtDt).TotalDays >= _cacheDays) return null;
                 return ToResult(e);
             }
+        }
+
+        // Cache-only, synchronous -- safe for the per-decode hot path. Fills
+        // whatever the cached entry has; leaves everything else on record alone.
+        public void Contribute(LookupRecord record, string call)
+        {
+            var cached = GetCached(call);
+            if (cached == null) return;
+
+            if (string.IsNullOrEmpty(record.Name))       record.Name       = cached.Name;
+            if (string.IsNullOrEmpty(record.Grid))       record.Grid       = cached.Grid;
+            if (string.IsNullOrEmpty(record.State))      record.State      = cached.State;
+            if (string.IsNullOrEmpty(record.Country))    record.Country    = cached.Country;
+            if (string.IsNullOrEmpty(record.Continent))  record.Continent  = cached.Continent;
+            if (string.IsNullOrEmpty(record.County))     record.County     = cached.County;
+            if (record.CqZone == 0)                      record.CqZone     = cached.CqZone;
+            if (record.ItuZone == 0)                      record.ItuZone    = cached.ItuZone;
+            if (string.IsNullOrEmpty(record.QslManager)) record.QslManager = cached.QslManager;
+            if (string.IsNullOrEmpty(record.Email))      record.Email      = cached.Email;
+            record.Sources.Add(SourceName);
         }
 
         public bool NeedsLookup(string call)
@@ -103,7 +124,7 @@ namespace WSJTX_Controller
             }
         }
 
-        public async Task<CallsignLookupResult> LookupAsync(string call)
+        public async Task<LookupRecord> LookupAsync(string call)
         {
             if (!IsEnabled || string.IsNullOrEmpty(call)) return null;
             await _rateLimiter.WaitAsync().ConfigureAwait(false);
@@ -239,7 +260,7 @@ namespace WSJTX_Controller
             return string.IsNullOrEmpty(t) ? null : t;
         }
 
-        private static CallsignLookupResult ToResult(QrzCacheEntry e) => new CallsignLookupResult
+        private static LookupRecord ToResult(QrzCacheEntry e) => new LookupRecord
         {
             Callsign   = e.Callsign,
             Country    = e.Country,
