@@ -38,6 +38,8 @@ namespace WSJTX_Controller
             this.advUiPanel = new System.Windows.Forms.Panel();
             this.wantedCallsTabPage = new System.Windows.Forms.TabPage();
             this.wantedCallsPanel = new System.Windows.Forms.Panel();
+            this.spotWatchTabPage = new System.Windows.Forms.TabPage();
+            this.spotWatchPanel = new System.Windows.Forms.Panel();
             this.soundsTabPage = new System.Windows.Forms.TabPage();
             this.soundsPanel = new System.Windows.Forms.Panel();
             this.appearanceTabPage = new System.Windows.Forms.TabPage();
@@ -90,6 +92,8 @@ namespace WSJTX_Controller
             this.advUiPanel.SuspendLayout();
             this.wantedCallsTabPage.SuspendLayout();
             this.wantedCallsPanel.SuspendLayout();
+            this.spotWatchTabPage.SuspendLayout();
+            this.spotWatchPanel.SuspendLayout();
             this.soundsTabPage.SuspendLayout();
             this.soundsPanel.SuspendLayout();
             this.appearanceTabPage.SuspendLayout();
@@ -108,10 +112,11 @@ namespace WSJTX_Controller
             this.tabControl1.Controls.Add(this.hotkeysTabPage);       // index 4
             this.tabControl1.Controls.Add(this.advUiTabPage);         // index 5
             this.tabControl1.Controls.Add(this.wantedCallsTabPage);   // index 6
-            this.tabControl1.Controls.Add(this.soundsTabPage);        // index 7
-            this.tabControl1.Controls.Add(this.udpTabPage);           // index 8
-            this.tabControl1.Controls.Add(this.lookupTabPage);        // index 9
-            this.tabControl1.Controls.Add(this.appearanceTabPage);    // index 10
+            this.tabControl1.Controls.Add(this.spotWatchTabPage);     // index 7
+            this.tabControl1.Controls.Add(this.soundsTabPage);        // index 8
+            this.tabControl1.Controls.Add(this.udpTabPage);           // index 9
+            this.tabControl1.Controls.Add(this.lookupTabPage);        // index 10
+            this.tabControl1.Controls.Add(this.appearanceTabPage);    // index 11
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Multiline = true;
             this.tabControl1.Name = "tabControl1";
@@ -287,6 +292,19 @@ namespace WSJTX_Controller
             this.wantedCallsPanel.AutoScroll = true;
             this.wantedCallsPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.wantedCallsPanel.Name = "wantedCallsPanel";
+            //
+            // spotWatchTabPage
+            //
+            this.spotWatchTabPage.Controls.Add(this.spotWatchPanel);
+            this.spotWatchTabPage.Text = "Spot Watch";
+            this.spotWatchTabPage.Name = "spotWatchTabPage";
+            this.spotWatchTabPage.AccessibleName = "Spot Watch tab";
+            //
+            // spotWatchPanel
+            //
+            this.spotWatchPanel.AutoScroll = true;
+            this.spotWatchPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.spotWatchPanel.Name = "spotWatchPanel";
             //
             // soundsTabPage
             //
@@ -737,6 +755,8 @@ namespace WSJTX_Controller
             this.advUiPanel.ResumeLayout(false);
             this.wantedCallsTabPage.ResumeLayout(false);
             this.wantedCallsPanel.ResumeLayout(false);
+            this.spotWatchTabPage.ResumeLayout(false);
+            this.spotWatchPanel.ResumeLayout(false);
             this.soundsTabPage.ResumeLayout(false);
             this.soundsPanel.ResumeLayout(false);
             this.appearanceTabPage.ResumeLayout(false);
@@ -806,6 +826,8 @@ namespace WSJTX_Controller
         private System.Windows.Forms.Panel advUiPanel;
         private System.Windows.Forms.TabPage wantedCallsTabPage;
         private System.Windows.Forms.Panel wantedCallsPanel;
+        private System.Windows.Forms.TabPage spotWatchTabPage;
+        private System.Windows.Forms.Panel spotWatchPanel;
         private System.Windows.Forms.TabPage soundsTabPage;
         private System.Windows.Forms.Panel soundsPanel;
         private System.Windows.Forms.TabPage lookupTabPage;

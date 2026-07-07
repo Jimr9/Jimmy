@@ -37,6 +37,7 @@ namespace WSJTX_Controller
         public bool advShowTx1 { get => Settings.AdvShowTx1; set => Settings.AdvShowTx1 = value; }
         public bool advShowTx2 { get => Settings.AdvShowTx2; set => Settings.AdvShowTx2 = value; }
         public bool advShowRaw { get => Settings.AdvShowRaw; set => Settings.AdvShowRaw = value; }
+        public bool showSpotWatch { get => Settings.ShowSpotWatch; set => Settings.ShowSpotWatch = value; }
         public bool rawShowCq = true;
         public bool rawShowDirected = true;
         public bool rawShowReports = true;
@@ -59,7 +60,6 @@ namespace WSJTX_Controller
         public int maxQueuedCallsBase = 5;
         public bool keepTransmitListDuringTx = false;
         public bool keepListPositionDuringRefresh = false;
-        public bool dontTransmitToBusyStation = false;
 
         // Sound settings: enabled flags and file paths for each sound event
         // CallAdded/CallingMe/Logged enabled state is controlled by existing checkboxes
@@ -124,6 +124,10 @@ namespace WSJTX_Controller
         // the Logbook window has been opened. Empty = none actively tracked. Several awards
         // can be tracked at once (see RefreshStillNeedCache()).
         public HashSet<string> activeAwardRuleIds = new HashSet<string>();
+
+        // DX Spot Watch: tracks last-seen band/time/spotter for a user-curated callsign list
+        // via the PSKReporter MQTT feed. See spotWatchCalls (WsjtxClient) for the watch list.
+        private DxSpotWatcher dxSpotWatcher;
 
         // Lookup / Data settings
         public LookupManager    lookupManager;
@@ -292,6 +296,7 @@ namespace WSJTX_Controller
             string callingPrioritiesStr = null;
             string categoryDisabledStr = null;  // legacy migration only
             string wantedCallsStr = null;
+            string spotWatchCallsStr = null;
 
             if (iniFile == null || !iniFile.KeyExists("firstRun"))     //.ini file not written yet, read properties (possibly set defaults)
             {
@@ -427,6 +432,7 @@ namespace WSJTX_Controller
                 if (iniFile.KeyExists("callingPriorities")) callingPrioritiesStr = iniFile.Read("callingPriorities");
                 else if (iniFile.KeyExists("categoryDisabled")) categoryDisabledStr = iniFile.Read("categoryDisabled"); // migrate from old setting
                 if (iniFile.KeyExists("wantedCalls"))       wantedCallsStr       = iniFile.Read("wantedCalls");
+                if (iniFile.KeyExists("spotWatchCalls"))    spotWatchCallsStr    = iniFile.Read("spotWatchCalls");
                 if (iniFile.KeyExists("wantedCallAnywhereEnabled")) wantedCallAnywhereEnabled = iniFile.Read("wantedCallAnywhereEnabled") == "True";
                 rawPriorityTags = iniFile.Read("rawPriorityTags") == "True";
                 cqGridRadioButton.Checked = iniFile.Read("cqGrid") == "True";
@@ -464,7 +470,6 @@ namespace WSJTX_Controller
                     maxQueuedCallsBase = maxQueued;
                 keepTransmitListDuringTx = iniFile.Read("keepTransmitListDuringTx") == "True";
                 keepListPositionDuringRefresh = iniFile.Read("keepListPositionDuringRefresh") == "True";
-                dontTransmitToBusyStation = iniFile.Read("dontTransmitToBusyStation") == "True";
 
                 // Sound settings: migrate old enabled keys for backward compat
                 // Enabled state for CallAdded/CallingMe/Logged already read above from playCallAdded/playMyCall/playLogged
@@ -612,6 +617,11 @@ namespace WSJTX_Controller
                     FormatCallingPriorities(wsjtxClient.Ranker.callingEnabled));
             }
             wsjtxClient.ApplyWantedCalls(ParseWantedCalls(wantedCallsStr));
+            wsjtxClient.ApplySpotWatchCalls(ParseSpotWatchCalls(spotWatchCallsStr));
+
+            dxSpotWatcher = new DxSpotWatcher();
+            dxSpotWatcher.Updated += () => BeginInvoke(new Action(RenderSpotWatchList));
+            dxSpotWatcher.UpdateWatchList(wsjtxClient.spotWatchCalls);
             wsjtxClient.rawPriorityTags = rawPriorityTags;
             wsjtxClient.cmdPrompts = cmdPrompts;
             wsjtxClient.usePskReporter = usePskReporter;
@@ -774,6 +784,7 @@ namespace WSJTX_Controller
                 iniFile.Write("categoryWeights",   FormatCategoryWeights(wsjtxClient.Ranker.categoryWeight));
                 iniFile.Write("callingPriorities", FormatCallingPriorities(wsjtxClient.Ranker.callingEnabled));
                 iniFile.Write("wantedCalls",              FormatWantedCalls(wsjtxClient.wantedCalls));
+                iniFile.Write("spotWatchCalls",            FormatSpotWatchCalls(wsjtxClient.spotWatchCalls));
                 iniFile.Write("wantedCallAnywhereEnabled", wantedCallAnywhereEnabled.ToString());
                 iniFile.Write("rawPriorityTags",          rawPriorityTags.ToString());
                 iniFile.Write("replyRR73", replyRR73CheckBox.Checked.ToString());
@@ -806,7 +817,6 @@ namespace WSJTX_Controller
                 iniFile.Write("maxQueuedCalls", maxQueuedCallsBase.ToString());
                 iniFile.Write("keepTransmitListDuringTx", keepTransmitListDuringTx.ToString());
                 iniFile.Write("keepListPositionDuringRefresh", keepListPositionDuringRefresh.ToString());
-                iniFile.Write("dontTransmitToBusyStation", dontTransmitToBusyStation.ToString());
                 // Sound settings
                 iniFile.Write("soundFile_CallAdded",        soundFile_CallAdded   ?? "");
                 iniFile.Write("soundFile_CallingMe",        soundFile_CallingMe   ?? "");
@@ -1361,6 +1371,13 @@ namespace WSJTX_Controller
                 {
                     naturalHeight = sortOrderButton.Location.Y + sortOrderButton.Height + 45;
                 }
+                // Spot Watch is a separate, independent feature from Advanced Call Layout (it
+                // sits beside the Tx1/Tx2/Raw column at a fixed position/size, not stacked with
+                // them), so its own height requirement is folded in here rather than into the
+                // anyAdvList branch above -- it must grow the window whether or not Advanced
+                // Call Layout is on.
+                if (showSpotWatch)
+                    naturalHeight = Math.Max(naturalHeight, spotWatchListBox.Location.Y + spotWatchListBox.Height + 45);
                 // 390 is the original Designer minimum height (today's default/safe floor);
                 // never let the per-configuration natural height shrink below it.
                 MinimumSize = new Size(MinimumSize.Width, Math.Max(390, naturalHeight));
@@ -1805,6 +1822,66 @@ namespace WSJTX_Controller
             finally { logListBox.EndUpdate(); }
             if (focused && newIdx >= 0 && logListBox.Items.Count > 0)
                 logListBox.SelectedIndex = newIdx;
+        }
+
+        private List<string> _spotWatchKeys = new List<string>();
+
+        // Called (via BeginInvoke, already marshalled to the UI thread) whenever
+        // DxSpotWatcher's watch list or any watched call's last-seen data changes. One row per
+        // watched call, alphabetical (stable order -- see DxSpotWatcher.Snapshot). Quiet update:
+        // no sound, no forced screen-reader announcement, same change-detection + identity-based
+        // selection-preservation shape as every other Render* method here.
+        private void RenderSpotWatchList()
+        {
+            var snapshot = dxSpotWatcher.Snapshot();
+            var items = new List<string>(snapshot.Count);
+            var keys = new List<string>(snapshot.Count);
+            foreach (var kv in snapshot)
+            {
+                keys.Add(kv.Key);
+                items.Add(FormatSpotWatchRow(kv.Key, kv.Value));
+            }
+
+            bool changed = spotWatchListBox.Items.Count != items.Count;
+            if (!changed)
+            {
+                for (int i = 0; i < items.Count; i++)
+                {
+                    if ((string)spotWatchListBox.Items[i] != items[i]) { changed = true; break; }
+                }
+            }
+            if (!changed) return;
+
+            bool focused = spotWatchListBox.Focused;
+            int prevIdx = focused ? spotWatchListBox.SelectedIndex : -1;
+            int newIdx = FindPreservedSelectionIndex(_spotWatchKeys, prevIdx, keys);
+            _spotWatchKeys = keys;
+
+            spotWatchListBox.BeginUpdate();
+            try
+            {
+                spotWatchListBox.Items.Clear();
+                spotWatchListBox.Items.AddRange(items.ToArray());
+            }
+            finally { spotWatchListBox.EndUpdate(); }
+            if (focused && newIdx >= 0 && spotWatchListBox.Items.Count > 0)
+                spotWatchListBox.SelectedIndex = newIdx;
+        }
+
+        private static string FormatSpotWatchRow(string call, SpotInfo spot)
+        {
+            if (spot == null) return $"{call} -- not yet spotted";
+            string grid = string.IsNullOrEmpty(spot.SpotterGrid) ? "" : $" ({spot.SpotterGrid})";
+            return $"{call} -- last spotted {FormatSpotAge(spot.UtcTime)}, {spot.Band} {spot.Mode}, by {spot.SpotterCall}{grid}";
+        }
+
+        private static string FormatSpotAge(DateTime utcTime)
+        {
+            var age = DateTime.UtcNow - utcTime;
+            if (age.TotalSeconds < 90) return "just now";
+            if (age.TotalMinutes < 90) return $"{(int)age.TotalMinutes} min ago";
+            if (age.TotalHours < 36) return $"{(int)age.TotalHours} hr ago";
+            return $"{(int)age.TotalDays} days ago";
         }
 
         private void IncludeHelpLabel_Click(object sender, EventArgs e)
@@ -2410,6 +2487,17 @@ namespace WSJTX_Controller
                 }
             }
 
+            if (hotkeyConfig[HotkeyAction.NavSpotWatch] != Keys.None && e.KeyData == hotkeyConfig[HotkeyAction.NavSpotWatch])
+            {
+                if (spotWatchListBox.Visible)
+                {
+                    if (formLoaded && wsjtxClient.ConnectedToWsjtx()) wsjtxClient.HaltTuning();
+                    spotWatchListBox.Focus();
+                    if (spotWatchListBox.Items.Count > 0 && spotWatchListBox.SelectionMode != SelectionMode.None && spotWatchListBox.SelectedIndex < 0)
+                        spotWatchListBox.SelectedIndex = 0;
+                }
+            }
+
             if (!formLoaded) return;
 
             if (e.KeyCode == Keys.Escape)               //halt Tx, return to Listen mode
@@ -2758,6 +2846,41 @@ namespace WSJTX_Controller
                 iniFile.Write("wantedCalls", FormatWantedCalls(normalized));
         }
 
+        // Serialize spotWatchCalls to a comma-separated list of callsigns.
+        // Deliberately its own list, separate from wantedCalls, so adding a call here has no
+        // effect on call-queue ranking priority -- see project decision, 2026-07-07.
+        // Public (unlike FormatWantedCalls) so JimmyTests can cover the round-trip directly --
+        // matches the existing FormatActiveAwardRuleIds/ParseActiveAwardRuleIds precedent below.
+        public static string FormatSpotWatchCalls(HashSet<string> calls)
+        {
+            if (calls == null || calls.Count == 0) return string.Empty;
+            var sorted = new List<string>(calls);
+            sorted.Sort(StringComparer.OrdinalIgnoreCase);
+            return string.Join(",", sorted);
+        }
+
+        // Parse a spotWatchCalls INI string into a HashSet (uppercase, trimmed, no duplicates).
+        public static HashSet<string> ParseSpotWatchCalls(string s)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(s)) return result;
+            foreach (var tok in s.Split(new char[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string call = tok.Trim().ToUpperInvariant();
+                if (!string.IsNullOrEmpty(call)) result.Add(call);
+            }
+            return result;
+        }
+
+        // Called by OptionsDlg when the Spot Watch tab is saved.
+        public void ApplyAndSaveSpotWatchCalls(HashSet<string> normalized)
+        {
+            wsjtxClient.ApplySpotWatchCalls(normalized);
+            if (iniFile != null)
+                iniFile.Write("spotWatchCalls", FormatSpotWatchCalls(normalized));
+            dxSpotWatcher?.UpdateWatchList(normalized);
+        }
+
         private void callListBox_MouseDown(object sender, MouseEventArgs e)
         {
             mouseEventArgs = e;
@@ -2797,7 +2920,8 @@ namespace WSJTX_Controller
                 if (dblClk)   //left-dbl-click (no modifier)
                 {
                     if (callListBox.SelectionMode == SelectionMode.None) return;
-                    wsjtxClient.NextCall(false, wsjtxClient.MapNormalListIndex(idx), operatorSelected: true);
+                    int mappedIdx = wsjtxClient.MapNormalListIndex(idx);
+                    wsjtxClient.NextCall(false, mappedIdx, operatorSelected: true, expectedCall: wsjtxClient.GetCallAtIndex(mappedIdx));
                 }
                 else
                 {
@@ -3009,7 +3133,8 @@ namespace WSJTX_Controller
 
             e.Handled = true;   // prevent Win32 ListBox type-ahead after our handler
             int idx = callListBox.SelectedIndex;
-            wsjtxClient.NextCall(false, wsjtxClient.MapNormalListIndex(idx), operatorSelected: true);
+            int mappedIdx = wsjtxClient.MapNormalListIndex(idx);
+            wsjtxClient.NextCall(false, mappedIdx, operatorSelected: true, expectedCall: wsjtxClient.GetCallAtIndex(mappedIdx));
         }
 
         private void statusText_TextChanged(object sender, EventArgs e)
@@ -3124,9 +3249,17 @@ namespace WSJTX_Controller
             advRawLabel.Visible   = showRaw;
             advRawListBox.Visible = showRaw;
 
-            // Reposition and resize visible advanced lists so they stack tightly
+            // Spot Watch is a separate feature from Advanced Call Layout -- shown/hidden by its
+            // own flag, independent of advancedCallLayout -- but it shares the same stacked
+            // column below the main controls (x=10, full width), so its position/size is
+            // computed in the same block as Tx1/Tx2/Raw rather than fighting over the same
+            // screen space with an independent layout pass. It never hides callListBox.
+            spotWatchLabel.Visible   = showSpotWatch;
+            spotWatchListBox.Visible = showSpotWatch;
+
+            // Reposition and resize visible advanced/spot-watch lists so they stack tightly
             // starting just below the last main-control row, with height scaled to count.
-            if (anyAdvList)
+            if (anyAdvList || showSpotWatch)
             {
                 const int startY   = 376;   // first label Y (same as designer baseline)
                 const int labelH   = 14;    // approx height of bold 8.25pt label
@@ -3188,6 +3321,17 @@ namespace WSJTX_Controller
                     y += labelH + labelGap;
                     advRawListBox.Location = new Point(listX, y);
                     advRawListBox.Size     = new Size(listW, rawH);
+                    y += rawH + groupGap;
+                }
+                if (showSpotWatch)
+                {
+                    // Fixed height (not part of the Tx1/Tx2/Raw extra-space distribution above)
+                    // -- keeps this first slice simple; can share in that distribution later.
+                    const int spotWatchH = 92;
+                    spotWatchLabel.Location   = new Point(listX, y);
+                    y += labelH + labelGap;
+                    spotWatchListBox.Location = new Point(listX, y);
+                    spotWatchListBox.Size     = new Size(listW, spotWatchH);
                 }
             }
             else

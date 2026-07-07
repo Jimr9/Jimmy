@@ -75,7 +75,6 @@ namespace WSJTX_Controller
         private List<string> sentReportList = new List<string>();
         private List<string> sentCallList = new List<string>();
         private Dictionary<string, List<EnqueueDecodeMessage>> allCallDict = new Dictionary<string, List<EnqueueDecodeMessage>>();            //all calls to this station plus CQs (and replies: grids) processed
-        private Dictionary<string, EnqueueDecodeMessage> lastCallActivity = new Dictionary<string, EnqueueDecodeMessage>();   //most recent decode seen from each call, unfiltered (unlike allCallDict) -- used by IsStationBusyElsewhere()
         private Dictionary<string, int> timeoutCallDict = new Dictionary<string, int>();    //calls sent to myCall immed after timeout
         private List<string> blockList = new List<string>();
         private List<string> unwantedCqList = new List<string>();      //caller is unwanted directed CQ
@@ -372,6 +371,11 @@ namespace WSJTX_Controller
         // User-defined always-wanted callsigns. Calls matching this set get ALWAYS_WANTED category.
         public HashSet<string> wantedCalls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // User-defined DX Spot Watch list -- deliberately separate from wantedCalls so a call
+        // added here has no effect on call-queue ranking priority, only on which callsigns
+        // DxSpotWatcher tracks for "last spotted" reporting via the PSKReporter MQTT feed.
+        public HashSet<string> spotWatchCalls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         // HRC database caches — populated from the local Ham Radio Center database at startup,
         // after each import, and after each band change.  All lookups are in-memory.
         public HashSet<string> hrcNeededStates    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -435,6 +439,15 @@ namespace WSJTX_Controller
                 }
             }
             SortCalls();
+        }
+
+        // Apply DX Spot Watch callsign list (loaded from INI or set by Options UI). Unlike
+        // ApplyWantedCalls, this list never affects call-queue ranking/category, so there is
+        // nothing here to re-derive -- Controller.ApplyAndSaveSpotWatchCalls is what also kicks
+        // DxSpotWatcher to update its MQTT subscriptions.
+        public void ApplySpotWatchCalls(HashSet<string> watched)
+        {
+            spotWatchCalls = watched ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
         private enum Periods
@@ -2337,7 +2350,6 @@ namespace WSJTX_Controller
             }
 
             bool toMyCall = dmsg.IsCallTo(myCall);
-            lastCallActivity[deCall] = dmsg;    //most recent decode from deCall, regardless of who it's directed to -- see IsStationBusyElsewhere()
             dmsg.OffAir = true;     //default: play sound
 
             //do some processing not directly related to replying immediately
@@ -2474,14 +2486,21 @@ namespace WSJTX_Controller
                 bool isCorrectTimePeriod = IsCorrectTimePeriodForMode(dmsg);
                 DebugOutput($"{spacer}isCorrectTimePeriod:{isCorrectTimePeriod}");
 
-                bool ignore = (dmsg.Is73() || (dmsg.IsRR73() && !ctrl.replyRR73CheckBox.Checked)) && logList.Contains(deCall);
+                // IsRogers() (bare "RRR") is included here alongside 73/RR73: per FT8/FT4
+                // protocol, RRR just means "all received" -- it isn't itself a sign-off, so a
+                // station can legitimately keep repeating it (e.g. auto-repeating because they
+                // haven't yet decoded our final 73). But once we've already logged this call
+                // this session/band, a repeat RRR is never a new contact opportunity -- it must
+                // not silently re-add them to the queue as if unworked (see project notes,
+                // 2026-07-07: AC7WY reappearing in the list after being logged).
+                bool ignore = (dmsg.Is73() || dmsg.IsRogers() || (dmsg.IsRR73() && !ctrl.replyRR73CheckBox.Checked)) && logList.Contains(deCall);
                 if (ignore)
                 {
                     finalSignoffCall = deCall;
                     ShowStatus();
                 }
 
-                if (!txEnabled && deCall != null && !dmsg.Is73orRR73())
+                if (!txEnabled && deCall != null && !dmsg.Is73orRR73() && !ignore)
                 {
                     if (!callQueue.Contains(deCall))
                     {
@@ -2518,7 +2537,7 @@ namespace WSJTX_Controller
                     }
                     else
                     {
-                        if (!dmsg.Is73orRR73())       //not a 73 or RR73
+                        if (!dmsg.Is73orRR73() && !ignore)       //not a 73 or RR73 (or an already-logged repeat signoff)
                         {
                             DebugOutput($"{spacer}not a 73 or RR73");
                             if (deCall != callInProg)
@@ -4458,7 +4477,7 @@ namespace WSJTX_Controller
             string call = GetCallAtTx1Index(listIdx);
             if (call == null) return;
             int qi = FindCallIndexInQueue(call);
-            if (qi >= 0) NextCall(false, qi, operatorSelected: true);
+            if (qi >= 0) NextCall(false, qi, operatorSelected: true, expectedCall: call);
         }
 
         public void NextCallFromTx2(int listIdx)
@@ -4466,7 +4485,7 @@ namespace WSJTX_Controller
             string call = GetCallAtTx2Index(listIdx);
             if (call == null) return;
             int qi = FindCallIndexInQueue(call);
-            if (qi >= 0) NextCall(false, qi, operatorSelected: true);
+            if (qi >= 0) NextCall(false, qi, operatorSelected: true, expectedCall: call);
         }
 
         // Maps a filtered display index (advRawListBox.SelectedIndex) to the
@@ -4501,7 +4520,7 @@ namespace WSJTX_Controller
             {
                 if (string.Equals(arr[i], deCall, StringComparison.OrdinalIgnoreCase))
                 {
-                    NextCall(false, i, operatorSelected: true);
+                    NextCall(false, i, operatorSelected: true, expectedCall: deCall);
                     return;
                 }
             }
@@ -6158,11 +6177,24 @@ namespace WSJTX_Controller
             ctrl.statusText.Text = "No priority calls available";
         }
 
-        public void NextCall(bool confirm, int idx, bool operatorSelected = false)
+        // Resolves the queue index to actually dispatch to. When expectedCall was
+        // captured at selection time, re-locates that call's *current* position via
+        // lookupCurrentIndex rather than trusting rawIdx -- the queue reorders on
+        // essentially every decode cycle, so by the time dialogTimer2_Tick fires
+        // ~20ms later, the operator's selected call has very likely moved, not
+        // vanished. Only a lookup failure (-1) means the call actually left the
+        // queue and dispatch must be aborted; a mere reorder must still work it.
+        // Without an identity (legacy callers), rawIdx is used as-is.
+        public static int ResolveDispatchIndex(string expectedCall, int rawIdx, Func<string, int> lookupCurrentIndex)
+        {
+            return expectedCall == null ? rawIdx : lookupCurrentIndex(expectedCall);
+        }
+
+        public void NextCall(bool confirm, int idx, bool operatorSelected = false, string expectedCall = null)
         {
             HaltTuning();
-            DebugOutput($"{Time()} NextCall {idx} operatorSelected:{operatorSelected}");
-            dialogTimer2.Tag = $"{confirm} {idx} {operatorSelected}";
+            DebugOutput($"{Time()} NextCall {idx} operatorSelected:{operatorSelected} expectedCall:{expectedCall ?? "(none)"}");
+            dialogTimer2.Tag = $"{confirm} {idx} {operatorSelected} {expectedCall ?? ""}";
             dialogTimer2.Start();
         }
 
@@ -6174,9 +6206,23 @@ namespace WSJTX_Controller
             bool confirm = a[0] == "True";
             int idx = Convert.ToInt32(a[1]);
             bool operatorSelected = a.Length > 2 && a[2] == "True";
-            if (idx < 0) idx = 0;
+            string expectedCall = a.Length > 3 && a[3].Length > 0 ? a[3] : null;
 
-            DebugOutput($"{Time()} dialogTimer2_Tick, idx:{idx}");
+            idx = ResolveDispatchIndex(expectedCall, idx, FindCallIndexInQueue);
+
+            DebugOutput($"{Time()} dialogTimer2_Tick, idx:{idx} expectedCall:{expectedCall ?? "(none)"}");
+
+            // Never substitute another call for the one the operator selected: bail out
+            // rather than guessing (see ResolveDispatchIndex above). A quiet status-text
+            // update (no sound, no forced screen-reader announcement) tells the operator
+            // why nothing happened instead of leaving Enter/Space looking like a no-op.
+            if (idx < 0)
+            {
+                DebugOutput($"{spacer}NextCall aborted: selected call no longer in queue");
+                StatusView.ShowMessage(expectedCall != null ? $"{expectedCall} no longer available" : "No call selected", false);
+                return;
+            }
+
             if (callQueue.Count > 0)
             {
                 if (idx >= callQueue.Count) return;
@@ -6379,32 +6425,6 @@ namespace WSJTX_Controller
             if (!allCallDict.TryGetValue(call, out vlist)) allCallDict.Add(call, vlist = new List<EnqueueDecodeMessage>());
             vlist.Add(emsg);        //messages from call are in order rec'd, will be duplicate msg types
             DebugOutput($"{Time()} AddAllCallDict, call:{call} msg.Message:{emsg.Message}");
-        }
-
-        // True if call's most recently seen decode shows them actively engaged with a
-        // different station (not myCall, not a bare CQ) within the last couple of TX
-        // periods -- i.e. they aren't listening for us right now. CheckNextXmit() already
-        // re-evaluates the whole Tx decision every cycle, so skipping a transmit on this
-        // basis can't lose the opportunity, just defers it to the next cycle's re-check.
-        private bool IsStationBusyElsewhere(string call)
-        {
-            if (call == null) return false;
-            if (!lastCallActivity.TryGetValue(call, out EnqueueDecodeMessage dmsg)) return false;
-
-            string toCall = dmsg.ToCall();
-            // A 73/RR73/Rogers means the OTHER exchange is ending -- the station is about to
-            // be free, not busy. Mirrors AddSelectedCall's existing "ready" vs "busy"
-            // distinction (toCallStatus) for a station already in callInProg.
-            if (toCall == null || toCall == "CQ" || toCall == myCall
-                || dmsg.Is73orRR73() || dmsg.IsRogers()) return false;
-
-            if (trPeriod == null) return false;
-            var ts = new TimeSpan(0, 0, (2 * (int)trPeriod) / 1000);      //allow up to ~2 periods before considered stale
-            var age = DateTime.UtcNow - (dmsg.RxDate + dmsg.SinceMidnight);
-            DebugOutput($"{spacer}IsStationBusyElsewhere: call:{call} toCall:{toCall} msg:'{dmsg.Message}' age:{age.TotalSeconds:F1}s ts:{ts.TotalSeconds:F1}s");
-            if (age > ts) return false;
-
-            return true;
         }
 
         //remove old rec'd calls
@@ -7521,13 +7541,6 @@ namespace WSJTX_Controller
             string nCall = dmsg.DeCall();
             string toCall = WsjtxMessage.ToCall(dmsg.Message);
             DebugOutput($"{Time()} ReplyTo, nCall:'{nCall}' toCall:{toCall}");
-
-            if (ctrl.dontTransmitToBusyStation && IsStationBusyElsewhere(nCall))
-            {
-                DebugOutput($"{Time()} ReplyTo, skipped: {nCall} is busy with another station, will retry next cycle");
-                StatusView.ShowMessage($"Waiting -- {nCall} is busy, will retry next cycle", false);
-                return;
-            }
 
             if (WsjtxMessage.IsCQ(dmsg.Message))                  //save the grid for logging
             {

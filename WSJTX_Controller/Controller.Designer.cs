@@ -132,6 +132,8 @@
             this.advTx2ListBox = new System.Windows.Forms.ListBox();
             this.advRawLabel = new System.Windows.Forms.Label();
             this.advRawListBox = new System.Windows.Forms.ListBox();
+            this.spotWatchLabel = new System.Windows.Forms.Label();
+            this.spotWatchListBox = new System.Windows.Forms.ListBox();
             this.statusHeadingLabel = new System.Windows.Forms.Label();
             ((System.ComponentModel.ISupportInitialize)(this.timeoutNumUpDown)).BeginInit();
             this.modeGroupBox.SuspendLayout();
@@ -1428,12 +1430,37 @@
             this.advRawListBox.KeyDown += new System.Windows.Forms.KeyEventHandler(this.AdvRawListBox_KeyDown);
             this.advRawListBox.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.AdvRawListBox_KeyPress);
             //
+            // spotWatchLabel
+            //
+            this.spotWatchLabel.AutoSize = true;
+            this.spotWatchLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold);
+            this.spotWatchLabel.Location = new System.Drawing.Point(10, 690);
+            this.spotWatchLabel.Name = "spotWatchLabel";
+            this.spotWatchLabel.Text = "Spot Watch:";
+            this.spotWatchLabel.Visible = false;
+            //
+            // spotWatchListBox
+            //
+            this.spotWatchListBox.AccessibleName = "Spot Watch";
+            this.spotWatchListBox.BackColor = System.Drawing.SystemColors.Window;
+            this.spotWatchListBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.spotWatchListBox.Font = new System.Drawing.Font("Consolas", 10F, System.Drawing.FontStyle.Bold);
+            this.spotWatchListBox.FormattingEnabled = true;
+            this.spotWatchListBox.ItemHeight = 15;
+            this.spotWatchListBox.Location = new System.Drawing.Point(10, 706);
+            this.spotWatchListBox.Name = "spotWatchListBox";
+            this.spotWatchListBox.Size = new System.Drawing.Size(280, 92);
+            this.spotWatchListBox.TabIndex = 203;
+            this.spotWatchListBox.Visible = false;
+            //
             // Controller
             //
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
             this.ClientSize = new System.Drawing.Size(520, 390);
+            this.Controls.Add(this.spotWatchListBox);
+            this.Controls.Add(this.spotWatchLabel);
             this.Controls.Add(this.advRawListBox);
             this.Controls.Add(this.advRawLabel);
             this.Controls.Add(this.advTx2ListBox);
@@ -1661,6 +1688,8 @@
         public System.Windows.Forms.ListBox advTx2ListBox;
         public System.Windows.Forms.Label advRawLabel;
         public System.Windows.Forms.ListBox advRawListBox;
+        public System.Windows.Forms.Label spotWatchLabel;
+        public System.Windows.Forms.ListBox spotWatchListBox;
         public System.Windows.Forms.CheckBox showUsStateCheckBox;
     }
 }

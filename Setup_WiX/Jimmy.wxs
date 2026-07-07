@@ -2,7 +2,7 @@
 <!--
   Jimmy installer - WiX 4 source
   Product  : Jimmy (WSJT-X Controller)
-  Version  : 1.74.0
+  Version  : 1.75.0
   Mfr      : KB0UZT
   Install  : C:\Program Files\KB0UZT\Jimmy\
   Shortcuts: Desktop + Start Menu (optional checkboxes, both on by default)
@@ -14,7 +14,7 @@
 
   <Package
     Name="Jimmy"
-    Version="1.74.0"
+    Version="1.75.0"
     Manufacturer="KB0UZT"
     Language="1033"
     Codepage="1252"
@@ -127,6 +127,25 @@
       <Component Id="SQLiteDll">
         <File Id="SQLiteDllFile"
               Source="..\WSJTX_Controller\bin\Release\System.Data.SQLite.dll"
+              KeyPath="yes" />
+      </Component>
+
+      <!-- DX Spot Watch (PSKReporter MQTT feed) dependencies, added 2026-07-07.
+           MSBuild copies these to bin\Release\ via the project's Reference
+           HintPaths; the MSI's file list is manually maintained (no wildcard
+           harvesting in this WiX version), so they must be listed explicitly
+           here too or a fresh install would be missing them and Jimmy.exe
+           would fail to start (DxSpotWatcher is constructed unconditionally
+           in Form_Load). -->
+      <Component Id="MQTTnetDll">
+        <File Id="MQTTnetDllFile"
+              Source="..\WSJTX_Controller\bin\Release\MQTTnet.dll"
+              KeyPath="yes" />
+      </Component>
+
+      <Component Id="MQTTnetManagedClientDll">
+        <File Id="MQTTnetManagedClientDllFile"
+              Source="..\WSJTX_Controller\bin\Release\MQTTnet.Extensions.ManagedClient.dll"
               KeyPath="yes" />
       </Component>
 

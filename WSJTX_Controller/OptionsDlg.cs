@@ -33,9 +33,10 @@ namespace WSJTX_Controller
         private const int HotkeysTabIndex      = 4;
         private const int AdvUiTabIndex        = 5;
         private const int WantedCallsTabIndex  = 6;
-        private const int SoundsTabIndex       = 7;
-        private const int UdpTabIndex          = 8;
-        private const int LookupTabIndex       = 9;
+        private const int SpotWatchTabIndex    = 7;
+        private const int SoundsTabIndex       = 8;
+        private const int UdpTabIndex          = 9;
+        private const int LookupTabIndex       = 10;
 
         // Advanced UI tab — controls created dynamically in BuildAdvancedUiTab()
         private System.Windows.Forms.CheckBox advCallLayoutCheckBox;
@@ -64,7 +65,6 @@ namespace WSJTX_Controller
         private System.Windows.Forms.CheckBox rawNewestFirstCheckBox;
         private System.Windows.Forms.CheckBox keepTransmitListDuringTxCheckBox;
         private System.Windows.Forms.CheckBox keepListPositionDuringRefreshCheckBox;
-        private System.Windows.Forms.CheckBox dontTransmitToBusyStationCheckBox;
         private List<System.Windows.Forms.Control> _advUiDependentControls;
 
         // Sounds tab state
@@ -118,6 +118,10 @@ namespace WSJTX_Controller
         // Wanted Calls tab
         private System.Windows.Forms.TextBox    wantedCallsTextBox;
         private System.Windows.Forms.CheckBox   _wantedCallAnywhereCheckBox;
+
+        // Spot Watch tab
+        private System.Windows.Forms.TextBox    spotWatchCallsTextBox;
+        private System.Windows.Forms.CheckBox   _showSpotWatchCheckBox;
 
         // General tab
         private System.Windows.Forms.CheckBox pskReporterCheckBox;
@@ -182,6 +186,7 @@ namespace WSJTX_Controller
             BuildHotkeysTab();
             BuildAdvancedUiTab();
             BuildWantedCallsTab();
+            BuildSpotWatchTab();
             BuildSoundsTab();
             BuildLookupTab();
             BuildAppearanceTab();
@@ -266,6 +271,7 @@ namespace WSJTX_Controller
             SaveHotkeysTab();
             SaveAdvancedUiTab();
             SaveWantedCallsTab();
+            SaveSpotWatchTab();
             SaveSoundsTab();
             SaveLookupTab();
             SaveAppearanceTab();
@@ -484,20 +490,6 @@ namespace WSJTX_Controller
             advUiPanel.Controls.Add(keepListPositionDuringRefreshCheckBox);
             y += 24;
 
-            dontTransmitToBusyStationCheckBox = new System.Windows.Forms.CheckBox
-            {
-                Text = "Don't transmit to a station currently busy with another station",
-                AccessibleName = "Don't transmit to a station currently busy with another station",
-                AccessibleDescription = "Skips transmitting this cycle if the selected station's most recent decode shows them replying to someone else; retries automatically next cycle. Off by default.",
-                AutoSize = true,
-                Location = new System.Drawing.Point(left + 8, y),
-                TabIndex = 24,
-                Checked = ctrl.dontTransmitToBusyStation,
-                Font = font
-            };
-            advUiPanel.Controls.Add(dontTransmitToBusyStationCheckBox);
-            y += 24;
-
             // ── Group: Message types ──────────────────────────────────────────────
             var msgGroup = new System.Windows.Forms.GroupBox
             {
@@ -619,7 +611,6 @@ namespace WSJTX_Controller
             ctrl.rawNewestFirst    = rawNewestFirstCheckBox?.Checked ?? false;
             ctrl.keepTransmitListDuringTx = keepTransmitListDuringTxCheckBox?.Checked ?? false;
             ctrl.keepListPositionDuringRefresh = keepListPositionDuringRefreshCheckBox?.Checked ?? false;
-            ctrl.dontTransmitToBusyStation = dontTransmitToBusyStationCheckBox?.Checked ?? false;
             int rawMax = (int)(rawMaxRowsNumeric?.Value ?? 100);
             ctrl.rawMaxRows = Math.Max(10, Math.Min(5000, rawMax));
             int maxQueued = (int)(_maxQueuedCallsNumeric?.Value ?? 4);
@@ -719,6 +710,101 @@ namespace WSJTX_Controller
             }
             ctrl.ApplyAndSaveWantedCalls(normalized);
             ctrl.wantedCallAnywhereEnabled = _wantedCallAnywhereCheckBox?.Checked ?? false;
+        }
+
+        // ===== SPOT WATCH TAB =====
+
+        private void BuildSpotWatchTab()
+        {
+            spotWatchPanel.Controls.Clear();
+
+            var font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
+            int y = 8;
+            const int left = 8;
+            const int w = 640;
+
+            // Instruction label
+            var instrBox = new System.Windows.Forms.TextBox
+            {
+                ReadOnly       = true,
+                Multiline      = true,
+                BorderStyle    = System.Windows.Forms.BorderStyle.None,
+                BackColor      = spotWatchPanel.BackColor,
+                ForeColor      = System.Drawing.SystemColors.ControlText,
+                Location       = new System.Drawing.Point(left, y),
+                Size           = new System.Drawing.Size(w, 60),
+                Text           = "Enter callsigns to watch for \"last spotted\" reports via PSKReporter (one per line, or comma/space separated).\r\n" +
+                                 "Examples: K2A, W1AW/13\r\n" +
+                                 "Separate from Wanted Calls -- adding a call here has no effect on call-queue priority.",
+                TabStop        = false,
+                AccessibleName = "Spot Watch instructions",
+                Font           = font,
+            };
+            spotWatchPanel.Controls.Add(instrBox);
+            y += 68;
+
+            // Edit box label
+            var editLabel = new System.Windows.Forms.Label
+            {
+                Text           = "Watched callsigns:",
+                AccessibleName = "Watched callsigns label",
+                AutoSize       = true,
+                Location       = new System.Drawing.Point(left, y),
+                Font           = font,
+                TabStop        = false,
+            };
+            spotWatchPanel.Controls.Add(editLabel);
+            y += 20;
+
+            // Multiline text box
+            spotWatchCallsTextBox = new System.Windows.Forms.TextBox
+            {
+                Multiline      = true,
+                ScrollBars     = System.Windows.Forms.ScrollBars.Vertical,
+                Location       = new System.Drawing.Point(left, y),
+                Size           = new System.Drawing.Size(w, 220),
+                TabIndex       = 0,
+                AccessibleName = "Watched callsigns",
+                AccessibleDescription = "Enter callsigns to watch for last-spotted reports. One per line, or comma or space separated. Case-insensitive.",
+                Font           = font,
+            };
+            // Populate from current spot watch list (sorted for readability)
+            var sorted = new List<string>(wsjtxClient.spotWatchCalls);
+            sorted.Sort(StringComparer.OrdinalIgnoreCase);
+            spotWatchCallsTextBox.Text = string.Join(Environment.NewLine, sorted);
+            spotWatchPanel.Controls.Add(spotWatchCallsTextBox);
+            y += 228;
+
+            // Checkbox: show the Spot Watch list in the main window
+            _showSpotWatchCheckBox = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Show Spot Watch list in main window",
+                Checked        = ctrl.showSpotWatch,
+                Location       = new System.Drawing.Point(left, y),
+                AutoSize       = true,
+                TabIndex       = 1,
+                Font           = font,
+                AccessibleName = "Show Spot Watch list in main window",
+                AccessibleDescription = "When checked, adds a Spot Watch list to the main window showing last-spotted info for each watched callsign.",
+            };
+            spotWatchPanel.Controls.Add(_showSpotWatchCheckBox);
+        }
+
+        private void SaveSpotWatchTab()
+        {
+            if (spotWatchCallsTextBox == null) return;
+            var raw = spotWatchCallsTextBox.Text ?? string.Empty;
+            // Parse: accept newlines, commas, and spaces as separators
+            var tokens = raw.Split(new char[] { '\r', '\n', ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            var normalized = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var tok in tokens)
+            {
+                string call = tok.Trim().ToUpperInvariant();
+                if (!string.IsNullOrEmpty(call))
+                    normalized.Add(call);
+            }
+            ctrl.ApplyAndSaveSpotWatchCalls(normalized);
+            ctrl.showSpotWatch = _showSpotWatchCheckBox?.Checked ?? false;
         }
 
         // ===== SOUNDS TAB =====
@@ -1354,6 +1440,7 @@ namespace WSJTX_Controller
                 HotkeyAction.NavAdvTx1,
                 HotkeyAction.NavAdvTx2,
                 HotkeyAction.NavAdvRaw,
+                HotkeyAction.NavSpotWatch,
             };
 
             // Group header: General Commands

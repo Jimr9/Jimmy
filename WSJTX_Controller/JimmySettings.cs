@@ -21,6 +21,10 @@ namespace WSJTX_Controller
         public bool AdvShowTx2 { get; set; } = true;
         public bool AdvShowRaw { get; set; } = true;
 
+        // Independent of AdvancedCallLayout/AdvShowTx1/2/Raw -- this is a separate feature
+        // (DX Spot Watch), not part of the Advanced Call Layout display. Opt-in, default off.
+        public bool ShowSpotWatch { get; set; } = false;
+
         // Appearance (list font size + colors) -- defaults match the app's original
         // hardcoded look exactly, so nothing changes for anyone who never opens the
         // new Appearance tab. Colors are stored as ARGB ints (unambiguous, no named-
@@ -36,6 +40,7 @@ namespace WSJTX_Controller
             AdvShowTx1 = ini.Read("advShowTx1") != "False";
             AdvShowTx2 = ini.Read("advShowTx2") != "False";
             AdvShowRaw = ini.Read("advShowRaw") != "False";
+            ShowSpotWatch = ini.Read("showSpotWatch") == "True";
 
             if (int.TryParse(ini.Read("listFontSize"), out int fontSize) && fontSize >= 8 && fontSize <= 18)
                 ListFontSize = fontSize;
@@ -50,6 +55,7 @@ namespace WSJTX_Controller
             ini.Write("advShowTx1", AdvShowTx1.ToString());
             ini.Write("advShowTx2", AdvShowTx2.ToString());
             ini.Write("advShowRaw", AdvShowRaw.ToString());
+            ini.Write("showSpotWatch", ShowSpotWatch.ToString());
 
             ini.Write("listFontSize", ListFontSize.ToString());
             ini.Write("listBackColor", ListBackColor.ToArgb().ToString());

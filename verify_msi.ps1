@@ -129,7 +129,8 @@ $allLongNames = $allFiles | ForEach-Object { LongFileName $_[1] }
 
 $required = @(
     "Jimmy.exe", "Jimmy.exe.config", "System.Data.SQLite.dll",
-    "SQLite.Interop.dll", "clublog_key.txt"
+    "SQLite.Interop.dll", "clublog_key.txt",
+    "MQTTnet.dll", "MQTTnet.Extensions.ManagedClient.dll"
 )
 foreach ($name in $required) {
     $found = $allLongNames | Where-Object { $_ -ieq $name }

@@ -1253,51 +1253,39 @@ def group15_wait_and_reply_cooperation(sock, v):
          ) if v.available else None)
 
 
-def group16_busy_station_gating(sock, v):
-    """T36-T37: A station whose most recent decode shows them replying to a
-    different station (not myCall, not a CQ) is tracked via lastCallActivity
-    (WsjtxClient.IsStationBusyElsewhere()), so ReplyTo() can skip transmitting
-    to them this cycle instead of calling into the void. Gated by the new
-    'Don't transmit to a station currently busy with another station' Options
-    checkbox (Advanced UI tab), which defaults to OFF.
-
-    T36: BUSY_CALL CQs and is queued normally (baseline -- queuing itself is
-         unaffected by the busy-tracking addition, regardless of the toggle).
-    T37: BUSY_CALL is then heard replying to a third station (K5OTHER, not
-         myCall, not a CQ) -- exactly the decode lastCallActivity must
-         capture. The actual transmit-skip in ReplyTo() only fires if:
-         (a) the new Options checkbox is checked (default OFF, cannot be
-             toggled remotely by this script -- same limitation as T17's
-             SOTA alert text box), and
-         (b) Jimmy is actively CQ-cycling with BUSY_CALL selected as the next
-             call to transmit to (same cqPaused/CQ-cycling precondition gap
-             documented for Group 15 -- see project memory).
-    Given both, T37 checks for the "is busy, will retry next cycle" status
-    message; otherwise this is a WARNING, not a FAIL, exactly like T17/T33.
+def group16_rrr_after_logged_no_requeue(sock, v):
+    """T34-T35: bare RRR (not 73/RR73) from an already-logged call must not
+    re-add it to the queue. Regression coverage for the AC7WY incident
+    (2026-07-07): RRR just means "all received" per FT8/FT4 protocol -- it is
+    not itself a sign-off, so a station can legitimately keep repeating it
+    (e.g. because they haven't yet decoded our final 73). But once we've
+    already logged this call this session/band, a repeat RRR is never a new
+    contact opportunity and must not silently reappear in the "available
+    stations" list as if unworked. Uses a dedicated callsign (W4RRR) so it
+    can't collide with call state left over from earlier groups.
     """
-    print("  ─ Group 16: Busy-station transmit gating (IsStationBusyElsewhere) ─")
+    print("  ─ Group 16: RRR after logged must not re-queue ─")
 
-    BUSY_CALL = "W4BUSY"
+    RRR_CALL = "W4RRR"
 
     send(sock,
-         f"CQ {BUSY_CALL} EM63",
-         f"{BUSY_CALL} queued normally (baseline -- busy-tracking doesn't affect queuing)",
-         build_enqueue(f"CQ {BUSY_CALL} EM63"),
+         f"QsoLoggedMessage: {RRR_CALL} logged",
+         "Expect: Logged sound; logListBox gains W4RRR entry",
+         build_qso_logged(RRR_CALL),
+         delay=2.0,
          verify_fn=lambda: (
-             v.check_queue_contains(BUSY_CALL,
-                 f"T36: {BUSY_CALL} in callQueue from CQ"),
+             v.check_log_contains(RRR_CALL,
+                 f"T34: {RRR_CALL} in logListBox after QsoLogged"),
          ) if v.available else None)
 
     send(sock,
-         f"{BUSY_CALL} replies to a different station: K5OTHER {BUSY_CALL} -08",
-         "Directed at K5OTHER (not myCall, not a CQ) -- lastCallActivity should now show busy",
-         build_enqueue(f"K5OTHER {BUSY_CALL} -08"),
+         f"Repeat RRR (after logged): {MY_CALL} {RRR_CALL} RRR",
+         f"{RRR_CALL} already logged this session -- must NOT reappear in the queue",
+         build_enqueue(f"{MY_CALL} {RRR_CALL} RRR"),
          delay=2.0,
          verify_fn=lambda: (
-             v.check_status_contains_warn(f"{BUSY_CALL} is busy",
-                 f"T37: status shows '{BUSY_CALL} is busy, will retry next cycle'",
-                 "'Don't transmit to a station currently busy' checked in Options, AND "
-                 "Jimmy actively CQ-cycling with W4BUSY selected next (see project memory: cqPaused gap)"),
+             v.check_queue_not_contains(RRR_CALL,
+                 f"T35: {RRR_CALL} NOT re-queued after prior logged QSO (repeat RRR)"),
          ) if v.available else None)
 
 
@@ -1322,7 +1310,7 @@ def run_tests(sock, v):
     group13_still_need_live_tag_baseline(sock, v)
     group14_logged_adif_fallback(sock, v)
     group15_wait_and_reply_cooperation(sock, v)
-    group16_busy_station_gating(sock, v)
+    group16_rrr_after_logged_no_requeue(sock, v)
 
     # ── To add a new replay test group ──────────────────────────────────────
     # 1. Define a new function, e.g.:

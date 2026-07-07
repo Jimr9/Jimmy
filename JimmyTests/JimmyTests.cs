@@ -118,6 +118,8 @@ static class JimmyTests
         JimmySettingsRoundTripTests();
         JimmySettingsDefaultsTests();
         FindPreservedSelectionIndexTests();
+        ResolveDispatchIndexTests();
+        SpotWatchCallsRoundTripTests();
         BandAppliesToLiveTagTests();
         RuleEngineFixedBandRestrictionTests();
 
@@ -1400,6 +1402,69 @@ static class JimmyTests
         var liveNewReordered = new List<string> { "KF8CXC", "WM3PEN", "N8BB", "VK9DX" };
         idx = Controller.FindPreservedSelectionIndex(liveOld, 2, liveNewReordered);
         Check("WM3PEN/N8BB regression: follows WM3PEN to its new index 1, not N8BB's index 2", idx == 1 && liveNewReordered[idx] == "WM3PEN", true);
+    }
+
+    // ── WsjtxClient.ResolveDispatchIndex: Enter/Space/dbl-click dispatch-side re-lookup ──
+    // Regression coverage for the dispatch-side half of the WM3PEN/N8BB class of bug
+    // (2026-07-06): NextCall's dialogTimer2 dispatch is deferred ~20ms, and the queue
+    // reorders on essentially every decode cycle in that window. The operator's selected
+    // call must still be worked wherever it now sits -- or, if it truly left the queue,
+    // nothing must be worked at all. Comparing against the stale original index (the
+    // first attempt at this fix) is wrong: it treats an ordinary reorder as "gone" and
+    // silently does nothing even though the call is still sitting right there.
+    static void ResolveDispatchIndexTests()
+    {
+        Console.WriteLine("\n── WsjtxClient.ResolveDispatchIndex ──");
+
+        var queue = new List<string> { "KF8CXC", "N8BB", "WM3PEN", "VK9DX" };
+        Func<string, int> lookup = call => queue.IndexOf(call);
+
+        Check("No identity captured (null expected) -> raw idx used as-is",
+            WsjtxClient.ResolveDispatchIndex(null, 2, lookup) == 2, true);
+
+        Check("Selected call still at its original index -> same index",
+            WsjtxClient.ResolveDispatchIndex("WM3PEN", 2, lookup) == 2, true);
+
+        // The live regression: operator selected WM3PEN at index 2; by dispatch time the
+        // queue reordered and WM3PEN now sits at index 1 (N8BB took its old slot). Must
+        // follow WM3PEN to its new index, not bail just because the raw idx moved.
+        var reordered = new List<string> { "KF8CXC", "WM3PEN", "N8BB", "VK9DX" };
+        Func<string, int> lookupReordered = call => reordered.IndexOf(call);
+        Check("Selected call moved to a new index -> follows it there, not the old slot",
+            WsjtxClient.ResolveDispatchIndex("WM3PEN", 2, lookupReordered) == 1, true);
+
+        // Selected call actually left the queue (removed/timed out/logged) -- lookup
+        // returns -1. Must propagate -1 (abort), never fall back to a guess.
+        Func<string, int> lookupGone = call => -1;
+        Check("Selected call gone from queue -> -1 (abort, not a guess)",
+            WsjtxClient.ResolveDispatchIndex("WM3PEN", 2, lookupGone) == -1, true);
+    }
+
+    // ── Controller.FormatSpotWatchCalls / ParseSpotWatchCalls: DX Spot Watch list round-trip ──
+    // The Spot Watch list is deliberately separate from Wanted Calls (added 2026-07-07) so it
+    // never affects call-queue ranking. Same shape as the (private, untested) wantedCalls
+    // helpers -- covered here since these were made public specifically for testability.
+    static void SpotWatchCallsRoundTripTests()
+    {
+        Console.WriteLine("\n── Controller.FormatSpotWatchCalls / ParseSpotWatchCalls ──");
+
+        var calls = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "K2A", "w1aw/13", "GB13COL" };
+        string formatted = Controller.FormatSpotWatchCalls(calls);
+        CheckStr("Format: sorted case-insensitively, comma-separated, original casing preserved",
+            formatted, "GB13COL,K2A,w1aw/13");
+
+        var parsed = Controller.ParseSpotWatchCalls("k2a, W1AW/13  GB13COL");
+        Check("Parse: comma/space separated, uppercased, trimmed", parsed.SetEquals(
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "K2A", "W1AW/13", "GB13COL" }), true);
+
+        Check("Parse: null input -> empty set, no crash", Controller.ParseSpotWatchCalls(null).Count == 0, true);
+        Check("Parse: whitespace-only input -> empty set", Controller.ParseSpotWatchCalls("   ").Count == 0, true);
+        Check("Format: null input -> empty string, no crash", Controller.FormatSpotWatchCalls(null) == "", true);
+        Check("Format: empty set -> empty string", Controller.FormatSpotWatchCalls(new HashSet<string>()) == "", true);
+
+        var roundTrip = Controller.ParseSpotWatchCalls(Controller.FormatSpotWatchCalls(calls));
+        Check("Round-trip: format then parse recovers the same set (case-insensitive)",
+            roundTrip.SetEquals(calls), true);
     }
 
     // ── Controller.BandAppliesToLiveTag: per-band award live-tag gating ─────────
