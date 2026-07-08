@@ -1918,7 +1918,13 @@ namespace WSJTX_Controller
             if (wsjtxClient?.lookupManager != null && wsjtxClient.lookupManager.Enabled)
             {
                 var rec = wsjtxClient.lookupManager.Build(call);
-                bool isUsa = string.Equals(rec.Country, "United States", StringComparison.OrdinalIgnoreCase);
+                // QRZ contributes Country as "United States"; Club Log (the fallback when
+                // QRZ has no cached data for this call) contributes its own raw entity name,
+                // "United States of America", plus a Dxcc entity number QRZ never sets --
+                // check both, or a Club Log-sourced record silently fails this test and skips
+                // the state substitution below entirely.
+                bool isUsa = string.Equals(rec.Country, "United States", StringComparison.OrdinalIgnoreCase)
+                             || rec.Dxcc == 291;
                 if (isUsa && showUsStateCheckBox.Checked)
                 {
                     // Same QRZ-first, grid.dat-fallback priority used everywhere else --
