@@ -17,6 +17,12 @@ namespace WSJTX_Controller
         public DateTime UtcTime;
         public string SpotterCall;
         public string SpotterGrid;
+        // Signal report (dB) the spotter heard the watched station at ("rp" in the
+        // MQTT payload) -- null if the payload didn't include one.
+        public int?   Snr;
+        // The watched station's own grid square ("sl", sender locator, in the MQTT
+        // payload) -- independent of ever decoding them directly.
+        public string SenderGrid;
     }
 
     // Watches the PSKReporter live-spot MQTT feed (mqtt.pskreporter.info, no auth/registration)
@@ -123,12 +129,21 @@ namespace WSJTX_Controller
                 string sender = dict.TryGetValue("sc", out var scObj) ? scObj as string : null;
                 if (string.IsNullOrEmpty(sender)) return Task.CompletedTask;
 
+                int? snr = null;
+                if (dict.TryGetValue("rp", out var rpObj))
+                {
+                    int rpVal;
+                    if (int.TryParse(Convert.ToString(rpObj), out rpVal)) snr = rpVal;
+                }
+
                 var spot = new SpotInfo
                 {
                     Band        = dict.TryGetValue("b",  out var bObj)  ? bObj  as string : null,
                     Mode        = dict.TryGetValue("md", out var mdObj) ? mdObj as string : null,
                     SpotterCall = dict.TryGetValue("rc", out var rcObj) ? rcObj as string : null,
                     SpotterGrid = dict.TryGetValue("rl", out var rlObj) ? rlObj as string : null,
+                    SenderGrid  = dict.TryGetValue("sl", out var slObj) ? slObj as string : null,
+                    Snr         = snr,
                     UtcTime     = dict.TryGetValue("t",  out var tObj)  ? UnixToUtc(Convert.ToInt64(tObj)) : DateTime.UtcNow,
                 };
 
@@ -152,6 +167,27 @@ namespace WSJTX_Controller
 
         private static DateTime UnixToUtc(long unixSeconds) =>
             new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddSeconds(unixSeconds);
+
+        // Even/Odd transmit-period parity for a spot, derived the same way Jimmy
+        // already computes it for its own live decodes (WsjtxClient.IsEvenPeriod) --
+        // FT4's period is irregular (four ~7-second windows per 30s) so it's
+        // special-cased identically; every other mode (FT8 being the overwhelming
+        // majority of PSKReporter spots) uses the standard 15-second period
+        // division. This is a display-only field with no award/logic consequences
+        // (unlike the live-decode version), so modes outside FT8/FT4 (e.g. WSPR,
+        // whose own 2-minute cycle isn't a simple even/odd split) just fall through
+        // to the same 15-second division as a best-effort label, not a precise one.
+        public static bool IsEvenPeriod(DateTime utcTime, string mode)
+        {
+            int secPastMinute = (int)(utcTime.TimeOfDay.TotalSeconds % 60);
+            if (string.Equals(mode, "FT4", StringComparison.OrdinalIgnoreCase))
+            {
+                return (secPastMinute >= 0 && secPastMinute < 7) || (secPastMinute >= 15 && secPastMinute < 22) ||
+                       (secPastMinute >= 30 && secPastMinute < 37) || (secPastMinute >= 45 && secPastMinute < 52);
+            }
+            int secPastHour = (int)(utcTime.TimeOfDay.TotalSeconds % 3600);
+            return (secPastHour / 15) % 2 == 0;
+        }
 
         // Snapshot for rendering: one entry per currently-watched call, alphabetical -- a
         // screen-reader-navigated list should have a stable order, not reshuffle every time one

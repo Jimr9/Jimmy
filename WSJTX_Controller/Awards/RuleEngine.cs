@@ -103,6 +103,39 @@ namespace WSJTX_Controller
             }
         }
 
+        // Resolves which band(s) one evaluation actually filters by. bandOverride (from the
+        // Still Need tab's band selector, or EvaluateBand's caller in general) narrows an
+        // unrestricted award to one band -- that's a legitimate "how am I doing on just this
+        // band" browse. But an award that already restricts itself to specific band(s)
+        // (defBands non-empty) must never be evaluated "as" some other band instead -- e.g.
+        // picking "20m" for a 6m-only award must not silently substitute 20m data under that
+        // award's name. So an override is only honored if it's actually one of the award's own
+        // bands; otherwise it's ignored and the award's own Bands list is used untouched.
+        public static List<string> ResolveBandsForEvaluation(List<string> defBands, string bandOverride)
+        {
+            if (bandOverride == null) return defBands;
+            if (defBands.Count == 0) return new List<string> { bandOverride };
+            return defBands.Any(b => b.Equals(bandOverride, StringComparison.OrdinalIgnoreCase))
+                ? new List<string> { bandOverride }
+                : defBands;
+        }
+
+        // Which bands the Still Need tab's Band dropdown should offer for a given award.
+        // An unrestricted award (defBands empty) offers "(All Bands)" plus every real band --
+        // useful for browsing "how am I doing on just 20m" on an all-band award like WAS/DXCC.
+        // A band-restricted award (e.g. a per-band WAS variant, or a single-band special
+        // event) offers "(All Bands)" (meaning: evaluate using the award's own Bands list, no
+        // override) plus only its own band(s) -- any other band can never be a meaningful
+        // choice for that award. allBandsSentinelAndList's first entry is the "(All Bands)"
+        // sentinel; the rest are every real band the app knows about.
+        public static string[] BandChoicesFor(List<string> defBands, string[] allBandsSentinelAndList)
+        {
+            if (defBands == null || defBands.Count == 0) return allBandsSentinelAndList;
+            var choices = new List<string> { allBandsSentinelAndList[0] };
+            choices.AddRange(defBands);
+            return choices.ToArray();
+        }
+
         public static List<RuleResult> EvaluateAll(IEnumerable<RuleDefinition> defs, string dbPath = null, ClubLogProvider clubLog = null)
         {
             dbPath = dbPath ?? LogbookDb.DbPath;
@@ -185,7 +218,7 @@ namespace WSJTX_Controller
             var parms = new List<SQLiteParameter>();
             AddGroupByFilter(def.GroupBy, whereParts);
 
-            var bands = bandOverride != null ? new List<string> { bandOverride } : def.Bands;
+            var bands = ResolveBandsForEvaluation(def.Bands, bandOverride);
             if (bands.Count > 0)
             {
                 var names = new List<string>();

@@ -93,6 +93,28 @@ namespace WSJTX_Controller
             }
         }
 
+        // The most recent CachedAt across every cached entry -- CachedAt is only
+        // ever set when a fresh network fetch actually happens (ParseResponse), not
+        // on a cache-hit reuse, so this reflects "last time we actually talked to
+        // QRZ," not just "last time any callsign was displayed."
+        public DateTime? LastSuccessfulLookup
+        {
+            get
+            {
+                lock (_cacheLock)
+                {
+                    DateTime? latest = null;
+                    foreach (var e in _cache.Values)
+                    {
+                        var dt = e.CachedAtDt;
+                        if (dt != DateTime.MinValue && (latest == null || dt > latest.Value))
+                            latest = dt;
+                    }
+                    return latest;
+                }
+            }
+        }
+
         // Cache-only, synchronous -- safe for the per-decode hot path. Fills
         // whatever the cached entry has; leaves everything else on record alone.
         public void Contribute(LookupRecord record, string call)

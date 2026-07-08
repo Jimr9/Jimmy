@@ -56,7 +56,6 @@ namespace WSJTX_Controller
         private System.Windows.Forms.CheckBox rawShowSnrCheckBox;
         private System.Windows.Forms.CheckBox rawShowGridCheckBox;
         private System.Windows.Forms.CheckBox rawShowCountryCheckBox;
-        private System.Windows.Forms.CheckBox rawShowStateCheckBox;
         private System.Windows.Forms.CheckBox rawShowDistAzCheckBox;
         private System.Windows.Forms.CheckBox rawOnlyCallsignsCheckBox;
         private System.Windows.Forms.CheckBox rawOnlyUnworkedCheckBox;
@@ -89,12 +88,15 @@ namespace WSJTX_Controller
         private System.Windows.Forms.NumericUpDown   _lotwRefreshDaysNum;
         private System.Windows.Forms.Button          _lotwUpdateBtn;
         private System.Windows.Forms.TextBox         _lotwStatusLbl;
-        private System.Windows.Forms.CheckBox        _lotwUploadEnabledCb;
         private System.Windows.Forms.TextBox         _lotwLogbookUserTb;
         private System.Windows.Forms.TextBox         _lotwLogbookPassTb;
         private System.Windows.Forms.NumericUpDown   _clubLogRefreshDaysNum;
         private System.Windows.Forms.Button          _clubLogUpdateBtn;
         private System.Windows.Forms.TextBox         _clubLogStatusLbl;
+        private System.Windows.Forms.CheckBox        _fccUlsEnabledCb;
+        private System.Windows.Forms.NumericUpDown   _fccUlsRefreshDaysNum;
+        private System.Windows.Forms.Button          _fccUlsUpdateBtn;
+        private System.Windows.Forms.TextBox         _fccUlsStatusLbl;
         private System.Windows.Forms.CheckBox        _clubLogUploadEnabledCb;
         private System.Windows.Forms.CheckBox        _clubLogUploadRealtimeCb;
         private System.Windows.Forms.TextBox         _clubLogUploadEmailTb;
@@ -122,6 +124,7 @@ namespace WSJTX_Controller
         // Spot Watch tab
         private System.Windows.Forms.TextBox    spotWatchCallsTextBox;
         private System.Windows.Forms.CheckBox   _showSpotWatchCheckBox;
+        private System.Windows.Forms.ComboBox   _spotWatchSortCb;
 
         // General tab
         private System.Windows.Forms.CheckBox pskReporterCheckBox;
@@ -275,6 +278,10 @@ namespace WSJTX_Controller
             SaveSoundsTab();
             SaveLookupTab();
             SaveAppearanceTab();
+            // Give Club Log real-time upload another chance now that the user has
+            // had an opportunity to fix credentials/settings -- see
+            // LiveQsoUploadOrchestrator's circuit breaker.
+            ctrl.wsjtxClient?.LiveQsoUploader?.ResetClubLogRealtimeBreaker();
             ctrl.ApplyAdvancedLayout();
             ctrl.ApplyListAppearance();
             Close();
@@ -523,8 +530,7 @@ namespace WSJTX_Controller
             rawShowSnrCheckBox     = MakeCheck(displayGroup, "SNR",               "Show SNR",                8,   22, 13, ctrl.rawShowSnr,     font);
             rawShowGridCheckBox    = MakeCheck(displayGroup, "Grid",              "Show Grid",               8,   44, 14, ctrl.rawShowGrid,     font);
             rawShowCountryCheckBox = MakeCheck(displayGroup, "Country",           "Show Country",            8,   66, 15, ctrl.rawShowCountry,  font);
-            rawShowStateCheckBox   = MakeCheck(displayGroup, "State",             "Show State",              165, 22, 16, ctrl.rawShowState,    font);
-            rawShowDistAzCheckBox  = MakeCheck(displayGroup, "Distance/Azimuth",  "Show Distance Azimuth",  165, 44, 17, ctrl.rawShowDistAz,   font);
+            rawShowDistAzCheckBox  = MakeCheck(displayGroup, "Distance/Azimuth",  "Show Distance Azimuth",  165, 22, 16, ctrl.rawShowDistAz,   font);
             advUiPanel.Controls.Add(displayGroup);
             y += 132;
 
@@ -601,7 +607,6 @@ namespace WSJTX_Controller
             ctrl.rawShowSnr       = rawShowSnrCheckBox?.Checked ?? true;
             ctrl.rawShowGrid      = rawShowGridCheckBox?.Checked ?? true;
             ctrl.rawShowCountry   = rawShowCountryCheckBox?.Checked ?? true;
-            ctrl.rawShowState     = rawShowStateCheckBox?.Checked ?? true;
             ctrl.rawShowDistAz    = rawShowDistAzCheckBox?.Checked ?? false;
             ctrl.rawOnlyCallsigns  = rawOnlyCallsignsCheckBox?.Checked ?? false;
             ctrl.rawOnlyUnworked   = rawOnlyUnworkedCheckBox?.Checked ?? false;
@@ -788,6 +793,40 @@ namespace WSJTX_Controller
                 AccessibleDescription = "When checked, adds a Spot Watch list to the main window showing last-spotted info for each watched callsign.",
             };
             spotWatchPanel.Controls.Add(_showSpotWatchCheckBox);
+            y += 24;
+
+            // Spot Watch display now requires Advanced Call Layout to be enabled.
+            _advUiDependentControls?.Add(_showSpotWatchCheckBox);
+            UpdateAdvUiDependentEnabled();
+
+            // Sort order for the Spot Watch list -- separate from row field order
+            // (Alt+I), which only controls which fields appear, not the row order.
+            var sortLabel = new System.Windows.Forms.Label
+            {
+                Text           = "Sort by:",
+                AccessibleName = "Spot Watch sort order label",
+                AutoSize       = true,
+                Location       = new System.Drawing.Point(left, y + 3),
+                Font           = font,
+                TabStop        = false,
+            };
+            spotWatchPanel.Controls.Add(sortLabel);
+
+            _spotWatchSortCb = new System.Windows.Forms.ComboBox
+            {
+                DropDownStyle  = System.Windows.Forms.ComboBoxStyle.DropDownList,
+                Location       = new System.Drawing.Point(left + 60, y),
+                Size           = new System.Drawing.Size(160, 21),
+                TabIndex       = 2,
+                Font           = font,
+                AccessibleName = "Spot Watch sort order",
+                AccessibleDescription = "Choose how the Spot Watch list is ordered: by callsign, by even/odd transmit period, or by signal report.",
+            };
+            _spotWatchSortCb.Items.AddRange(new object[] { "Callsign (A-Z)", "Even/Odd Period", "SNR (Strongest First)" });
+            int sortIdx = (ctrl.spotWatchSortKey ?? "callsign").ToLowerInvariant() == "evenodd" ? 1
+                : (ctrl.spotWatchSortKey ?? "callsign").ToLowerInvariant() == "snr" ? 2 : 0;
+            _spotWatchSortCb.SelectedIndex = sortIdx;
+            spotWatchPanel.Controls.Add(_spotWatchSortCb);
         }
 
         private void SaveSpotWatchTab()
@@ -805,6 +844,11 @@ namespace WSJTX_Controller
             }
             ctrl.ApplyAndSaveSpotWatchCalls(normalized);
             ctrl.showSpotWatch = _showSpotWatchCheckBox?.Checked ?? false;
+
+            string[] sortKeys = { "callsign", "evenodd", "snr" };
+            int idx = _spotWatchSortCb?.SelectedIndex ?? 0;
+            ctrl.spotWatchSortKey = sortKeys[idx >= 0 && idx < sortKeys.Length ? idx : 0];
+            ctrl.RefreshSpotWatchDisplay();
         }
 
         // ===== SOUNDS TAB =====
@@ -1677,6 +1721,14 @@ namespace WSJTX_Controller
             int tabIdx = 0;
             int pw    = 630;    // panel usable width
 
+            // Reflects whatever key is actually configured on the Hotkeys tab for
+            // "Upload to Logbook of the World" -- must not hardcode "Alt+U", since
+            // the user can rebind it.
+            string uploadLotwKeyText = ctrl.hotkeyConfig != null
+                ? HotkeyConfig.FormatKeys(ctrl.hotkeyConfig[HotkeyAction.UploadLotw])
+                : "";
+            if (string.IsNullOrEmpty(uploadLotwKeyText)) uploadLotwKeyText = "(unassigned hotkey)";
+
             // ── General ──────────────────────────────────────────────────────────
             var genBox = MakeGroupBox("General", 5, 5, pw, 48, font);
             lookupPanel.Controls.Add(genBox);
@@ -1860,7 +1912,7 @@ namespace WSJTX_Controller
 
             _qrzUploadRealtimeCb = new System.Windows.Forms.CheckBox
             {
-                Text           = "Upload automatically as each QSO completes (otherwise, use Alt+U)",
+                Text           = $"Upload automatically as each QSO completes (otherwise, use {uploadLotwKeyText})",
                 Checked        = ctrl.qrzUploadRealtime,
                 Location       = new System.Drawing.Point(28, 126),
                 AutoSize       = true,
@@ -1939,20 +1991,13 @@ namespace WSJTX_Controller
             };
             lotwBox.Controls.Add(_lotwStatusLbl);
 
-            _lotwUploadEnabledCb = new System.Windows.Forms.CheckBox
-            {
-                Text           = "Enable LoTW upload via WSJT-X (Alt+U)",
-                Checked        = ctrl.lotwUploadEnabled,
-                Location       = new System.Drawing.Point(10, 116),
-                AutoSize       = true,
-                TabIndex       = tabIdx++,
-                Font           = font,
-                AccessibleName = "Enable LoTW upload via WSJT-X",
-            };
-            lotwBox.Controls.Add(_lotwUploadEnabledCb);
+            // LoTW upload has no on/off toggle here -- unlike QRZ/Club Log, it's not
+            // something Jimmy can automate in the background (WSJT-X's own TQSL
+            // signing/upload is a manual, batch-oriented action, not a per-QSO API
+            // call), so a checkbox implying otherwise was more confusing than useful.
             lotwBox.Controls.Add(MakeLabel(
-                "Controls Alt+U -- WSJT-X itself performs the actual LoTW/TQSL upload; Jimmy only sends the command.",
-                10, 138, font));
+                $"LoTW upload is handled by WSJT-X itself. Press {uploadLotwKeyText} in Jimmy to have WSJT-X upload any pending contacts to LoTW.",
+                10, 116, font));
 
             // ── LoTW Logbook Download ────────────────────────────────────────────
             var lotwLogbookBox = MakeGroupBox("LoTW Logbook Download", 5, 624, pw, 116, font);
@@ -2060,7 +2105,7 @@ namespace WSJTX_Controller
 
             _clubLogUploadRealtimeCb = new System.Windows.Forms.CheckBox
             {
-                Text           = "Upload automatically as each QSO completes (otherwise, use Alt+U)",
+                Text           = $"Upload automatically as each QSO completes (otherwise, use {uploadLotwKeyText})",
                 Checked        = ctrl.clubLogUploadRealtime,
                 Location       = new System.Drawing.Point(28, 42),
                 AutoSize       = true,
@@ -2116,6 +2161,74 @@ namespace WSJTX_Controller
             clUploadBox.Controls.Add(MakeLabel(
                 "Passwords) -- NOT your normal Club Log website login. Separate from the country-data key above.",
                 10, 174, font));
+
+            // ── FCC ULS US State Lookup ──────────────────────────────────────────
+            // Opt-in (default off) since the full download is ~170MB, unlike Club
+            // Log's small country file above. When enabled, its state answer takes
+            // priority over QRZ's (see LookupManager's provider order) since it's
+            // the FCC's own authoritative registration data.
+            var fccBox = MakeGroupBox("FCC ULS US State Lookup (optional -- ~170MB download, no account needed)", 5, 1030, pw, 130, font);
+            lookupPanel.Controls.Add(fccBox);
+
+            _fccUlsEnabledCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Enable FCC ULS lookup",
+                Checked        = ctrl.fccUlsEnabled,
+                Location       = new System.Drawing.Point(10, 20),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Enable FCC ULS US state lookup",
+            };
+            fccBox.Controls.Add(_fccUlsEnabledCb);
+
+            fccBox.Controls.Add(MakeLabel("Refresh (days):", 10, 47, font));
+            _fccUlsRefreshDaysNum = new System.Windows.Forms.NumericUpDown
+            {
+                Minimum        = 1,
+                Maximum        = 365,
+                Value          = Math.Max(1, Math.Min(365, ctrl.fccUlsRefreshDays)),
+                Location       = new System.Drawing.Point(108, 44),
+                Size           = new System.Drawing.Size(60, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "FCC ULS refresh interval in days",
+            };
+            fccBox.Controls.Add(_fccUlsRefreshDaysNum);
+
+            _fccUlsUpdateBtn = new System.Windows.Forms.Button
+            {
+                Text           = "Update Now",
+                Location       = new System.Drawing.Point(10, 70),
+                Size           = new System.Drawing.Size(90, 24),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Download FCC ULS data now",
+            };
+            _fccUlsUpdateBtn.Click += FccUlsUpdateBtn_Click;
+            fccBox.Controls.Add(_fccUlsUpdateBtn);
+
+            _fccUlsStatusLbl = new System.Windows.Forms.TextBox
+            {
+                Text        = FccUlsStatusText(),
+                Location    = new System.Drawing.Point(110, 74),
+                Size        = new System.Drawing.Size(500, 18),
+                Font        = font,
+                ReadOnly    = true,
+                BorderStyle = System.Windows.Forms.BorderStyle.None,
+                BackColor   = System.Drawing.SystemColors.Control,
+                TabStop     = true,
+                TabIndex    = tabIdx++,
+                AccessibleName = "FCC ULS download status",
+            };
+            fccBox.Controls.Add(_fccUlsStatusLbl);
+
+            fccBox.Controls.Add(MakeLabel(
+                "The FCC's own free public amateur-license database -- gives the actual registered US state",
+                10, 100, font));
+            fccBox.Controls.Add(MakeLabel(
+                "for a callsign, offline and without needing QRZ. Weekly full refresh only (no daily deltas).",
+                10, 116, font));
         }
 
         private static System.Windows.Forms.GroupBox MakeGroupBox(string text, int x, int y, int w, int h, System.Drawing.Font font)
@@ -2148,7 +2261,10 @@ namespace WSJTX_Controller
             if (m == null || !m.Qrz.IsEnabled) return "QRZ lookup disabled.";
             if (!string.IsNullOrEmpty(m.Qrz.LastError)) return $"Error: {m.Qrz.LastError}";
             string auth = !string.IsNullOrEmpty(m.Qrz.AuthCallsign) ? $" ({m.Qrz.AuthCallsign})" : "";
-            return $"Configured: {m.Qrz.Username}{auth}";
+            string lastLookup = m.Qrz.LastSuccessfulLookup.HasValue
+                ? $", last lookup cached {m.Qrz.LastSuccessfulLookup.Value.ToLocalTime():g}"
+                : ", no lookups cached yet";
+            return $"Configured: {m.Qrz.Username}{auth}{lastLookup}";
         }
 
         private string LoTWStatusText()
@@ -2190,7 +2306,6 @@ namespace WSJTX_Controller
             ctrl.lotwEnabled             = _lotwEnabledCb?.Checked              ?? false;
             ctrl.lotwBoostEnabled        = _lotwBoostCb?.Checked                ?? false;
             ctrl.lotwRefreshDays         = (int)(_lotwRefreshDaysNum?.Value      ?? 30);
-            ctrl.lotwUploadEnabled       = _lotwUploadEnabledCb?.Checked        ?? false;
             ctrl.lotwLogbookUser         = _lotwLogbookUserTb?.Text.Trim()      ?? "";
             ctrl.lotwLogbookPass         = _lotwLogbookPassTb?.Text            ?? "";
             ctrl.clubLogRefreshDays      = (int)(_clubLogRefreshDaysNum?.Value   ?? 30);
@@ -2199,6 +2314,8 @@ namespace WSJTX_Controller
             ctrl.clubLogUploadEmail      = _clubLogUploadEmailTb?.Text.Trim()   ?? "";
             ctrl.clubLogUploadPassword   = _clubLogUploadPasswordTb?.Text      ?? "";
             ctrl.clubLogUploadCallsign   = _clubLogUploadCallsignTb?.Text.Trim().ToUpperInvariant() ?? "";
+            ctrl.fccUlsEnabled           = _fccUlsEnabledCb?.Checked           ?? false;
+            ctrl.fccUlsRefreshDays       = (int)(_fccUlsRefreshDaysNum?.Value   ?? 7);
         }
 
         // ===== APPEARANCE TAB =====
@@ -2455,6 +2572,31 @@ namespace WSJTX_Controller
                 _clubLogStatusLbl.Text    = ok ? ClubLogStatusText() : $"Error: {ctrl.lookupManager.ClubLog.LastError}";
                 _clubLogUpdateBtn.Enabled = true;
                 _clubLogStatusLbl.Focus();
+            }
+        }
+
+        private string FccUlsStatusText()
+        {
+            var m = ctrl.lookupManager;
+            if (m == null || !m.FccUls.IsEnabled) return "FCC ULS lookup disabled.";
+            if (!string.IsNullOrEmpty(m.FccUls.LastError)) return $"Error: {m.FccUls.LastError}";
+            if (m.FccUls.RecordCount == 0) return "Not downloaded yet. Click Update Now.";
+            var age = m.FccUls.LastUpdate == DateTime.MinValue ? "never" : m.FccUls.LastUpdate.ToLocalTime().ToString("g");
+            return $"{m.FccUls.RecordCount:N0} callsigns, last updated {age}";
+        }
+
+        private async void FccUlsUpdateBtn_Click(object sender, EventArgs e)
+        {
+            if (ctrl.lookupManager == null) return;
+            ctrl.lookupManager.FccUls.Configure(true);
+            _fccUlsUpdateBtn.Enabled = false;
+            _fccUlsStatusLbl.Text    = "Downloading (~170MB, may take a minute)…";
+            bool ok = await ctrl.lookupManager.FccUls.RefreshAsync();
+            if (!IsDisposed)
+            {
+                _fccUlsStatusLbl.Text    = ok ? FccUlsStatusText() : $"Error: {ctrl.lookupManager.FccUls.LastError}";
+                _fccUlsUpdateBtn.Enabled = true;
+                _fccUlsStatusLbl.Focus();
             }
         }
     }

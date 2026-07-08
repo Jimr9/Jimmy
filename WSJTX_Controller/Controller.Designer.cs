@@ -154,7 +154,7 @@
             this.statusText.Name = "statusText";
             this.statusText.ReadOnly = true;
             this.statusText.Size = new System.Drawing.Size(492, 20);
-            this.statusText.TabIndex = 1;
+            this.statusText.TabIndex = 303;
             this.statusText.TextChanged += new System.EventHandler(this.statusText_TextChanged);
             this.statusText.Enter += new System.EventHandler(this.statusText_Enter);
             //
@@ -1370,7 +1370,7 @@
             this.advTx1ListBox.Location = new System.Drawing.Point(10, 392);
             this.advTx1ListBox.Name = "advTx1ListBox";
             this.advTx1ListBox.Size = new System.Drawing.Size(280, 77);
-            this.advTx1ListBox.TabIndex = 200;
+            this.advTx1ListBox.TabIndex = 301;
             this.advTx1ListBox.Visible = false;
             this.advTx1ListBox.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.AdvListBox_DrawItem);
             this.advTx1ListBox.KeyDown += new System.Windows.Forms.KeyEventHandler(this.AdvTx1ListBox_KeyDown);
@@ -1397,7 +1397,7 @@
             this.advTx2ListBox.Location = new System.Drawing.Point(10, 492);
             this.advTx2ListBox.Name = "advTx2ListBox";
             this.advTx2ListBox.Size = new System.Drawing.Size(280, 77);
-            this.advTx2ListBox.TabIndex = 201;
+            this.advTx2ListBox.TabIndex = 302;
             this.advTx2ListBox.Visible = false;
             this.advTx2ListBox.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.AdvListBox_DrawItem);
             this.advTx2ListBox.KeyDown += new System.Windows.Forms.KeyEventHandler(this.AdvTx2ListBox_KeyDown);
@@ -1424,7 +1424,7 @@
             this.advRawListBox.Location = new System.Drawing.Point(10, 592);
             this.advRawListBox.Name = "advRawListBox";
             this.advRawListBox.Size = new System.Drawing.Size(280, 92);
-            this.advRawListBox.TabIndex = 202;
+            this.advRawListBox.TabIndex = 300;
             this.advRawListBox.Visible = false;
             this.advRawListBox.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.AdvListBox_DrawItem);
             this.advRawListBox.KeyDown += new System.Windows.Forms.KeyEventHandler(this.AdvRawListBox_KeyDown);
@@ -1450,7 +1450,7 @@
             this.spotWatchListBox.Location = new System.Drawing.Point(10, 706);
             this.spotWatchListBox.Name = "spotWatchListBox";
             this.spotWatchListBox.Size = new System.Drawing.Size(280, 92);
-            this.spotWatchListBox.TabIndex = 203;
+            this.spotWatchListBox.TabIndex = 304;
             this.spotWatchListBox.Visible = false;
             //
             // Controller

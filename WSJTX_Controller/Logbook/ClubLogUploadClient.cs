@@ -90,12 +90,22 @@ namespace WSJTX_Controller
         // Matches Club Log's own documented intended use of realtime.php ("QSOs
         // entered at a normal rate, by a real operator") -- must never be looped
         // over a backlog (see BatchUploadAsync for that case).
-        public async Task<bool> RealtimeUploadAsync(string email, string password, string callsign, string adifRecord)
+        // apiKey is Jimmy's own app-wide Club Log key (ClubLogAppKey.cs) -- Club
+        // Log's own realtime.php documentation lists "api" as one of the POST
+        // form variables alongside email/password/callsign/adif, same as
+        // putlogs.php; previously omitted here, which likely explains persistent
+        // 403s independent of any IP-level block.
+        public async Task<bool> RealtimeUploadAsync(string email, string password, string callsign, string apiKey, string adifRecord)
         {
             LastError = null;
             if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(callsign))
             {
                 LastError = "Club Log upload email, Application Password, or callsign is not configured.";
+                return false;
+            }
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                LastError = "Club Log application key is not available in this build.";
                 return false;
             }
 
@@ -105,6 +115,7 @@ namespace WSJTX_Controller
                 content.Add(new StringContent(password), "password");
                 content.Add(new StringContent(callsign), "callsign");
                 content.Add(new StringContent(adifRecord), "adif");
+                content.Add(new StringContent(apiKey), "api");
 
                 return await PostAndCheck(RealtimeUrl, content, "Realtime upload").ConfigureAwait(false);
             }

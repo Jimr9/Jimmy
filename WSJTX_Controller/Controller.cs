@@ -49,7 +49,6 @@ namespace WSJTX_Controller
         public bool rawShowSnr = true;
         public bool rawShowGrid = true;
         public bool rawShowCountry = true;
-        public bool rawShowState = true;
         public bool rawShowDistAz = false;
         public bool rawOnlyCallsigns = false;
         public bool rawOnlyUnworked = false;
@@ -116,7 +115,6 @@ namespace WSJTX_Controller
         public string clubLogUploadEmail     = "";
         public string clubLogUploadPassword  = "";
         public string clubLogUploadCallsign  = "";
-        public bool   lotwUploadEnabled      = true;   // matches today's Alt+U behavior by default
         private LogbookWindow _logbookWindow;
 
         // Ids of the Rule Definitions checked for live FT8 tagging in the Logbook window's
@@ -128,6 +126,9 @@ namespace WSJTX_Controller
         // DX Spot Watch: tracks last-seen band/time/spotter for a user-curated callsign list
         // via the PSKReporter MQTT feed. See spotWatchCalls (WsjtxClient) for the watch list.
         private DxSpotWatcher dxSpotWatcher;
+        public List<string> spotWatchRowOrderFields;
+        // "callsign" (alphabetical, default), "evenodd", or "snr".
+        public string spotWatchSortKey = "callsign";
 
         // Lookup / Data settings
         public LookupManager    lookupManager;
@@ -147,6 +148,10 @@ namespace WSJTX_Controller
         // (ClubLogAppKey.Resolve()) and downloads happen unconditionally,
         // subject only to the refresh interval below. See RuleUniverse.cs.
         public int              clubLogRefreshDays      = 30;
+        // Opt-in (default off) since the full download is ~170MB -- unlike Club
+        // Log's small country file, this isn't unconditional background infrastructure.
+        public bool             fccUlsEnabled           = false;
+        public int              fccUlsRefreshDays       = 7;
 
         private bool formLoaded = false;
         private bool openOptionsOnUdpTab = false;
@@ -225,6 +230,7 @@ namespace WSJTX_Controller
             string path = $"{Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)}\\{pgmName}";
             string pathFileNameExt = path + "\\" + pgmName + ".ini";
             List<string> parsedCallWaitingRowOrder = null;
+            List<string> parsedRawDecodeRowOrder = null;
             hotkeyConfig = new HotkeyConfig();
             try
             {
@@ -232,35 +238,22 @@ namespace WSJTX_Controller
                 iniFile = new IniFile(pathFileNameExt);
                 hotkeyConfig.LoadFromIni(iniFile);
                 RefreshHotkeyAccessibleNames();
-                // Parse optional call-waiting row order from INI (INI-only setting).
-                // Stored in local variable and assigned to wsjtxClient after it's constructed.
-                // Use ASCII comma and ignore invalid tokens/duplicates.
+                // Parse optional row-order settings from INI (INI-only settings). Stored in
+                // local variables and assigned to wsjtxClient after it's constructed.
                 try
                 {
-                    string orderStr = iniFile.Read("callWaitingRowOrder");
-                    if (!string.IsNullOrWhiteSpace(orderStr))
-                    {
-                        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                        {
-                            "callp", "pri", "tag", "grid", "snr", "country", "distAz", "oe", "descr", "rankStr"
-                        };
-
-                        var parsed = new List<string>();
-                        foreach (var tok in orderStr.Split(new char[] { (char)44 }, StringSplitOptions.RemoveEmptyEntries))
-                        {
-                            var f = tok.Trim();
-                            if (f.Length == 0) continue;
-                            if (!allowed.Contains(f)) continue; // ignore invalid names
-                            if (parsed.Exists(s => string.Equals(s, f, StringComparison.OrdinalIgnoreCase))) continue; // ignore duplicates after first occurrence
-                            parsed.Add(f);
-                        }
-
-                        if (parsed.Count > 0) parsedCallWaitingRowOrder = parsed;
-                    }
+                    parsedCallWaitingRowOrder = ParseRowOrder(iniFile.Read("callWaitingRowOrder"),
+                        RowDisplayOrderDlg.CallWaitingDefaultFields);
+                    parsedRawDecodeRowOrder = ParseRowOrder(iniFile.Read("rawDecodeRowOrder"),
+                        RowDisplayOrderDlg.RawDecodeDefaultFields);
+                    spotWatchRowOrderFields = ParseRowOrder(iniFile.Read("spotWatchRowOrder"),
+                        RowDisplayOrderDlg.SpotWatchDefaultFields) ?? new List<string>(RowDisplayOrderDlg.SpotWatchDefaultFields);
+                    if (iniFile.KeyExists("spotWatchSortKey"))
+                        spotWatchSortKey = iniFile.Read("spotWatchSortKey");
                 }
                 catch
                 {
-                    // swallow parse errors and leave parsedCallWaitingRowOrder null
+                    // swallow parse errors and leave both parsed*RowOrder null
                 }
             }
             catch
@@ -456,7 +449,6 @@ namespace WSJTX_Controller
                 rawShowSnr = iniFile.Read("rawShowSnr") != "False";
                 rawShowGrid = iniFile.Read("rawShowGrid") != "False";
                 rawShowCountry = iniFile.Read("rawShowCountry") != "False";
-                rawShowState = iniFile.Read("rawShowState") != "False";
                 rawShowDistAz = iniFile.Read("rawShowDistAz") == "True";
                 rawOnlyCallsigns = iniFile.Read("rawOnlyCallsigns") == "True";
                 rawOnlyUnworked = iniFile.Read("rawOnlyUnworked") == "True";
@@ -512,6 +504,8 @@ namespace WSJTX_Controller
                 if (iniFile.KeyExists("lotwBoostEnabled"))   lotwBoostEnabled   = iniFile.Read("lotwBoostEnabled") == "True";
                 int lotwd; if (iniFile.KeyExists("lotwRefreshDays") && int.TryParse(iniFile.Read("lotwRefreshDays"), out lotwd)   && lotwd   >= 1) lotwRefreshDays  = lotwd;
                 int clgd; if (iniFile.KeyExists("clubLogRefreshDays") && int.TryParse(iniFile.Read("clubLogRefreshDays"), out clgd) && clgd >= 1) clubLogRefreshDays = clgd;
+                if (iniFile.KeyExists("fccUlsEnabled"))       fccUlsEnabled      = iniFile.Read("fccUlsEnabled")     == "True";
+                int fccd; if (iniFile.KeyExists("fccUlsRefreshDays") && int.TryParse(iniFile.Read("fccUlsRefreshDays"), out fccd) && fccd >= 1) fccUlsRefreshDays = fccd;
                 if (iniFile.KeyExists("qrzLogbookApiKey")) qrzLogbookApiKey = CredentialProtector.Unprotect(iniFile.Read("qrzLogbookApiKey"));
                 if (iniFile.KeyExists("lotwLogbookUser"))  lotwLogbookUser  = iniFile.Read("lotwLogbookUser")  ?? "";
                 if (iniFile.KeyExists("lotwLogbookPass"))  lotwLogbookPass  = CredentialProtector.Unprotect(iniFile.Read("lotwLogbookPass"));
@@ -522,7 +516,6 @@ namespace WSJTX_Controller
                 if (iniFile.KeyExists("clubLogUploadEmail"))    clubLogUploadEmail    = iniFile.Read("clubLogUploadEmail")    ?? "";
                 if (iniFile.KeyExists("clubLogUploadPassword")) clubLogUploadPassword = CredentialProtector.Unprotect(iniFile.Read("clubLogUploadPassword"));
                 if (iniFile.KeyExists("clubLogUploadCallsign")) clubLogUploadCallsign = iniFile.Read("clubLogUploadCallsign") ?? "";
-                if (iniFile.KeyExists("lotwUploadEnabled"))     lotwUploadEnabled     = iniFile.Read("lotwUploadEnabled")     == "True";
                 if (iniFile.KeyExists("activeAwardRuleIds")) activeAwardRuleIds = ParseActiveAwardRuleIds(iniFile.Read("activeAwardRuleIds"));
                 else if (iniFile.KeyExists("stillNeedLiveTagRuleId"))
                 {
@@ -577,6 +570,10 @@ namespace WSJTX_Controller
             if (parsedCallWaitingRowOrder != null)
             {
                 wsjtxClient.callWaitingRowOrderFields = parsedCallWaitingRowOrder;
+            }
+            if (parsedRawDecodeRowOrder != null)
+            {
+                wsjtxClient.rawDecodeRowOrderFields = parsedRawDecodeRowOrder;
             }
             if (iniFile != null)
             {
@@ -633,13 +630,14 @@ namespace WSJTX_Controller
                 qrzEnabled, qrzUsername, qrzPassword, qrzCacheDays,
                 lotwEnabled, lotwRefreshDays,
                 ClubLogAppKey.Resolve(), clubLogRefreshDays,
+                fccUlsEnabled,
                 qrzLookupPolicy, qrzMinIntervalSeconds);
             wsjtxClient.lookupManager     = lookupManager;
             wsjtxClient.lotwBoostEnabled  = lotwBoostEnabled;
             LoadHrcCache();
             lookupManager.OnLookupCompleted = () =>
                 BeginInvoke(new Action(() => wsjtxClient.RefreshQueueDisplay()));
-            lookupManager.StartBackgroundRefreshIfNeeded(lotwRefreshDays, clubLogRefreshDays);
+            lookupManager.StartBackgroundRefreshIfNeeded(lotwRefreshDays, clubLogRefreshDays, fccUlsRefreshDays);
 
             // Loads every .ini file from the RuleDefinitions folder (awards engine).
             // A bad or missing folder must never block startup.
@@ -786,6 +784,7 @@ namespace WSJTX_Controller
                 iniFile.Write("callingPriorities", FormatCallingPriorities(wsjtxClient.Ranker.callingEnabled));
                 iniFile.Write("wantedCalls",              FormatWantedCalls(wsjtxClient.wantedCalls));
                 iniFile.Write("spotWatchCalls",            FormatSpotWatchCalls(wsjtxClient.spotWatchCalls));
+                iniFile.Write("spotWatchSortKey",          spotWatchSortKey);
                 iniFile.Write("wantedCallAnywhereEnabled", wantedCallAnywhereEnabled.ToString());
                 iniFile.Write("rawPriorityTags",          rawPriorityTags.ToString());
                 iniFile.Write("replyRR73", replyRR73CheckBox.Checked.ToString());
@@ -807,7 +806,6 @@ namespace WSJTX_Controller
                 iniFile.Write("rawShowSnr", rawShowSnr.ToString());
                 iniFile.Write("rawShowGrid", rawShowGrid.ToString());
                 iniFile.Write("rawShowCountry", rawShowCountry.ToString());
-                iniFile.Write("rawShowState", rawShowState.ToString());
                 iniFile.Write("rawShowDistAz", rawShowDistAz.ToString());
                 iniFile.Write("rawOnlyCallsigns", rawOnlyCallsigns.ToString());
                 iniFile.Write("rawOnlyUnworked", rawOnlyUnworked.ToString());
@@ -859,6 +857,8 @@ namespace WSJTX_Controller
                 iniFile.Write("lotwBoostEnabled",        lotwBoostEnabled.ToString());
                 iniFile.Write("lotwRefreshDays",         lotwRefreshDays.ToString());
                 iniFile.Write("clubLogRefreshDays",      clubLogRefreshDays.ToString());
+                iniFile.Write("fccUlsEnabled",           fccUlsEnabled.ToString());
+                iniFile.Write("fccUlsRefreshDays",       fccUlsRefreshDays.ToString());
                 iniFile.Write("qrzLogbookApiKey",        CredentialProtector.Protect(qrzLogbookApiKey));
                 iniFile.Write("lotwLogbookUser",         lotwLogbookUser          ?? "");
                 iniFile.Write("lotwLogbookPass",         CredentialProtector.Protect(lotwLogbookPass));
@@ -869,7 +869,6 @@ namespace WSJTX_Controller
                 iniFile.Write("clubLogUploadEmail",      clubLogUploadEmail       ?? "");
                 iniFile.Write("clubLogUploadPassword",   CredentialProtector.Protect(clubLogUploadPassword));
                 iniFile.Write("clubLogUploadCallsign",   clubLogUploadCallsign    ?? "");
-                iniFile.Write("lotwUploadEnabled",       lotwUploadEnabled.ToString());
                 iniFile.Write("activeAwardRuleIds",  FormatActiveAwardRuleIds(activeAwardRuleIds));
                 iniFile.DeleteKey("stillNeedLiveTagRuleId");
                 // Phase 4: remove stale keys left by older versions.
@@ -1129,7 +1128,7 @@ namespace WSJTX_Controller
 
             if (keyData == hotkeyConfig[HotkeyAction.RowOrder])
             {
-                OpenCallWaitingRowOrderEditor();
+                OpenRowDisplayOrderEditor();
                 return true;
             }
 
@@ -1372,12 +1371,9 @@ namespace WSJTX_Controller
                 {
                     naturalHeight = sortOrderButton.Location.Y + sortOrderButton.Height + 45;
                 }
-                // Spot Watch is a separate, independent feature from Advanced Call Layout (it
-                // sits beside the Tx1/Tx2/Raw column at a fixed position/size, not stacked with
-                // them), so its own height requirement is folded in here rather than into the
-                // anyAdvList branch above -- it must grow the window whether or not Advanced
-                // Call Layout is on.
-                if (showSpotWatch)
+                // Spot Watch now requires Advanced Call Layout to be enabled, so its own height
+                // requirement only applies when both flags are on.
+                if (advancedCallLayout && showSpotWatch)
                     naturalHeight = Math.Max(naturalHeight, spotWatchListBox.Location.Y + spotWatchListBox.Height + 45);
                 // 390 is the original Designer minimum height (today's default/safe floor);
                 // never let the per-configuration natural height shrink below it.
@@ -1533,6 +1529,12 @@ namespace WSJTX_Controller
                         else activeAwardRuleIds.Remove(ruleId);
                         iniFile?.Write("activeAwardRuleIds", FormatActiveAwardRuleIds(activeAwardRuleIds));
                         RefreshStillNeedCache();
+                    },
+                    lastLotwUploadTrigger: () => wsjtxClient?.lastLotwUploadTrigger,
+                    uploadLotwHotkeyText: () =>
+                    {
+                        string s = HotkeyConfig.FormatKeys(hotkeyConfig[HotkeyAction.UploadLotw]);
+                        return string.IsNullOrEmpty(s) ? "(unassigned hotkey)" : s;
                     });
                 _logbookWindow.FormClosed += (s, e) => _logbookWindow = null;
                 _logbookWindow.Show();
@@ -1584,7 +1586,9 @@ namespace WSJTX_Controller
                 qrzEnabled, qrzUsername, qrzPassword, qrzCacheDays,
                 lotwEnabled, lotwRefreshDays,
                 ClubLogAppKey.Resolve(), clubLogRefreshDays,
+                fccUlsEnabled,
                 qrzLookupPolicy, qrzMinIntervalSeconds);
+            lookupManager?.StartBackgroundRefreshIfNeeded(lotwRefreshDays, clubLogRefreshDays, fccUlsRefreshDays);
             wsjtxClient.SortCallsPublic();  // re-rank if LoTW boost changed
         }
 
@@ -1637,6 +1641,18 @@ namespace WSJTX_Controller
             // the screen reader has already started speaking this message.
             if (statusText.Focused && Form.ActiveForm == this)
                 SendKeys.Send("{UP}");
+        }
+
+        // QRZ/Club Log upload progress (catch-up loop, real-time circuit breaker)
+        // goes here instead of plain ShowMsg -- mirrors the same message into the
+        // Ham Radio Center's own status bar when it's open, so someone working in
+        // that window (Awards, My Log, etc.) can watch upload progress there too,
+        // not just on the main form.
+        public void ShowUploadStatus(string text, bool sound)
+        {
+            ShowMsg(text, sound);
+            if (_logbookWindow != null && !_logbookWindow.IsDisposed)
+                _logbookWindow.SetStatus(text);
         }
 
         // IJimmyStatusView / IJimmyQueueView / IJimmyLogView (Phase 2.3/2.4 first wave) --
@@ -1832,12 +1848,34 @@ namespace WSJTX_Controller
         // watched call, alphabetical (stable order -- see DxSpotWatcher.Snapshot). Quiet update:
         // no sound, no forced screen-reader announcement, same change-detection + identity-based
         // selection-preservation shape as every other Render* method here.
+        // Public wrapper so OptionsDlg can force a re-render after changing the
+        // sort order (Spot Watch tab) -- RenderSpotWatchList itself stays private,
+        // matching every other Render* method here.
+        public void RefreshSpotWatchDisplay() => RenderSpotWatchList();
+
         private void RenderSpotWatchList()
         {
             var snapshot = dxSpotWatcher.Snapshot();
+
+            // Snapshot() itself is always alphabetical (a stable base order); apply
+            // the user's chosen display sort here, on top of it, so ties (e.g. two
+            // calls both "Even") keep a predictable alphabetical secondary order --
+            // OrderBy/OrderByDescending are stable sorts.
+            IEnumerable<KeyValuePair<string, SpotInfo>> ordered = snapshot;
+            switch ((spotWatchSortKey ?? "callsign").ToLowerInvariant())
+            {
+                case "evenodd":
+                    ordered = snapshot.OrderBy(kv => kv.Value == null
+                        ? 2 : (DxSpotWatcher.IsEvenPeriod(kv.Value.UtcTime, kv.Value.Mode) ? 0 : 1));
+                    break;
+                case "snr":
+                    ordered = snapshot.OrderByDescending(kv => kv.Value?.Snr ?? int.MinValue);
+                    break;
+            }
+
             var items = new List<string>(snapshot.Count);
             var keys = new List<string>(snapshot.Count);
-            foreach (var kv in snapshot)
+            foreach (var kv in ordered)
             {
                 keys.Add(kv.Key);
                 items.Add(FormatSpotWatchRow(kv.Key, kv.Value));
@@ -1869,11 +1907,47 @@ namespace WSJTX_Controller
                 spotWatchListBox.SelectedIndex = newIdx;
         }
 
-        private static string FormatSpotWatchRow(string call, SpotInfo spot)
+        private string FormatSpotWatchRow(string call, SpotInfo spot)
         {
             if (spot == null) return $"{call} -- not yet spotted";
-            string grid = string.IsNullOrEmpty(spot.SpotterGrid) ? "" : $" ({spot.SpotterGrid})";
-            return $"{call} -- last spotted {FormatSpotAge(spot.UtcTime)}, {spot.Band} {spot.Mode}, by {spot.SpotterCall}{grid}";
+
+            string fallback = $"{call} -- last spotted {FormatSpotAge(spot.UtcTime)}, {spot.Band} {spot.Mode}, by {spot.SpotterCall}" +
+                (string.IsNullOrEmpty(spot.SpotterGrid) ? "" : $" ({spot.SpotterGrid})");
+
+            string country = "";
+            if (wsjtxClient?.lookupManager != null && wsjtxClient.lookupManager.Enabled)
+            {
+                var rec = wsjtxClient.lookupManager.Build(call);
+                bool isUsa = string.Equals(rec.Country, "United States", StringComparison.OrdinalIgnoreCase);
+                if (isUsa && showUsStateCheckBox.Checked)
+                {
+                    // Same QRZ-first, grid.dat-fallback priority used everywhere else --
+                    // show the actual state instead of just "United States".
+                    string gridState = string.IsNullOrEmpty(spot.SenderGrid) ? null : WsjtxClient.GridToUsState(spot.SenderGrid);
+                    string state = WsjtxClient.ResolveUsState(rec.State, gridState);
+                    country = state != null ? $", {state}" : ", United States";
+                }
+                else if (!string.IsNullOrEmpty(rec.Country))
+                {
+                    country = $", {rec.Country}";
+                }
+            }
+
+            var fieldMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "callsign",    call },
+                { "age",         $", last spotted {FormatSpotAge(spot.UtcTime)}" },
+                { "band",        string.IsNullOrEmpty(spot.Band) ? "" : $", {spot.Band}" },
+                { "mode",        string.IsNullOrEmpty(spot.Mode) ? "" : $", {spot.Mode}" },
+                { "evenOdd",     string.IsNullOrEmpty(spot.Mode) ? "" : $", {(DxSpotWatcher.IsEvenPeriod(spot.UtcTime, spot.Mode) ? "Even" : "Odd")}" },
+                { "snr",         spot.Snr.HasValue ? $", {spot.Snr.Value.ToString("+#;-#;0")}dB" : "" },
+                { "senderGrid",  string.IsNullOrEmpty(spot.SenderGrid) ? "" : $", grid {spot.SenderGrid}" },
+                { "country",     country },
+                { "spottercall", string.IsNullOrEmpty(spot.SpotterCall) ? "" : $", by {spot.SpotterCall}" },
+                { "spottergrid", string.IsNullOrEmpty(spot.SpotterGrid) ? "" : $" ({spot.SpotterGrid})" },
+            };
+
+            return RowFormatter.BuildOrderedRow(fieldMap, spotWatchRowOrderFields, fallback);
         }
 
         private static string FormatSpotAge(DateTime utcTime)
@@ -2529,19 +2603,51 @@ namespace WSJTX_Controller
                 c.Focus();
         }
 
-        private void OpenCallWaitingRowOrderEditor()
+        // Parses a comma-separated row-order INI value: ASCII comma, ignoring invalid
+        // tokens (not in allowedFields) and duplicates after the first occurrence.
+        // Returns null (not an empty list) if nothing valid was found, so callers can
+        // tell "not set" from "set to nothing" and fall back to the field's own
+        // compiled-in default instead of an empty row.
+        public static List<string> ParseRowOrder(string orderStr, IEnumerable<string> allowedFields)
+        {
+            if (string.IsNullOrWhiteSpace(orderStr)) return null;
+
+            var allowed = new HashSet<string>(allowedFields, StringComparer.OrdinalIgnoreCase);
+            var parsed = new List<string>();
+            foreach (var tok in orderStr.Split(new char[] { (char)44 }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var f = tok.Trim();
+                if (f.Length == 0) continue;
+                if (!allowed.Contains(f)) continue;
+                if (parsed.Exists(s => string.Equals(s, f, StringComparison.OrdinalIgnoreCase))) continue;
+                parsed.Add(f);
+            }
+            return parsed.Count > 0 ? parsed : null;
+        }
+
+        private void OpenRowDisplayOrderEditor()
         {
             if (iniFile == null || wsjtxClient == null) return;
 
-            var currentOrder = wsjtxClient.callWaitingRowOrderFields;
-            using (var dlg = new CallWaitingRowOrderDlg(currentOrder, wsjtxClient.debug))
+            var currentCallWaitingOrder = wsjtxClient.callWaitingRowOrderFields;
+            var currentRawDecodeOrder = wsjtxClient.rawDecodeRowOrderFields;
+            var currentSpotWatchOrder = spotWatchRowOrderFields;
+            using (var dlg = new RowDisplayOrderDlg(currentCallWaitingOrder, currentRawDecodeOrder, currentSpotWatchOrder, wsjtxClient.debug))
             {
                 if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
-                var selectedFields = dlg.SelectedFields;
-                iniFile.Write("callWaitingRowOrder", string.Join(",", selectedFields));
-                wsjtxClient.callWaitingRowOrderFields = new List<string>(selectedFields);
+                iniFile.Write("callWaitingRowOrder", string.Join(",", dlg.SelectedCallWaitingFields));
+                wsjtxClient.callWaitingRowOrderFields = new List<string>(dlg.SelectedCallWaitingFields);
+
+                iniFile.Write("rawDecodeRowOrder", string.Join(",", dlg.SelectedRawDecodeFields));
+                wsjtxClient.rawDecodeRowOrderFields = new List<string>(dlg.SelectedRawDecodeFields);
+
+                iniFile.Write("spotWatchRowOrder", string.Join(",", dlg.SelectedSpotWatchFields));
+                spotWatchRowOrderFields = new List<string>(dlg.SelectedSpotWatchFields);
+
                 wsjtxClient.RefreshCallWaitingRows();
+                wsjtxClient.RefreshAdvancedLists();
+                RenderSpotWatchList();
             }
         }
 
@@ -3038,7 +3144,7 @@ namespace WSJTX_Controller
 
         private void rowOrderButton_Click(object sender, EventArgs e)
         {
-            OpenCallWaitingRowOrderEditor();
+            OpenRowDisplayOrderEditor();
         }
 
         private void sortOrderButton_Click(object sender, EventArgs e)
@@ -3205,6 +3311,10 @@ namespace WSJTX_Controller
             wsjtxClient.EditCallQueue(wsjtxClient.MapNormalListIndex(selIdx));
         }
 
+        // Pre-fills the Manual Call dialog on its next open -- overwrite to call
+        // someone new, or just hit Enter/OK again to repeat the same call.
+        private string _lastManualCall = "";
+
         private void OpenManualCallDialog()
         {
             if (!wsjtxClient.ConnectedToWsjtx())
@@ -3213,7 +3323,7 @@ namespace WSJTX_Controller
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            using (var dlg = new ManualCallDlg())
+            using (var dlg = new ManualCallDlg(_lastManualCall, wsjtxClient.lookupManager))
             {
                 if (dlg.ShowDialog(this) != DialogResult.OK) return;
                 string callsign = dlg.Callsign;
@@ -3223,6 +3333,7 @@ namespace WSJTX_Controller
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
+                _lastManualCall = callsign;
                 bool started = wsjtxClient.ManualEnqueueCall(callsign);
                 if (started)
                     ShowMsg($"Manual call started for {callsign}", false);
@@ -3236,6 +3347,7 @@ namespace WSJTX_Controller
             bool showTx2  = show && advShowTx2;
             bool showRaw  = show && advShowRaw;
             bool anyAdvList = showTx1 || showTx2 || showRaw;
+            bool showSpot   = show && showSpotWatch;
 
             SuspendLayout();
 
@@ -3250,17 +3362,17 @@ namespace WSJTX_Controller
             advRawLabel.Visible   = showRaw;
             advRawListBox.Visible = showRaw;
 
-            // Spot Watch is a separate feature from Advanced Call Layout -- shown/hidden by its
-            // own flag, independent of advancedCallLayout -- but it shares the same stacked
-            // column below the main controls (x=10, full width), so its position/size is
-            // computed in the same block as Tx1/Tx2/Raw rather than fighting over the same
-            // screen space with an independent layout pass. It never hides callListBox.
-            spotWatchLabel.Visible   = showSpotWatch;
-            spotWatchListBox.Visible = showSpotWatch;
+            // Spot Watch requires Advanced Call Layout to be enabled -- gated on both its own
+            // flag and advancedCallLayout -- but it shares the same stacked column below the
+            // main controls (x=10, full width), so its position/size is computed in the same
+            // block as Tx1/Tx2/Raw rather than fighting over the same screen space with an
+            // independent layout pass. It never hides callListBox.
+            spotWatchLabel.Visible   = showSpot;
+            spotWatchListBox.Visible = showSpot;
 
             // Reposition and resize visible advanced/spot-watch lists so they stack tightly
             // starting just below the last main-control row, with height scaled to count.
-            if (anyAdvList || showSpotWatch)
+            if (anyAdvList || showSpot)
             {
                 const int startY   = 376;   // first label Y (same as designer baseline)
                 const int labelH   = 14;    // approx height of bold 8.25pt label
@@ -3289,11 +3401,17 @@ namespace WSJTX_Controller
 
                 int count = (showTx1 ? 1 : 0) + (showTx2 ? 1 : 0) + (showRaw ? 1 : 0);
 
+                // Spot Watch's own fixed space, reserved up front so TX1/TX2/Raw never expand
+                // to consume the whole window and push it off the bottom (it used to get
+                // tacked on after the extra-space distribution below, with no space guaranteed).
+                const int spotWatchH = 92;
+                int spotWatchReserve = showSpot ? (labelH + labelGap + spotWatchH) : 0;
+
                 // Extra vertical room the current window height offers beyond the natural
                 // (unstretched) size for however many lists are shown, split evenly between
                 // them — grows TX1/TX2/Raw with the window without shrinking below the base sizes.
                 int naturalBottom = NaturalAdvancedListsBottom(showTx1, showTx2, showRaw, out int baseListH, out int baseRawH);
-                int extra = Math.Max(0, this.Height - (naturalBottom + 45));
+                int extra = Math.Max(0, this.Height - (naturalBottom + spotWatchReserve + 45));
                 int extraPerList = count > 0 ? extra / count : 0;
 
                 int listH = baseListH + extraPerList;
@@ -3324,11 +3442,8 @@ namespace WSJTX_Controller
                     advRawListBox.Size     = new Size(listW, rawH);
                     y += rawH + groupGap;
                 }
-                if (showSpotWatch)
+                if (showSpot)
                 {
-                    // Fixed height (not part of the Tx1/Tx2/Raw extra-space distribution above)
-                    // -- keeps this first slice simple; can share in that distribution later.
-                    const int spotWatchH = 92;
                     spotWatchLabel.Location   = new Point(listX, y);
                     y += labelH + labelGap;
                     spotWatchListBox.Location = new Point(listX, y);

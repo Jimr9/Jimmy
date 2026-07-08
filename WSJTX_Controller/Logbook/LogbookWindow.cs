@@ -27,6 +27,8 @@ namespace WSJTX_Controller
         private readonly Action   _onImportComplete;
         private readonly HashSet<string> _activeAwardRuleIds;
         private readonly Action<string, bool> _onActiveAwardRuleIdsChanged;
+        private readonly Func<DateTime?> _lastLotwUploadTrigger;
+        private readonly Func<string> _uploadLotwHotkeyText;
 
         // ── Database ──────────────────────────────────────────────────────────────
         private LogbookDb _db;
@@ -53,6 +55,9 @@ namespace WSJTX_Controller
         private TextBox  _statWasTb;
         private TextBox  _statDxccTb;
         private TextBox  _statWazTb;
+        private TextBox  _statUploadQrzTb;
+        private TextBox  _statUploadClubLogTb;
+        private TextBox  _statUploadLotwTb;
         private ListView _dashRecentLv;
 
         // ── Awards controls ───────────────────────────────────────────────────────
@@ -106,7 +111,9 @@ namespace WSJTX_Controller
             Func<string> clubLogEmail = null, Func<string> clubLogPassword = null, Func<string> clubLogCallsign = null,
             Action onImportComplete = null,
             HashSet<string> initialActiveAwardRuleIds = null,
-            Action<string, bool> onActiveAwardRuleIdsChanged = null)
+            Action<string, bool> onActiveAwardRuleIdsChanged = null,
+            Func<DateTime?> lastLotwUploadTrigger = null,
+            Func<string> uploadLotwHotkeyText = null)
         {
             _ini              = ini;
             _qrzApiKey        = qrzApiKey        ?? (() => "");
@@ -118,6 +125,8 @@ namespace WSJTX_Controller
             _onImportComplete = onImportComplete;
             _activeAwardRuleIds = initialActiveAwardRuleIds ?? new HashSet<string>();
             _onActiveAwardRuleIdsChanged = onActiveAwardRuleIdsChanged;
+            _lastLotwUploadTrigger = lastLotwUploadTrigger ?? (() => (DateTime?)null);
+            _uploadLotwHotkeyText  = uploadLotwHotkeyText  ?? (() => "Alt+U");
 
             Text            = "Ham Radio Center — Logbook";
             MinimumSize     = new Size(720, 500);
@@ -239,6 +248,12 @@ namespace WSJTX_Controller
             AddStatField(_myLogPanel, "WAS",  font, ref y, out _statWasTb,  "WAS worked and confirmed");
             AddStatField(_myLogPanel, "DXCC", font, ref y, out _statDxccTb, "DXCC entities worked and confirmed");
             AddStatField(_myLogPanel, "WAZ",  font, ref y, out _statWazTb,  "WAZ zones worked and confirmed");
+            y += 8;
+
+            AddSectionLabel(_myLogPanel, "Upload Status", hfont, ref y);
+            AddStatField(_myLogPanel, "QRZ",      font, ref y, out _statUploadQrzTb,      "QRZ upload status");
+            AddStatField(_myLogPanel, "Club Log", font, ref y, out _statUploadClubLogTb,  "Club Log upload status");
+            AddStatField(_myLogPanel, "LoTW",     font, ref y, out _statUploadLotwTb,     "LoTW upload status");
             y += 8;
 
             var recentLbl = new Label
@@ -495,7 +510,7 @@ namespace WSJTX_Controller
             };
             _neededBandCb.Items.AddRange(AllBands);
             _neededBandCb.SelectedIndex = 0;
-            _neededBandCb.SelectedIndexChanged += (s, e) => PopulateNeeded();
+            _neededBandCb.SelectedIndexChanged += (s, e) => { if (!_suppressNeededEvent) PopulateNeeded(); };
             _stillNeedPanel.Controls.Add(_neededBandCb);
 
             _neededCountLbl = new Label
@@ -686,6 +701,14 @@ namespace WSJTX_Controller
                 _statDxccTb.Text  = $"{dxccW} worked,  {dxccC} confirmed";
                 _statWazTb.Text   = $"{wazW} / 40 worked,  {wazC} / 40 confirmed";
 
+                _statUploadQrzTb.Text     = FormatUploadStatus(_db.GetUploadSyncStatus("QRZ"));
+                _statUploadClubLogTb.Text = FormatUploadStatus(_db.GetUploadSyncStatus("CLUBLOG"));
+                var lastLotw = _lastLotwUploadTrigger();
+                string lotwKey = _uploadLotwHotkeyText();
+                _statUploadLotwTb.Text = lastLotw.HasValue
+                    ? $"Last {lotwKey} upload: {lastLotw.Value:g}  ({lotwConf.ToString("N0")} confirmed)"
+                    : $"Not yet triggered this session ({lotwKey} uploads via WSJT-X)  ({lotwConf.ToString("N0")} confirmed)";
+
                 var recent = _db.GetRecentQsos(10);
                 _dashRecentLv.Items.Clear();
                 foreach (var q in recent)
@@ -701,6 +724,17 @@ namespace WSJTX_Controller
                 }
             }
             catch (Exception ex) { _statTotalTb.Text = "Error: " + ex.Message; }
+        }
+
+        private static string FormatUploadStatus(LogbookDb.UploadSyncStatus s)
+        {
+            string last = s.LastUploadUtc.HasValue
+                ? s.LastUploadUtc.Value.ToLocalTime().ToString("g")
+                : "never";
+            string uploaded = $"{s.UploadedCount.ToString("N0")} uploaded";
+            return s.PendingCount == 0
+                ? $"Up to date, {uploaded}  (last upload: {last})"
+                : $"{s.PendingCount} pending, {uploaded}  (last upload: {last})";
         }
 
         private void PopulateSync()
@@ -1039,6 +1073,24 @@ namespace WSJTX_Controller
                 ? ""
                 : "This award has no fixed checklist that can be tagged live during decoding.";
             _suppressNeededEvent = false;
+
+            // Restrict the Band dropdown to bands that are actually meaningful for this
+            // award -- a band-restricted award (e.g. a per-band WAS variant, or a single-band
+            // special event) can never be meaningfully evaluated "as" some other band (see
+            // RuleEngine.ResolveBandsForEvaluation), so don't offer that choice at all. Only
+            // rebuild when the choice set actually differs, so switching bands (not awards)
+            // never disturbs this dropdown.
+            var bandChoices = RuleEngine.BandChoicesFor(def.Bands, AllBands);
+            if (!_neededBandCb.Items.Cast<string>().SequenceEqual(bandChoices))
+            {
+                string prevBand = _neededBandCb.SelectedIndex > 0 ? (string)_neededBandCb.SelectedItem : null;
+                _suppressNeededEvent = true;
+                _neededBandCb.Items.Clear();
+                _neededBandCb.Items.AddRange(bandChoices);
+                int newIdx = prevBand != null ? Array.IndexOf(bandChoices, prevBand) : -1;
+                _neededBandCb.SelectedIndex = newIdx >= 0 ? newIdx : 0;
+                _suppressNeededEvent = false;
+            }
 
             try
             {
@@ -1465,7 +1517,10 @@ namespace WSJTX_Controller
         }
 
         private string SetStatus_Text;
-        private void SetStatus(string msg)
+        // Public so Controller can mirror QRZ/Club Log upload progress here too
+        // (see Controller.ShowUploadStatus) -- lets someone watch the same
+        // status while working in this window instead of only the main form.
+        public void SetStatus(string msg)
         {
             SetStatus_Text = msg ?? "";
             if (_statusTb != null) _statusTb.Text = SetStatus_Text;

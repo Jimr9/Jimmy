@@ -383,7 +383,7 @@ namespace WSJTX_Controller
             sb.AppendLine($"  Show SNR:        {ctrl.rawShowSnr}");
             sb.AppendLine($"  Show Grid:       {ctrl.rawShowGrid}");
             sb.AppendLine($"  Show Country:    {ctrl.rawShowCountry}");
-            sb.AppendLine($"  Show State:      {ctrl.rawShowState}");
+            sb.AppendLine($"  Show U.S. state: {ctrl.showUsStateCheckBox.Checked}");
             sb.AppendLine($"  Show Dist/Az:    {ctrl.rawShowDistAz}");
             sb.AppendLine($"  Only callsigns:  {ctrl.rawOnlyCallsigns}");
             sb.AppendLine($"  Only unworked:   {ctrl.rawOnlyUnworked}");

@@ -35,13 +35,32 @@ namespace WSJTX_Controller
         private readonly Func<LiveUploadCredentials> _credentials;
         private readonly Action _notifyImported;
         private readonly Action<string> _debugLog;
+        private readonly Action<string, bool> _showStatus;
 
-        public LiveQsoUploadOrchestrator(Func<LiveUploadCredentials> credentials, Action notifyImported, Action<string> debugLog)
+        // Circuit breaker for Club Log real-time upload only (matches Club Log's
+        // own documented integration requirement: "if you don't receive a '200
+        // OK' then you must show the user the error... and stop sending more
+        // requests"). Set on the first failure; automatic real-time upload is
+        // skipped on every subsequent QSO until ResetClubLogRealtimeBreaker() is
+        // called (wired to Options being saved -- the natural "I fixed
+        // something, try again" signal). QRZ has no equivalent breaker since it
+        // isn't documented to auto-block on repeated failures the way Club Log
+        // explicitly warns it does.
+        private volatile bool _clubLogRealtimeBroken;
+
+        public LiveQsoUploadOrchestrator(Func<LiveUploadCredentials> credentials, Action notifyImported,
+            Action<string> debugLog, Action<string, bool> showStatus)
         {
             _credentials = credentials;
             _notifyImported = notifyImported;
             _debugLog = debugLog;
+            _showStatus = showStatus;
         }
+
+        // Called when the user saves Options -- gives automatic real-time
+        // upload another chance after they've adjusted credentials/settings,
+        // without requiring a full Jimmy restart.
+        public void ResetClubLogRealtimeBreaker() => _clubLogRealtimeBroken = false;
 
         public void ImportLiveLoggedQso(string dxCall, Dictionary<string, string> fields, string adifRecord, string dedupKey)
         {
@@ -64,7 +83,8 @@ namespace WSJTX_Controller
                         bool needClubLog = creds.ClubLogUploadEnabled && creds.ClubLogUploadRealtime &&
                                        !string.IsNullOrWhiteSpace(creds.ClubLogUploadEmail) &&
                                        !string.IsNullOrWhiteSpace(creds.ClubLogUploadPassword) &&
-                                       !string.IsNullOrWhiteSpace(creds.ClubLogUploadCallsign);
+                                       !string.IsNullOrWhiteSpace(creds.ClubLogUploadCallsign) &&
+                                       !_clubLogRealtimeBroken;
 
                         if (!needQrz && !needClubLog) return;
 
@@ -80,9 +100,21 @@ namespace WSJTX_Controller
                         {
                             var clClient = new ClubLogUploadClient();
                             bool ok = await clClient.RealtimeUploadAsync(
-                                creds.ClubLogUploadEmail, creds.ClubLogUploadPassword, creds.ClubLogUploadCallsign, adifRecord).ConfigureAwait(false);
-                            if (ok) db.MarkUploaded(dedupKey, "CLUBLOG", DateTime.UtcNow);
-                            else _debugLog($"Club Log real-time upload failed for {dxCall}: {clClient.LastError}");
+                                creds.ClubLogUploadEmail, creds.ClubLogUploadPassword, creds.ClubLogUploadCallsign,
+                                ClubLogAppKey.Resolve(), adifRecord).ConfigureAwait(false);
+                            if (ok)
+                            {
+                                db.MarkUploaded(dedupKey, "CLUBLOG", DateTime.UtcNow);
+                            }
+                            else
+                            {
+                                _debugLog($"Club Log real-time upload failed for {dxCall}: {clClient.LastError}");
+                                // Per Club Log's own integration rules: on any real-time failure,
+                                // stop sending further automatic requests and tell the user --
+                                // don't silently keep retrying on every subsequent QSO.
+                                _clubLogRealtimeBroken = true;
+                                _showStatus($"Club Log real-time upload error, automatic upload paused: {clClient.LastError}", true);
+                            }
                         }
                     }
                 }

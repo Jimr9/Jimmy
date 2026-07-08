@@ -64,6 +64,11 @@ namespace WSJTX_Controller
         public bool tuning = false;
         // new: optional INI-controlled order for call-waiting row fields.
         public List<string> callWaitingRowOrderFields = new List<string> { "tag", "pri", "country", "callp", "snr", "distAz" };
+        // Optional INI-controlled order for Raw Decodes row fields. Callsign first by
+        // default (not just embedded inside "message") so first-letter type-ahead jump
+        // in the Raw Decodes list actually lands on a callsign instead of always hitting
+        // "T" from the TX1:/TX2: side label every row used to start with.
+        public List<string> rawDecodeRowOrderFields = new List<string> { "callsign", "side", "tag", "message", "snr", "grid", "country", "distAz" };
 
         private StreamWriter logSw = null;
         private StreamWriter potaSw = null;
@@ -513,7 +518,8 @@ namespace WSJTX_Controller
                     ctrl.RefreshStillNeedCache();
                     ctrl.RefreshLogbookWindowIfOpen();
                 })),
-                debugLog: msg => DebugOutput($"{Time()} {msg}"));
+                debugLog: msg => DebugOutput($"{Time()} {msg}"),
+                showStatus: (msg, sound) => ctrl.BeginInvoke(new Action(() => ctrl.ShowUploadStatus(msg, sound))));
             ipAddress = reqIpAddress;
             port = reqPort;
             multicast = reqMulticast;
@@ -556,7 +562,7 @@ namespace WSJTX_Controller
             messageRecd = false;
             recvStarted = false;
 
-            ctrl.verLabel.Text = $"by WM8Q v{fileVer}";
+            ctrl.verLabel.Text = $"by KB0UZT v{fileVer}";
             ctrl.verLabel2.Text = "Check for update";
 
             UpdateModeSelection();
@@ -1015,7 +1021,7 @@ namespace WSJTX_Controller
             emsg.Param0 = usePskReporter;
             emsg.Param1 = false;        //ignored
             emsg.Offset = 0;            //ignored
-            emsg.GenMsg = $"(mod by WM8Q, w/{pgmName} v{pgmVer} [FT8 for blind hams], qrz.com/db/WM8Q)";
+            emsg.GenMsg = $"(mod by KB0UZT, w/{pgmName} v{pgmVer} [FT8 for blind hams], qrz.com/db/KB0UZT)";
             emsg.CmdCheck = "";         //ignored
             ba = emsg.GetBytes();
             udpClient2.Send(ba, ba.Length);
@@ -1369,7 +1375,7 @@ namespace WSJTX_Controller
                 emsg.Param0 = usePskReporter;
                 emsg.Param1 = false;        //ignored
                 emsg.Offset = 0;            //ignored
-                emsg.GenMsg = $"(mod by WM8Q, w/{pgmName} v{pgmVer} [FT8 for blind hams], qrz.com/db/WM8Q)";
+                emsg.GenMsg = $"(mod by KB0UZT, w/{pgmName} v{pgmVer} [FT8 for blind hams], qrz.com/db/KB0UZT)";
                 emsg.CmdCheck = "";         //ignored
                 ba = emsg.GetBytes();
                 udpClient2.Send(ba, ba.Length);
@@ -4183,12 +4189,13 @@ namespace WSJTX_Controller
                 d.Priority != (int)CallPriority.NEW_COUNTRY_ON_BAND &&
                 d.Priority != (int)CallPriority.NEW_COUNTRY)
             {
-                string state = GridToUsState(g);
-                if (state == null && lookupManager != null && lookupManager.Enabled)
+                string qrzState = null;
+                if (lookupManager != null && lookupManager.Enabled)
                 {
                     var rec = lookupManager.Build(call);
-                    if (!string.IsNullOrEmpty(rec.State)) state = rec.State;
+                    qrzState = rec.State;
                 }
+                string state = ResolveUsState(qrzState, GridToUsState(g));
                 if (state != null) country = $", {state}";
             }
 
@@ -4208,37 +4215,14 @@ namespace WSJTX_Controller
             string tagRaw = CategoryTag(d);
             string tagStr = tagRaw.Length > 0 ? $", {tagRaw}" : "";
 
-            if (callWaitingRowOrderFields == null)
-                return $"{callp}{pri}{tagStr}{grid}{snr}{country}{distAz}{oe}{descr}{rankStr}";
-
+            string fallback = $"{callp}{pri}{tagStr}{grid}{snr}{country}{distAz}{oe}{descr}{rankStr}";
             var fieldMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 { "callp", callp }, { "pri", pri }, { "tag", tagStr }, { "grid", grid }, { "snr", snr },
                 { "country", country }, { "distAz", distAz }, { "oe", oe },
                 { "descr", descr }, { "rankStr", rankStr }
             };
-            var sb = new System.Text.StringBuilder();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var f in callWaitingRowOrderFields)
-            {
-                if (string.IsNullOrEmpty(f) || seen.Contains(f)) continue;
-                string frag;
-                if (!fieldMap.TryGetValue(f, out frag)) continue;
-                if (sb.Length == 0)
-                {
-                    if (frag.StartsWith(", ")) frag = frag.Substring(2);
-                    else if (frag.Length > 0 && frag[0] == ' ') frag = frag.Substring(1);
-                }
-                else if (frag.Length > 0 && !frag.StartsWith(", ") && frag[0] != ' ')
-                {
-                    frag = ", " + frag;
-                }
-                sb.Append(frag);
-                seen.Add(f);
-            }
-            return sb.Length == 0
-                ? $"{callp}{pri}{tagStr}{grid}{snr}{country}{distAz}{oe}{descr}{rankStr}"
-                : sb.ToString();
+            return RowFormatter.BuildOrderedRow(fieldMap, callWaitingRowOrderFields, fallback);
         }
 
         private void UpdateListIfChanged(ListBox lb, List<string> newItems)
@@ -4290,52 +4274,65 @@ namespace WSJTX_Controller
                 if (!PassesRawDecodeFilter(d)) continue;
 
                 string side = IsEvenCall(d) ? "TX1" : "TX2";
-                var sb = new System.Text.StringBuilder();
 
+                string tag = "";
                 if (rawPriorityTags && d.Category != CallCategory.DEFAULT)
                 {
-                    string tag;
+                    string catTag;
                     if (d.Category == CallCategory.WANTED_CQ)
-                        tag = WsjtxMessage.DirectedTo(d.Message) ?? "Dir CQ";
+                        catTag = WsjtxMessage.DirectedTo(d.Message) ?? "Dir CQ";
                     else if (d.Category == CallCategory.STILL_NEEDED)
-                        tag = AwardDisplayName(d) + " Needed";
+                        catTag = AwardDisplayName(d) + " Needed";
                     else
-                        RawTagLabels.TryGetValue(d.Category, out tag);
-                    if (!string.IsNullOrEmpty(tag))
-                        sb.Append($"{tag} ");
+                        RawTagLabels.TryGetValue(d.Category, out catTag);
+                    if (!string.IsNullOrEmpty(catTag)) tag = catTag;
                 }
-
                 if (WsjtxMessage.IsFoxHound(d.Message))
-                    sb.Append("Possible F/H ");
+                    tag = tag.Length > 0 ? $"{tag}, Possible F/H" : "Possible F/H";
+                tag = tag.Length > 0 ? $", {tag}" : "";
 
-                sb.Append(side);
-                sb.Append(": ");
-                sb.Append(d.Message);
+                string callsign = d.DeCall();
+                callsign = string.IsNullOrEmpty(callsign) ? "" : $", {Spacify(callsign)}";
 
-                if (ctrl.rawShowSnr)
-                    sb.Append($", {d.Snr.ToString("+#;-#;0")}dB");
+                string message = $", {d.Message}";
+
+                string snr = ctrl.rawShowSnr ? $", {d.Snr.ToString("+#;-#;0")}dB" : "";
 
                 string g = WsjtxMessage.Grid(d.Message);
-                if (ctrl.rawShowGrid && g != null)
-                    sb.Append($", {g}");
+                string grid = ctrl.rawShowGrid && g != null ? $", {g}" : "";
 
-                if (ctrl.rawShowCountry && d.Country.Length > 0)
-                    sb.Append($", {d.Country}");
-
-                if (ctrl.rawShowState && d.Country == "USA" && g != null)
+                string country = ctrl.rawShowCountry && d.Country.Length > 0 ? $", {d.Country}" : "";
+                if (ctrl.showUsStateCheckBox.Checked && d.Country == "USA" && g != null)
                 {
-                    string state = GridToUsState(g);
-                    if (state != null) sb.Append($", {state}");
+                    string qrzState = null;
+                    if (lookupManager != null && lookupManager.Enabled)
+                    {
+                        var rec = lookupManager.Build(d.DeCall());
+                        qrzState = rec.State;
+                    }
+                    string state = ResolveUsState(qrzState, GridToUsState(g));
+                    if (state != null) country = $", {state}";
                 }
 
+                string distAz = "";
                 if (ctrl.rawShowDistAz && d.Distance >= 0 && d.Azimuth >= 0)
                 {
                     int dist = metricUnits || d.Distance < 0 ? d.Distance : (int)((0.6213 * d.Distance) + 0.5);
                     string unitsStr = metricUnits ? "km" : "mi";
-                    sb.Append($", {dist}{unitsStr} {d.Azimuth}°");
+                    distAz = $", {dist}{unitsStr} {d.Azimuth}°";
                 }
 
-                items.Add(sb.ToString());
+                // Fallback (only reached if rawDecodeRowOrderFields is somehow null) matches
+                // the default order itself, so there is one obvious answer for "what does
+                // this look like with nothing configured" rather than a second hand-rolled
+                // format to keep in sync.
+                string fallback = $"{tag}{$", {side}"}{message}{snr}{grid}{country}{distAz}".TrimStart(',', ' ');
+                var fieldMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    { "tag", tag }, { "side", $", {side}" }, { "callsign", callsign }, { "message", message },
+                    { "snr", snr }, { "grid", grid }, { "country", country }, { "distAz", distAz },
+                };
+                items.Add(RowFormatter.BuildOrderedRow(fieldMap, rawDecodeRowOrderFields, fallback));
                 keys.Add($"{d.DeCall()}|{d.Message}|{d.SinceMidnight.Ticks}");
             }
             if (ctrl.rawNewestFirst) { items.Reverse(); keys.Reverse(); }
@@ -5047,11 +5044,21 @@ namespace WSJTX_Controller
                     return;
                 }
 
-                // Already-worked check: reject calls logged on this band, except POTA (can repeat)
-                // or new-DXCC categories (the entity being new on band is the relevant criterion).
+                // Already-worked check: reject calls logged on this band, except POTA (can repeat),
+                // new-DXCC categories (the entity being new on band is the relevant criterion), or
+                // a station still needed by an actively-checked Rule Definition (e.g. an annual
+                // special event award scoped to this year's DateFrom/DateTo). WSJT-X's own
+                // "already worked" flag has no concept of an award's date range -- it just checks
+                // its own ADIF log for this callsign+band, ever -- so without this exception, a
+                // station worked in a past year on this band would be silently hidden from the
+                // queue even though this year's award still needs a fresh contact with it.
+                // Exact boolean combination lives in AwardMatcher.ShouldRejectAlreadyWorked
+                // (Awards/AwardMatcher.cs) so it has direct, exhaustive test coverage.
                 bool isNewDxccCategory = emsg.Category == CallCategory.NEW_COUNTRY
                                         || emsg.Category == CallCategory.NEW_COUNTRY_ON_BAND;
-                if (!emsg.IsNewCallOnBand && !isPota && !isNewDxccCategory)
+                bool isStillNeededByActiveAward = MatchedAwardRuleId(emsg) != null;
+                if (AwardMatcher.ShouldRejectAlreadyWorked(
+                        emsg.IsNewCallOnBand, isPota, isNewDxccCategory, isStillNeededByActiveAward))
                 {
                     DebugOutput($"{spacer}AddSelectedCall: already worked '{deCall}'");
                     return;
@@ -5871,6 +5878,15 @@ namespace WSJTX_Controller
             xmitCycleCount = 0;
             timedOutCall = null;
 
+            // WSJT-X reacts to the Configure command above by updating its own DX Call
+            // field, which brings its window to the foreground -- stealing focus away
+            // from Jimmy right after the Manual Call dialog closes, so JAWS stops
+            // announcing anything in Jimmy. Activate() (not just BringToFront) is used
+            // here since real keyboard focus needs reclaiming, not just Z-order --
+            // matches the same choice already made for other windows that need actual
+            // focus back (e.g. Controller.OpenLogbookWindow, HelpDlg).
+            ctrl.Activate();
+
             return true;
         }
 
@@ -6015,16 +6031,22 @@ namespace WSJTX_Controller
             return true;
         }
 
-        // Alt+U. Originally LoTW-only; now also triggers the QRZ/Club Log upload
-        // catch-up when those services are configured+enabled, so pressing this one
-        // key sends everything pending to every enabled service. Each part is
+        // Last time Alt+U told WSJT-X to upload to LoTW, for display on the Sync
+        // Status view. In-memory only (not persisted) -- LoTW upload is a manual,
+        // user-triggered action, not a background schedule, so "since I started
+        // Jimmy" is the meaningful window, not "ever."
+        public DateTime? lastLotwUploadTrigger;
+
+        // Alt+U. Tells WSJT-X to upload everything pending to LoTW, and also
+        // triggers the QRZ/Club Log upload catch-up, so pressing this one key
+        // sends everything pending to every configured service. Each part is
         // independently gated -- an unconfigured/disabled service is silently
         // skipped, never attempted.
         public bool UploadLotw()
         {
             HaltTuning();
-            if (ctrl.lotwUploadEnabled)
-                StartUploadLotw();
+            StartUploadLotw();
+            lastLotwUploadTrigger = DateTime.Now;
             RunUploadCatchUp();
             return true;
         }
@@ -6068,7 +6090,18 @@ namespace WSJTX_Controller
             var pending = db.GetPendingUploads("QRZ");
             if (pending.Count == 0) return;
             DebugOutput($"{Time()} QRZ upload catch-up: {pending.Count} pending QSO(s).");
+
+            // This loop can run for several minutes on a large backlog (one HTTP
+            // call + 300ms delay per QSO) with no other feedback otherwise -- show
+            // periodic progress so it's clear Jimmy is still working, not hung.
+            // Throttled to roughly every 5 seconds so JAWS/NVDA doesn't get a
+            // fresh announcement on every single QSO.
+            ctrl.BeginInvoke(new Action(() =>
+                ctrl.ShowUploadStatus($"QRZ upload: starting, {pending.Count} pending QSO(s)...", false)));
+
             var client = new QrzLogbookClient();
+            int done = 0, succeeded = 0, failedCount = 0;
+            DateTime lastStatusUpdate = DateTime.UtcNow;
             foreach (var q in pending)
             {
                 string adifRecord = AdifRecordBuilder.Build(
@@ -6076,8 +6109,36 @@ namespace WSJTX_Controller
                     q.RstSent, q.RstRcvd, q.Grid, q.Name, q.Comment, q.TxPwr,
                     q.OperatorCall, q.StationCall, q.MyGrid, q.ExchangeSent, q.ExchangeRcvd);
                 bool ok = await client.InsertAsync(ctrl.qrzLogbookApiKey, adifRecord).ConfigureAwait(false);
-                if (ok) db.MarkUploaded(q.DedupKey, "QRZ", DateTime.UtcNow);
-                else DebugOutput($"{Time()} QRZ upload catch-up failed for {q.Callsign}: {client.LastError}");
+                done++;
+                if (ok)
+                {
+                    db.MarkUploaded(q.DedupKey, "QRZ", DateTime.UtcNow);
+                    succeeded++;
+                }
+                else
+                {
+                    failedCount++;
+                    DebugOutput($"{Time()} QRZ upload catch-up failed for {q.Callsign}: {client.LastError}");
+                }
+
+                bool isLast = done == pending.Count;
+                if (isLast || (DateTime.UtcNow - lastStatusUpdate).TotalSeconds >= 5)
+                {
+                    lastStatusUpdate = DateTime.UtcNow;
+                    int doneSnap = done, totalSnap = pending.Count, okSnap = succeeded, failSnap = failedCount;
+                    string msg = isLast
+                        ? $"QRZ upload: {totalSnap} QSO(s) processed ({okSnap} uploaded, {failSnap} failed)."
+                        : $"QRZ upload: {doneSnap}/{totalSnap} processed ({okSnap} uploaded, {failSnap} failed)...";
+                    // Refresh the Ham Radio Center's Sync Status numbers (pending/uploaded
+                    // counts, last-upload time) too when the batch finishes -- otherwise
+                    // they only update the next time the user navigates away and back,
+                    // showing stale figures right after an upload that just happened.
+                    if (isLast)
+                        ctrl.BeginInvoke(new Action(() => { ctrl.ShowUploadStatus(msg, false); ctrl.RefreshLogbookWindowIfOpen(); }));
+                    else
+                        ctrl.BeginInvoke(new Action(() => ctrl.ShowUploadStatus(msg, false)));
+                }
+
                 await Task.Delay(300).ConfigureAwait(false);
             }
         }
@@ -6106,9 +6167,25 @@ namespace WSJTX_Controller
                 ClubLogAppKey.Resolve(), sb.ToString()).ConfigureAwait(false);
 
             if (ok)
+            {
                 foreach (var q in pending) db.MarkUploaded(q.DedupKey, "CLUBLOG", DateTime.UtcNow);
+                // Refresh the Sync Status numbers too -- see the same comment in CatchUpQrz.
+                ctrl.BeginInvoke(new Action(() =>
+                {
+                    ctrl.ShowUploadStatus($"Club Log upload: {pending.Count} QSO(s) uploaded successfully.", false);
+                    ctrl.RefreshLogbookWindowIfOpen();
+                }));
+            }
             else
+            {
                 DebugOutput($"{Time()} Club Log upload catch-up failed ({pending.Count} QSOs): {client.LastError}");
+                // Per Club Log's own integration rules: show the user the error and
+                // do not keep sending more requests -- Alt+U already only fires this
+                // once per explicit press, so no separate breaker latch is needed
+                // here the way real-time upload needs one.
+                ctrl.BeginInvoke(new Action(() =>
+                    ctrl.ShowUploadStatus($"Club Log upload failed: {client.LastError}", true)));
+            }
         }
 
         // Alt+N: Walk Call Filter order (outer), then rank order within each category (inner).
@@ -7304,8 +7381,29 @@ namespace WSJTX_Controller
             }
             else
             {
-                if (replyDecode != null && callInProg != null && replyDecode.DeCall() == call) country = replyDecode.Country;
+                if (replyDecode != null && callInProg != null && replyDecode.DeCall() == call)
+                {
+                    msg = replyDecode;
+                    country = replyDecode.Country;
+                }
             }
+
+            if (ctrl.showUsStateCheckBox.Checked && country == "USA" && msg != null)
+            {
+                string g = WsjtxMessage.Grid(msg.Message);
+                if (g != null)
+                {
+                    string qrzState = null;
+                    if (lookupManager != null && lookupManager.Enabled)
+                    {
+                        var rec = lookupManager.Build(call);
+                        qrzState = rec.State;
+                    }
+                    string state = ResolveUsState(qrzState, GridToUsState(g));
+                    if (state != null) country = state;
+                }
+            }
+
             return country;
         }
 
@@ -7676,9 +7774,16 @@ namespace WSJTX_Controller
         private bool IsHrcWasNeeded(EnqueueDecodeMessage d)
         {
             if (hrcNeededStates.Count == 0 || activeAwardTags.ContainsKey("WAS")) return false;
+
+            string qrzState = null;
+            string call = d.DeCall();
+            if (!string.IsNullOrEmpty(call) && lookupManager != null && lookupManager.Enabled)
+            {
+                var rec = lookupManager.Build(call);
+                qrzState = rec.State;
+            }
             string grid = WsjtxMessage.Grid(d.Message);
-            if (string.IsNullOrEmpty(grid)) return false;
-            string state = GridToUsState(grid);
+            string state = ResolveUsState(qrzState, string.IsNullOrEmpty(grid) ? null : GridToUsState(grid));
             return !string.IsNullOrEmpty(state) && hrcNeededStates.Contains(state);
         }
 
@@ -7707,56 +7812,33 @@ namespace WSJTX_Controller
         // decode. Returns the matched rule's Id, or null if none matched. The field used to
         // derive the match key depends on each rule's GroupBy; kinds not listed here are
         // never included in activeAwardTags (see RuleEngine.SupportsLiveTag).
+        //
+        // Thin wrapper around AwardMatcher.Match (Awards/AwardMatcher.cs) -- the actual
+        // matching logic lives there, pure and unit-tested, decoupled from live app state.
+        // State/Continent are resolved here (cheap); CqZone/Dxcc are handed over as lazy
+        // delegates so a LookupManager.Build() call only happens if some active award's
+        // GroupBy actually needs it.
         private string MatchedAwardRuleId(EnqueueDecodeMessage d)
         {
-            if (activeAwardTags.Count == 0) return null;
             string call = d.DeCall();
             if (string.IsNullOrEmpty(call)) return null;
 
-            foreach (var tag in activeAwardTags.Values)
+            string qrzState = null;
+            if (lookupManager != null && lookupManager.Enabled)
             {
-                if (tag.Set.Count == 0) continue;
-                bool match;
-                switch (tag.GroupBy)
-                {
-                    case RuleGroupBy.Callsign:
-                        match = tag.Set.Contains(call);
-                        break;
-
-                    case RuleGroupBy.State:
-                        string grid = WsjtxMessage.Grid(d.Message);
-                        string state = string.IsNullOrEmpty(grid) ? null : GridToUsState(grid);
-                        match = !string.IsNullOrEmpty(state) && tag.Set.Contains(state);
-                        break;
-
-                    case RuleGroupBy.CqZone:
-                    {
-                        var rec = lookupManager.Enabled ? lookupManager.Build(call) : null;
-                        match = rec != null && rec.CqZone > 0 && tag.Set.Contains(rec.CqZone.ToString());
-                        break;
-                    }
-
-                    case RuleGroupBy.Continent:
-                        // d.Continent comes straight from WSJT-X's own decode message -- always
-                        // available, no Club Log dependency (unlike CqZone/Dxcc above, WSJT-X
-                        // doesn't supply those as decode fields, only country/continent).
-                        match = !string.IsNullOrEmpty(d.Continent) && tag.Set.Contains(d.Continent);
-                        break;
-
-                    case RuleGroupBy.Dxcc:
-                    {
-                        var rec = lookupManager.Enabled ? lookupManager.Build(call) : null;
-                        match = rec != null && rec.Dxcc > 0 && tag.Set.Contains(rec.Dxcc.ToString());
-                        break;
-                    }
-
-                    default:
-                        match = false;
-                        break;
-                }
-                if (match) return tag.RuleId;
+                var stateRec = lookupManager.Build(call);
+                qrzState = stateRec.State;
             }
-            return null;
+            string grid = WsjtxMessage.Grid(d.Message);
+            string state = ResolveUsState(qrzState, string.IsNullOrEmpty(grid) ? null : GridToUsState(grid));
+
+            // d.Continent comes straight from WSJT-X's own decode message -- always available,
+            // no Club Log dependency (unlike CqZone/Dxcc, WSJT-X doesn't supply those as decode
+            // fields, only country/continent).
+            return AwardMatcher.Match(
+                activeAwardTags, call, state, d.Continent,
+                cqZoneLookup: () => { var rec = lookupManager.Enabled ? lookupManager.Build(call) : null; return rec?.CqZone ?? 0; },
+                dxccLookup:   () => { var rec = lookupManager.Enabled ? lookupManager.Build(call) : null; return rec?.Dxcc   ?? 0; });
         }
 
         private void SetRank(EnqueueDecodeMessage d) =>
@@ -8019,11 +8101,22 @@ namespace WSJTX_Controller
             }
         }
 
-        private static string GridToUsState(string grid)
+        // Public so other USA-state display sites (e.g. Controller.FormatSpotWatchRow)
+        // can apply the exact same grid.dat fallback as the per-decode hot path.
+        public static string GridToUsState(string grid)
         {
             string state;
             return UsGridStateMap.TryGetState(grid, out state) ? state : null;
         }
+
+        // Shared priority rule for every US-state lookup site: prefer QRZ's cached
+        // real state (precise, single state) over grid.dat's guess (a 4-char grid
+        // square can straddle a state border, which grid.dat represents as a
+        // compound string like "MN-WI" rather than a single state). gridState is
+        // only used when QRZ has no cached answer for this call. Extracted so all
+        // call sites share one implementation and it's directly unit-testable.
+        public static string ResolveUsState(string qrzState, string gridState) =>
+            !string.IsNullOrEmpty(qrzState) ? qrzState : gridState;
 
         private int CallQueuePriorityCount(CallPriority p)
         {

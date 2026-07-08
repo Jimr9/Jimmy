@@ -64,6 +64,7 @@
     <Reference Include="System.Deployment" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Security" />
     <Reference Include="System.Web.Extensions" />
@@ -95,6 +96,7 @@
     <Compile Include="Awards\RuleUniverse.cs" />
     <Compile Include="Awards\RuleLoader.cs" />
     <Compile Include="Awards\RuleEngine.cs" />
+    <Compile Include="Awards\AwardMatcher.cs" />
     <Compile Include="Awards\RuleLibrary.cs" />
     <Compile Include="Awards\RuleWriter.cs" />
     <Compile Include="Awards\RuleDefinitionManagerDlg.cs" />
@@ -166,12 +168,13 @@
     <Compile Include="Controller.Designer.cs">
       <DependentUpon>Controller.cs</DependentUpon>
     </Compile>
-    <Compile Include="CallWaitingRowOrderDlg.cs">
+    <Compile Include="RowDisplayOrderDlg.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="CallWaitingRowOrderDlg.Designer.cs">
-      <DependentUpon>CallWaitingRowOrderDlg.cs</DependentUpon>
+    <Compile Include="RowDisplayOrderDlg.Designer.cs">
+      <DependentUpon>RowDisplayOrderDlg.cs</DependentUpon>
     </Compile>
+    <Compile Include="RowFormatter.cs" />
     <Compile Include="RankOrderDlg.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -191,6 +194,7 @@
     <Compile Include="Lookup\QrzProvider.cs" />
     <Compile Include="Lookup\LoTWProvider.cs" />
     <Compile Include="Lookup\ClubLogProvider.cs" />
+    <Compile Include="Lookup\FccUlsProvider.cs" />
     <Compile Include="Lookup\ClubLogAppKey.cs" />
     <Compile Include="Lookup\LookupManager.cs" />
     <Compile Include="Lookup\LookupInfoDlg.cs" />
@@ -330,29 +334,33 @@
     </Task>
   </UsingTask>
 
-  <!-- Fails a Release build fast (before compiling) if the Club Log key file
-       is missing or the expected line is empty, so a Release build can never
-       silently ship without Jimmy's Club Log key. Debug builds are unaffected.
-       BeforeBuild/AfterBuild are recognized extension points that
-       Microsoft.Common.targets already calls as part of the Build target, no
-       AfterTargets/BeforeTargets wiring needed. -->
-  <Target Name="BeforeBuild" Condition="'$(Configuration)'=='Release'">
+  <!-- Fails ANY build fast (before compiling) if the Club Log key file is
+       missing or the expected line is empty. Debug and Release must behave
+       identically here (no exceptions), so a Debug build can never silently
+       run without real-time/batch Club Log upload working the same way a
+       real end-user Release install does. BeforeBuild/AfterBuild are
+       recognized extension points that Microsoft.Common.targets already
+       calls as part of the Build target, no AfterTargets/BeforeTargets
+       wiring needed. -->
+  <Target Name="BeforeBuild">
     <Error Condition="!Exists('$(ClubLogKeyFile)')"
-           Text="Club Log key file not found: $(ClubLogKeyFile). Set up the key file before building Release." />
+           Text="Club Log key file not found: $(ClubLogKeyFile). Set up the key file before building." />
     <ReadClubLogKeyLine Condition="Exists('$(ClubLogKeyFile)')"
                          FilePath="$(ClubLogKeyFile)" LineNumber="$(ClubLogKeyLineNumber)">
       <Output TaskParameter="Key" PropertyName="_ClubLogKey" />
     </ReadClubLogKeyLine>
     <Error Condition="Exists('$(ClubLogKeyFile)') and '$(_ClubLogKey)' == ''"
-           Text="Club Log key file exists but line $(ClubLogKeyLineNumber) is empty: $(ClubLogKeyFile). Fix the key file before building Release." />
+           Text="Club Log key file exists but line $(ClubLogKeyLineNumber) is empty: $(ClubLogKeyFile). Fix the key file before building." />
   </Target>
 
-  <!-- Embeds Jimmy's Club Log application key into the Release build output so
-       it ships to end users via the installer (see ClubLogAppKey.cs, resolution
-       option 3). $(_ClubLogKey) was already read and validated non-empty by
-       BeforeBuild above; MSBuild properties persist across targets within the
-       same build, so it isn't re-read here. -->
-  <Target Name="AfterBuild" Condition="'$(Configuration)'=='Release'">
+  <!-- Embeds Jimmy's Club Log application key into every build's output
+       (Debug and Release alike) so real-time/batch upload and country-data
+       download work identically regardless of configuration (see
+       ClubLogAppKey.cs, resolution option 3). $(_ClubLogKey) was already
+       read and validated non-empty by BeforeBuild above; MSBuild properties
+       persist across targets within the same build, so it isn't re-read
+       here. -->
+  <Target Name="AfterBuild">
     <WriteLinesToFile File="$(OutDir)clublog_key.txt" Lines="$(_ClubLogKey)" Overwrite="true" />
   </Target>
 </Project>

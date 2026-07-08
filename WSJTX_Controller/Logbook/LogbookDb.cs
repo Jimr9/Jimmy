@@ -262,7 +262,7 @@ namespace WSJTX_Controller
             const string mutableCols =
                 "lotw_qsl_sent, lotw_qsl_rcvd, qrz_qsl_sent, qrz_qsl_rcvd, country, state, name, grid, " +
                 "dxcc, cq_zone, continent, itu_zone, county, iota, sig, sig_info, my_sig, my_sig_info, " +
-                "darc_dok, wpx_prefix, exchange_sent, exchange_rcvd";
+                "darc_dok, wpx_prefix, exchange_sent, exchange_rcvd, qrz_uploaded_at, clublog_uploaded_at";
 
             lock (_lock)
             {
@@ -293,7 +293,8 @@ INSERT INTO qso (
     lotw_qsl_sent, lotw_qsl_rcvd, qrz_qsl_sent, qrz_qsl_rcvd,
     source, source_qso_id, imported_at, dedup_key,
     continent, itu_zone, county, iota, sig, sig_info, my_sig, my_sig_info,
-    darc_dok, wpx_prefix, exchange_sent, exchange_rcvd
+    darc_dok, wpx_prefix, exchange_sent, exchange_rcvd,
+    qrz_uploaded_at, clublog_uploaded_at
 ) VALUES (
     @callsign, @band, @mode, @qso_date, @time_on, @time_off, @freq_hz,
     @rst_sent, @rst_rcvd, @state, @country, @dxcc, @cq_zone, @grid,
@@ -301,13 +302,24 @@ INSERT INTO qso (
     @lotw_qsl_sent, @lotw_qsl_rcvd, @qrz_qsl_sent, @qrz_qsl_rcvd,
     @source, @source_qso_id, @imported_at, @dedup_key,
     @continent, @itu_zone, @county, @iota, @sig, @sig_info, @my_sig, @my_sig_info,
-    @darc_dok, @wpx_prefix, @exchange_sent, @exchange_rcvd
+    @darc_dok, @wpx_prefix, @exchange_sent, @exchange_rcvd,
+    CASE WHEN @source='QRZ'     THEN @imported_at ELSE '' END,
+    CASE WHEN @source='CLUBLOG' THEN @imported_at ELSE '' END
 )
 ON CONFLICT(dedup_key) DO UPDATE SET
     lotw_qsl_sent = CASE WHEN excluded.source='LOTW' AND excluded.lotw_qsl_sent!='' THEN excluded.lotw_qsl_sent ELSE qso.lotw_qsl_sent END,
     lotw_qsl_rcvd = CASE WHEN qso.lotw_qsl_rcvd='Y' THEN 'Y' WHEN excluded.source='LOTW' AND excluded.lotw_qsl_rcvd!='' THEN excluded.lotw_qsl_rcvd ELSE qso.lotw_qsl_rcvd END,
     qrz_qsl_sent  = CASE WHEN excluded.source='QRZ'  AND excluded.qrz_qsl_sent !='' THEN excluded.qrz_qsl_sent  ELSE qso.qrz_qsl_sent  END,
     qrz_qsl_rcvd  = CASE WHEN qso.qrz_qsl_rcvd='Y'  THEN 'Y' WHEN excluded.source='QRZ'  AND excluded.qrz_qsl_rcvd !='' THEN excluded.qrz_qsl_rcvd  ELSE qso.qrz_qsl_rcvd  END,
+    -- A download FROM a service proves that service already has the QSO, so it
+    -- must never be queued to be uploaded back to it (GetPendingUploads checks
+    -- exactly this column). Only ever fills in a blank -- an already-recorded
+    -- real upload time (from Jimmy's own successful upload) is never overwritten
+    -- or downgraded by a later download. A download from a DIFFERENT service
+    -- (e.g. LOTW) leaves both of these alone, since it says nothing about
+    -- whether QRZ/Club Log has this QSO.
+    qrz_uploaded_at      = CASE WHEN qso.qrz_uploaded_at      != '' THEN qso.qrz_uploaded_at      ELSE excluded.qrz_uploaded_at      END,
+    clublog_uploaded_at  = CASE WHEN qso.clublog_uploaded_at  != '' THEN qso.clublog_uploaded_at  ELSE excluded.clublog_uploaded_at  END,
     -- country/dxcc/continent/cq_zone are the fields Jimmy itself guesses from its own
     -- cached Club Log country data at live-logging time (EnrichWithClubLogGeoData), purely
     -- so Awards/Still-Need tracking has something to show immediately -- Jimmy is never the
@@ -563,6 +575,49 @@ ON CONFLICT(dedup_key) DO UPDATE SET
                 case "QRZ":     return "qrz_uploaded_at";
                 case "CLUBLOG": return "clublog_uploaded_at";
                 default: throw new ArgumentException("Unknown upload service: " + service);
+            }
+        }
+
+        public class UploadSyncStatus
+        {
+            public int      PendingCount;
+            public int      UploadedCount;
+            public DateTime? LastUploadUtc;
+        }
+
+        // service is "qrz" or "clublog". Cheap summary for the Sync Status
+        // display -- avoids pulling full QSO rows just to show a count.
+        public UploadSyncStatus GetUploadSyncStatus(string service)
+        {
+            string col = UploadColumn(service);
+            lock (_lock)
+            {
+                var status = new UploadSyncStatus();
+                using (var cmd = _conn.CreateCommand())
+                {
+                    cmd.CommandText = $"SELECT COUNT(*) FROM qso WHERE {col} = '';";
+                    var r = cmd.ExecuteScalar();
+                    status.PendingCount = r == null || r == DBNull.Value ? 0 : Convert.ToInt32(r);
+                }
+                using (var cmd = _conn.CreateCommand())
+                {
+                    cmd.CommandText = $"SELECT COUNT(*) FROM qso WHERE {col} != '';";
+                    var r = cmd.ExecuteScalar();
+                    status.UploadedCount = r == null || r == DBNull.Value ? 0 : Convert.ToInt32(r);
+                }
+                using (var cmd = _conn.CreateCommand())
+                {
+                    cmd.CommandText = $"SELECT MAX({col}) FROM qso WHERE {col} != '';";
+                    var r = cmd.ExecuteScalar();
+                    if (r != null && r != DBNull.Value)
+                    {
+                        DateTime when;
+                        if (DateTime.TryParse(Convert.ToString(r), null,
+                                System.Globalization.DateTimeStyles.RoundtripKind, out when))
+                            status.LastUploadUtc = when;
+                    }
+                }
+                return status;
             }
         }
 

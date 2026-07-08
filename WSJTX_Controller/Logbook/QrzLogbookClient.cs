@@ -194,12 +194,29 @@ namespace WSJTX_Controller
 
             int ri = response.IndexOf("REASON=", StringComparison.OrdinalIgnoreCase);
             string reason = ri >= 0 ? WebUtility.UrlDecode(response.Substring(ri + 7).Split('&')[0]) : null;
+
+            // QRZ reports "already have this QSO" as RESULT=FAIL with a REASON
+            // mentioning "duplicate", rather than a distinct result code (unlike
+            // Club Log's clean "200 QSO Duplicate"). Treat it as handled, not
+            // failed -- QRZ already has the QSO, nothing more for Jimmy to do.
+            // Without this, a duplicate retries forever on every Alt+U catch-up,
+            // burning minutes and blocking Club Log's catch-up from ever running
+            // behind it (they share one sequential background task).
+            if (IsDuplicateReason(reason))
+                return true;
+
             LastError = !string.IsNullOrWhiteSpace(reason)
                 ? $"QRZ API error ({result}): {reason}"
                 : $"QRZ API reported failure (RESULT={result ?? "none"}).";
             LogFailure("Upload error", LastError, response);
             return false;
         }
+
+        // Extracted for testability (JimmyTests has no InternalsVisibleTo, so
+        // only public static members of a plain class are reachable from tests).
+        public static bool IsDuplicateReason(string reason) =>
+            !string.IsNullOrWhiteSpace(reason) &&
+            reason.IndexOf("duplicate", StringComparison.OrdinalIgnoreCase) >= 0;
 
         // Appends complete failure details (never the API key or session key) to a
         // dedicated log file, named to match the "log_*.txt" pattern so it is picked

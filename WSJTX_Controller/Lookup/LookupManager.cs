@@ -23,6 +23,7 @@ namespace WSJTX_Controller
         public QrzProvider     Qrz     { get; }
         public LoTWProvider    LoTW    { get; }
         public ClubLogProvider ClubLog { get; }
+        public FccUlsProvider  FccUls  { get; }
 
         // Every ILookupProvider that can contribute to a Build(call), in
         // priority order (earlier providers' fields win -- matches the
@@ -65,7 +66,13 @@ namespace WSJTX_Controller
             Qrz     = new QrzProvider(root);
             LoTW    = new LoTWProvider(root);
             ClubLog = new ClubLogProvider(root);
+            FccUls  = new FccUlsProvider(root);
 
+            // FccUls goes first: its State (when it has one) is the authoritative
+            // FCC-registered value and should win over QRZ's, per the same
+            // QRZ-vs-grid.dat priority reasoning already applied elsewhere -- QRZ's
+            // own US records ultimately derive from this same FCC data anyway.
+            _providers.Add(FccUls);
             _providers.Add(Qrz);
             _providers.Add(ClubLog);
             _providers.Add(LoTW);
@@ -78,6 +85,7 @@ namespace WSJTX_Controller
             // clubLogAppKey is Jimmy's registered Club Log application key (see
             // ClubLogAppKey.Resolve()), not a per-user credential.
             string          clubLogAppKey,   int    clubLogDays,
+            bool            fccUlsEnabled    = false,
             QrzLookupPolicy policy           = QrzLookupPolicy.Disabled,
             int             qrzMinIntervalSeconds = 10)
         {
@@ -87,6 +95,7 @@ namespace WSJTX_Controller
 
             Qrz.Configure(qrzEnabled,     qrzUser,     qrzPass,     qrzCacheDays);
             LoTW.Configure(lotwEnabled);
+            FccUls.Configure(fccUlsEnabled);
 
             // Club Log country data is Jimmy infrastructure, not a user-facing
             // lookup feature -- it always loads/refreshes regardless of the
@@ -97,13 +106,14 @@ namespace WSJTX_Controller
 
             if (!useLookupData) { StopAutoTimer(); return; }
 
-            if (lotwEnabled) LoTW.Load();
-            if (qrzEnabled)  Qrz.PurgeOldEntries();
+            if (lotwEnabled)   LoTW.Load();
+            if (qrzEnabled)    Qrz.PurgeOldEntries();
+            if (fccUlsEnabled) FccUls.Load();
 
             StartAutoTimer();
         }
 
-        public void StartBackgroundRefreshIfNeeded(int lotwDays, int clubLogDays)
+        public void StartBackgroundRefreshIfNeeded(int lotwDays, int clubLogDays, int fccUlsDays = 7)
         {
             if (ClubLog.NeedsRefresh(clubLogDays))
                 _ = ClubLog.RefreshAsync();
@@ -111,6 +121,8 @@ namespace WSJTX_Controller
             if (!_useLookupData) return;
             if (LoTW.IsEnabled && LoTW.NeedsRefresh(lotwDays))
                 _ = LoTW.RefreshAsync();
+            if (FccUls.IsEnabled && FccUls.NeedsRefresh(fccUlsDays))
+                _ = FccUls.RefreshAsync();
         }
 
         // ── Synchronous lookups (no network) ────────────────────────────────────

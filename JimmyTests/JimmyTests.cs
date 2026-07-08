@@ -108,6 +108,7 @@ static class JimmyTests
         RuleEngineCountTargetStillNeededTests();
         AdifRecordBuilderTests();
         LogbookDbAuthoritativeSourceOverrideTests();
+        LogbookDbDownloadMarksUploadedTests();
         Colonies13RosterRegressionTest();
         CallQueueRankerCategoryTierTests();
         CallQueueRankerSortMethodTests();
@@ -122,6 +123,19 @@ static class JimmyTests
         SpotWatchCallsRoundTripTests();
         BandAppliesToLiveTagTests();
         RuleEngineFixedBandRestrictionTests();
+        AwardMatcherMatchTests();
+        AwardMatcherAlreadyWorkedGateTests();
+        RuleEngineResolveBandsForEvaluationTests();
+        RuleEngineBandChoicesForTests();
+        RuleEngineBandOverrideIntersectEndToEndTests();
+        RowFormatterBuildOrderedRowTests();
+        ParseRowOrderTests();
+        LogbookDbUploadSyncStatusTests();
+        QrzIsDuplicateReasonTests();
+        ResolveUsStateTests();
+        DxSpotWatcherIsEvenPeriodTests();
+        FccUlsProviderParseLineTests();
+        FccUlsProviderLooksIncompleteTests();
 
         Console.WriteLine();
         Console.WriteLine($"=== {passed} passed, {failed} failed ===");
@@ -424,6 +438,177 @@ static class JimmyTests
         {
             try { File.Delete(tmpDb); } catch { }
         }
+    }
+
+    // ── LogbookDb.GetUploadSyncStatus: pending count + last-upload time ────────
+    // Backs the Sync Status section on the My Log tab -- must correctly report
+    // "still pending" vs "already uploaded" per service, independently of the
+    // other service's upload column.
+    static void LogbookDbUploadSyncStatusTests()
+    {
+        Console.WriteLine("\n── LogbookDb.GetUploadSyncStatus ──");
+        string tmpDb = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_UploadSync_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDb))
+            {
+                InsertQso(db, "W1AW", "CT", dxcc: 291, zone: 5);
+                InsertQso(db, "W2AW", "NY", dxcc: 291, zone: 5);
+                string keyW1AW = AdifImporter.BuildDedupKey("W1AW", "20m", "FT8", "20241201", "1200");
+
+                // Neither QSO uploaded yet to either service.
+                var qrzBefore = db.GetUploadSyncStatus("QRZ");
+                Check("before any upload: QRZ pending count == 2",     qrzBefore.PendingCount == 2, true);
+                Check("before any upload: QRZ uploaded count == 0",    qrzBefore.UploadedCount == 0, true);
+                Check("before any upload: QRZ last upload time null",  qrzBefore.LastUploadUtc.HasValue, false);
+
+                var when = new DateTime(2026, 7, 1, 12, 0, 0, DateTimeKind.Utc);
+                db.MarkUploaded(keyW1AW, "QRZ", when);
+
+                var qrzAfter = db.GetUploadSyncStatus("QRZ");
+                Check("after marking W1AW uploaded: QRZ pending count == 1", qrzAfter.PendingCount == 1, true);
+                Check("after marking W1AW uploaded: QRZ uploaded count == 1", qrzAfter.UploadedCount == 1, true);
+                Check("after marking W1AW uploaded: QRZ last upload time set",
+                      qrzAfter.LastUploadUtc.HasValue && qrzAfter.LastUploadUtc.Value == when, true);
+
+                // Club Log status must be unaffected by the QRZ-only mark.
+                var clubLogAfter = db.GetUploadSyncStatus("CLUBLOG");
+                Check("QRZ mark does not affect Club Log pending count", clubLogAfter.PendingCount == 2, true);
+                Check("QRZ mark does not affect Club Log uploaded count", clubLogAfter.UploadedCount == 0, true);
+                Check("QRZ mark does not affect Club Log last upload time",
+                      clubLogAfter.LastUploadUtc.HasValue, false);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL  LogbookDbUploadSyncStatusTests threw: {ex.GetType().Name}: {ex.Message}");
+            failed++;
+        }
+        finally
+        {
+            try { File.Delete(tmpDb); } catch { }
+        }
+    }
+
+    // ── QrzLogbookClient.IsDuplicateReason ──────────────────────────────────────
+    // QRZ reports "already have this QSO" as RESULT=FAIL with a REASON mentioning
+    // "duplicate" rather than a distinct result code -- this must be recognized
+    // so a duplicate is marked handled instead of retried forever on every Alt+U.
+    static void QrzIsDuplicateReasonTests()
+    {
+        Console.WriteLine("\n── QrzLogbookClient.IsDuplicateReason ──");
+        Check("exact QRZ duplicate message recognized",
+              QrzLogbookClient.IsDuplicateReason("Unable to add QSO to database: duplicate"), true);
+        Check("case-insensitive match",
+              QrzLogbookClient.IsDuplicateReason("DUPLICATE QSO"), true);
+        Check("unrelated failure reason is not treated as duplicate",
+              QrzLogbookClient.IsDuplicateReason("Invalid API Key"), false);
+        Check("null reason is not a duplicate", QrzLogbookClient.IsDuplicateReason(null), false);
+        Check("empty reason is not a duplicate", QrzLogbookClient.IsDuplicateReason(""), false);
+        Check("whitespace-only reason is not a duplicate", QrzLogbookClient.IsDuplicateReason("   "), false);
+    }
+
+    // ── WsjtxClient.ResolveUsState ───────────────────────────────────────────────
+    // Shared priority rule for every US-state lookup site: QRZ's cached real state
+    // wins whenever present; grid.dat's guess is only a last-resort fallback.
+    static void ResolveUsStateTests()
+    {
+        Console.WriteLine("\n── WsjtxClient.ResolveUsState ──");
+        Check("QRZ state wins when both present",
+              WsjtxClient.ResolveUsState("CT", "MN-WI") == "CT", true);
+        Check("grid fallback used when QRZ has nothing",
+              WsjtxClient.ResolveUsState(null, "CT") == "CT", true);
+        Check("grid fallback used when QRZ state is empty string",
+              WsjtxClient.ResolveUsState("", "CT") == "CT", true);
+        Check("both null -> null", WsjtxClient.ResolveUsState(null, null) == null, true);
+        Check("QRZ present, grid null -> QRZ wins",
+              WsjtxClient.ResolveUsState("CT", null) == "CT", true);
+    }
+
+    // ── DxSpotWatcher.IsEvenPeriod ───────────────────────────────────────────────
+    static void DxSpotWatcherIsEvenPeriodTests()
+    {
+        Console.WriteLine("\n── DxSpotWatcher.IsEvenPeriod ──");
+        var baseDay = new DateTime(2026, 7, 8, 0, 0, 0, DateTimeKind.Utc);
+        Check("FT8 :00 is even", DxSpotWatcher.IsEvenPeriod(baseDay.AddSeconds(0), "FT8"), true);
+        Check("FT8 :15 is odd",  DxSpotWatcher.IsEvenPeriod(baseDay.AddSeconds(15), "FT8"), false);
+        Check("FT8 :30 is even", DxSpotWatcher.IsEvenPeriod(baseDay.AddSeconds(30), "FT8"), true);
+        Check("FT8 :45 is odd",  DxSpotWatcher.IsEvenPeriod(baseDay.AddSeconds(45), "FT8"), false);
+        Check("FT8 mode is case-insensitive", DxSpotWatcher.IsEvenPeriod(baseDay.AddSeconds(0), "ft8"), true);
+        Check("FT4 :03 (within first even window) is even",
+              DxSpotWatcher.IsEvenPeriod(baseDay.AddSeconds(3), "FT4"), true);
+        Check("FT4 :10 (odd window) is odd",
+              DxSpotWatcher.IsEvenPeriod(baseDay.AddSeconds(10), "FT4"), false);
+        Check("FT4 :37 (odd window) is odd",
+              DxSpotWatcher.IsEvenPeriod(baseDay.AddSeconds(37), "FT4"), false);
+    }
+
+    // ── FccUlsProvider.ParseLine ─────────────────────────────────────────────────
+    // Uses REAL sample rows copied verbatim from an actual downloaded EN.dat
+    // (2026-07-08), not synthetic data -- confirms the empirically-verified field
+    // positions (callsign index 4, state index 17, unique_system_identifier index
+    // 1) still parse correctly, and that dedup keeps the highest-uid row per
+    // callsign (the current holder) rather than an old/reissued one.
+    static void FccUlsProviderParseLineTests()
+    {
+        Console.WriteLine("\n── FccUlsProvider.ParseLine ──");
+
+        // W1AW = ARRL HQ, Newington, CT -- a stable, well-known real-world answer.
+        const string w1aw = "EN|780866|||W1AW|L|L00306106|ARRL HQ OPERATORS CLUB||||||||225 MAIN ST|NEWINGTON|CT|06111|| David A Minster|000|0004511143|B||||||";
+        var d1 = new Dictionary<string, (long Uid, string State)>(StringComparer.OrdinalIgnoreCase);
+        FccUlsProvider.ParseLine(w1aw, d1);
+        Check("W1AW parses to CT", d1.TryGetValue("W1AW", out var w1awEntry) && w1awEntry.State == "CT", true);
+
+        // AA0A: two real rows for the same callsign -- an older license (McCarthy,
+        // MO, lower uid) and the current one (Rosebrook, SD, higher uid). Confirmed
+        // duplicate pair copied verbatim from a real downloaded file.
+        const string aa0aOld = "EN|215000|||AA0A|L|L00209566|MC CARTHY, DENNIS J|DENNIS|J|MC CARTHY|||||6438 Bishops Pl|SAINT LOUIS|MO|631093371|||000|0002274249|I||||||";
+        const string aa0aNew = "EN|4280373|||AA0A|L|L02306961|Rosebrook, John|John||Rosebrook|||||3916 N. Potsdam Ave. #4555|Sioux Falls|SD|57104|||000|0028942159|I||||||";
+
+        // Order 1: old row first, then new -- higher uid must win.
+        var d2 = new Dictionary<string, (long Uid, string State)>(StringComparer.OrdinalIgnoreCase);
+        FccUlsProvider.ParseLine(aa0aOld, d2);
+        FccUlsProvider.ParseLine(aa0aNew, d2);
+        Check("AA0A (old-then-new order): higher uid (SD) wins",
+              d2.TryGetValue("AA0A", out var aa0aEntry1) && aa0aEntry1.State == "SD", true);
+
+        // Order 2: new row first, then old -- must NOT regress back to the old one.
+        var d3 = new Dictionary<string, (long Uid, string State)>(StringComparer.OrdinalIgnoreCase);
+        FccUlsProvider.ParseLine(aa0aNew, d3);
+        FccUlsProvider.ParseLine(aa0aOld, d3);
+        Check("AA0A (new-then-old order): higher uid (SD) still wins",
+              d3.TryGetValue("AA0A", out var aa0aEntry2) && aa0aEntry2.State == "SD", true);
+
+        // Malformed/irrelevant input must be skipped, not throw or add junk.
+        var d4 = new Dictionary<string, (long Uid, string State)>(StringComparer.OrdinalIgnoreCase);
+        FccUlsProvider.ParseLine("HD|780866|||W1AW|A|||||", d4);
+        Check("non-EN record type is skipped", d4.Count == 0, true);
+        FccUlsProvider.ParseLine("EN|123|||W9ZZZ|L|", d4);
+        Check("too-few-fields line is skipped", d4.Count == 0, true);
+        FccUlsProvider.ParseLine("", d4);
+        Check("empty line is skipped, does not throw", d4.Count == 0, true);
+    }
+
+    // ── FccUlsProvider.LooksIncomplete ───────────────────────────────────────────
+    // Guards against a technically-valid-but-truncated download (e.g. FCC's
+    // server caught mid-regeneration of the weekly file) silently replacing good
+    // data with a partial file.
+    static void FccUlsProviderLooksIncompleteTests()
+    {
+        Console.WriteLine("\n── FccUlsProvider.LooksIncomplete ──");
+        Check("first-ever download, plausible count -> accepted",
+              FccUlsProvider.LooksIncomplete(1_580_000, 0), false);
+        Check("first-ever download, implausibly low count -> rejected",
+              FccUlsProvider.LooksIncomplete(1000, 0), true);
+        Check("first-ever download, right at the floor -> accepted",
+              FccUlsProvider.LooksIncomplete(FccUlsProvider.MinPlausibleRecordCount, 0), false);
+        Check("subsequent refresh, similar count -> accepted",
+              FccUlsProvider.LooksIncomplete(1_580_000, 1_575_000), false);
+        Check("subsequent refresh, slightly lower (normal churn) -> accepted",
+              FccUlsProvider.LooksIncomplete(1_570_000, 1_580_000), false);
+        Check("subsequent refresh, sharply lower (truncated download) -> rejected",
+              FccUlsProvider.LooksIncomplete(400_000, 1_580_000), true);
     }
 
     // Insert a minimal QSO record into a test LogbookDb.
@@ -845,6 +1030,112 @@ static class JimmyTests
         catch (Exception ex)
         {
             Console.WriteLine($"  FAIL  RuleEngineBandIndependenceTests threw: {ex.GetType().Name}: {ex.Message}");
+            failed++;
+        }
+        finally
+        {
+            try { File.Delete(tmpDb); } catch { }
+        }
+    }
+
+    // ── LogbookDb.Upsert: a download FROM a service marks it as already-uploaded
+    // TO that same service ────────────────────────────────────────────────────
+    // A QSO downloaded from QRZ obviously doesn't need to be uploaded back to
+    // QRZ -- that's where it came from. Before this fix, qrz_uploaded_at/
+    // clublog_uploaded_at were never touched by a download import at all, so
+    // such a QSO stayed "pending" forever and got redundantly re-uploaded.
+    static void LogbookDbDownloadMarksUploadedTests()
+    {
+        Console.WriteLine("\n── LogbookDb.Upsert: download marks matching service uploaded ──");
+        string tmpDb = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_DownloadUploaded_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDb))
+            {
+                void DoUpsert(string call, string key, string source)
+                {
+                    db.Upsert(call, "20m", "FT8", "20260706", "1200", "1215",
+                        14_074_000, "-10", "-05", "", "", 0, 0,
+                        "", "", "", "", "", "", "",
+                        "", "", "", "",
+                        source, "", key,
+                        "", 0, "", "", "", "", "", "", "", "", "", "");
+                }
+
+                string keyA = AdifImporter.BuildDedupKey("W1AW", "20m", "FT8", "20260706", "1200");
+                DoUpsert("W1AW", keyA, "WSJTX");
+                Check("before any download: QRZ pending includes the WSJTX-logged QSO",
+                      db.GetUploadSyncStatus("QRZ").PendingCount == 1, true);
+                Check("before any download: CLUBLOG pending also includes it",
+                      db.GetUploadSyncStatus("CLUBLOG").PendingCount == 1, true);
+
+                // Downloading it back from QRZ must mark it uploaded-to-QRZ...
+                DoUpsert("W1AW", keyA, "QRZ");
+                Check("QRZ download marks the QSO as no longer pending for QRZ",
+                      db.GetUploadSyncStatus("QRZ").PendingCount == 0, true);
+                Check("...but does NOT affect Club Log's pending status",
+                      db.GetUploadSyncStatus("CLUBLOG").PendingCount == 1, true);
+
+                // A later Club Log download for the same QSO must independently mark
+                // Club Log too, without disturbing the already-set QRZ status.
+                DoUpsert("W1AW", keyA, "CLUBLOG");
+                Check("Club Log download marks the QSO as no longer pending for Club Log",
+                      db.GetUploadSyncStatus("CLUBLOG").PendingCount == 0, true);
+                Check("QRZ status remains uploaded after the Club Log download",
+                      db.GetUploadSyncStatus("QRZ").PendingCount == 0, true);
+
+                // A download from an unrelated service (LOTW) must not mark either.
+                string keyB = AdifImporter.BuildDedupKey("K1XYZ", "20m", "FT8", "20260706", "1201");
+                DoUpsert("K1XYZ", keyB, "WSJTX");
+                DoUpsert("K1XYZ", keyB, "LOTW");
+                Check("LoTW download does not mark QRZ as uploaded",
+                      db.GetUploadSyncStatus("QRZ").PendingCount == 1, true);
+                Check("LoTW download does not mark Club Log as uploaded",
+                      db.GetUploadSyncStatus("CLUBLOG").PendingCount == 1, true);
+
+            }
+
+            // Separate, single-row database for this check -- GetUploadSyncStatus's
+            // LastUploadUtc is a table-wide MAX(), which the multi-row db above would
+            // confuse this assertion with (an unrelated row's later real timestamp
+            // would win the MAX() over the specific value being checked here).
+            string tmpDb2 = Path.Combine(Path.GetTempPath(),
+                "JimmyTest_DownloadUploaded2_" + Guid.NewGuid().ToString("N") + ".db");
+            try
+            {
+                using (var db2 = new LogbookDb(tmpDb2))
+                {
+                    string keyC = AdifImporter.BuildDedupKey("K1XYZ", "20m", "FT8", "20260706", "1201");
+                    db2.Upsert("K1XYZ", "20m", "FT8", "20260706", "1200", "1215",
+                        14_074_000, "-10", "-05", "", "", 0, 0,
+                        "", "", "", "", "", "", "",
+                        "", "", "", "",
+                        "WSJTX", "", keyC,
+                        "", 0, "", "", "", "", "", "", "", "", "", "");
+
+                    // A real prior upload (Jimmy's own successful Alt+U) must never be
+                    // downgraded/overwritten by a later download's import timestamp.
+                    var realUploadTime = new DateTime(2026, 7, 1, 9, 0, 0, DateTimeKind.Utc);
+                    db2.MarkUploaded(keyC, "QRZ", realUploadTime);
+                    db2.Upsert("K1XYZ", "20m", "FT8", "20260706", "1200", "1215",
+                        14_074_000, "-10", "-05", "", "", 0, 0,
+                        "", "", "", "", "", "", "",
+                        "", "", "", "",
+                        "QRZ", "", keyC,
+                        "", 0, "", "", "", "", "", "", "", "", "", "");
+                    Check("a real prior upload timestamp is preserved, not overwritten by a later download",
+                          db2.GetUploadSyncStatus("QRZ").LastUploadUtc == realUploadTime, true);
+                }
+            }
+            finally
+            {
+                try { File.Delete(tmpDb2); } catch { }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL  LogbookDbDownloadMarksUploadedTests threw: {ex.GetType().Name}: {ex.Message}");
             failed++;
         }
         finally
@@ -1497,6 +1788,291 @@ static class JimmyTests
               Controller.BandAppliesToLiveTag(multiBand, "80m"), true);
         Check("Multi-band restriction: does not apply to a band not in the list",
               Controller.BandAppliesToLiveTag(multiBand, "20m"), false);
+    }
+
+    // ── AwardMatcher.Match: pure award-matching logic (extracted from WsjtxClient's old
+    // MatchedAwardRuleId so it's testable without a live LookupManager/UDP pipeline) ──
+    static Dictionary<string, WsjtxClient.ActiveAwardTag> MakeTags(RuleGroupBy groupBy, params string[] setValues)
+    {
+        return new Dictionary<string, WsjtxClient.ActiveAwardTag>
+        {
+            ["TEST_RULE"] = new WsjtxClient.ActiveAwardTag
+            {
+                RuleId = "TEST_RULE", RuleName = "Test Rule", GroupBy = groupBy,
+                Set = new HashSet<string>(setValues, StringComparer.OrdinalIgnoreCase),
+            }
+        };
+    }
+
+    static void AwardMatcherMatchTests()
+    {
+        Console.WriteLine("\n── AwardMatcher.Match ──");
+
+        Check("Empty activeAwardTags -> no match",
+              AwardMatcher.Match(new Dictionary<string, WsjtxClient.ActiveAwardTag>(), "GB13COL", null, null, () => 0, () => 0) == null, true);
+
+        Check("Null/empty call -> no match",
+              AwardMatcher.Match(MakeTags(RuleGroupBy.Callsign, "GB13COL"), "", null, null, () => 0, () => 0) == null, true);
+
+        // Callsign GroupBy (e.g. 13 Colonies Bonus Stations)
+        var callsignTags = MakeTags(RuleGroupBy.Callsign, "GB13COL", "WM3PEN");
+        Check("Callsign GroupBy: matched call returns the rule Id",
+              AwardMatcher.Match(callsignTags, "GB13COL", null, null, () => 0, () => 0) == "TEST_RULE", true);
+        Check("Callsign GroupBy: unmatched call returns null",
+              AwardMatcher.Match(callsignTags, "K1ABC", null, null, () => 0, () => 0) == null, true);
+
+        // State GroupBy
+        var stateTags = MakeTags(RuleGroupBy.State, "CA", "TX");
+        Check("State GroupBy: matched state returns the rule Id",
+              AwardMatcher.Match(stateTags, "K6ABC", "CA", null, () => 0, () => 0) == "TEST_RULE", true);
+        Check("State GroupBy: null state (no grid decoded) returns null",
+              AwardMatcher.Match(stateTags, "K6ABC", null, null, () => 0, () => 0) == null, true);
+        Check("State GroupBy: unmatched state returns null",
+              AwardMatcher.Match(stateTags, "K6ABC", "NY", null, () => 0, () => 0) == null, true);
+
+        // CqZone GroupBy -- delegate only invoked when this branch is actually reached
+        var cqZoneTags = MakeTags(RuleGroupBy.CqZone, "5", "14");
+        Check("CqZone GroupBy: matched zone (via delegate) returns the rule Id",
+              AwardMatcher.Match(cqZoneTags, "PY5SNL", null, null, () => 14, () => 0) == "TEST_RULE", true);
+        Check("CqZone GroupBy: unmatched zone returns null",
+              AwardMatcher.Match(cqZoneTags, "PY5SNL", null, null, () => 8, () => 0) == null, true);
+        Check("CqZone GroupBy: zone 0 (unresolved) never matches",
+              AwardMatcher.Match(cqZoneTags, "PY5SNL", null, null, () => 0, () => 0) == null, true);
+
+        // Continent GroupBy
+        var continentTags = MakeTags(RuleGroupBy.Continent, "EU", "AS");
+        Check("Continent GroupBy: matched continent returns the rule Id",
+              AwardMatcher.Match(continentTags, "G3HRC", null, "EU", () => 0, () => 0) == "TEST_RULE", true);
+        Check("Continent GroupBy: unmatched continent returns null",
+              AwardMatcher.Match(continentTags, "G3HRC", null, "NA", () => 0, () => 0) == null, true);
+
+        // Dxcc GroupBy -- delegate only invoked when this branch is actually reached
+        var dxccTags = MakeTags(RuleGroupBy.Dxcc, "291", "1");
+        Check("Dxcc GroupBy: matched entity (via delegate) returns the rule Id",
+              AwardMatcher.Match(dxccTags, "GB13COL", null, null, () => 0, () => 1) == "TEST_RULE", true);
+        Check("Dxcc GroupBy: unmatched entity returns null",
+              AwardMatcher.Match(dxccTags, "GB13COL", null, null, () => 0, () => 999) == null, true);
+
+        // Multiple simultaneously-active awards -- must find the one that actually matches
+        var multi = new Dictionary<string, WsjtxClient.ActiveAwardTag>
+        {
+            ["A"] = new WsjtxClient.ActiveAwardTag { RuleId = "A", RuleName = "A", GroupBy = RuleGroupBy.Callsign, Set = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "K1ABC" } },
+            ["B"] = new WsjtxClient.ActiveAwardTag { RuleId = "B", RuleName = "B", GroupBy = RuleGroupBy.Callsign, Set = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "GB13COL" } },
+        };
+        Check("Multiple active awards: matches whichever one actually contains the call",
+              AwardMatcher.Match(multi, "GB13COL", null, null, () => 0, () => 0) == "B", true);
+
+        // Defensive: a null delegate must not throw (callers should always pass one, but
+        // this runs on the per-decode hot path -- a crash here must never be possible).
+        Check("CqZone GroupBy: null delegate treated as zone 0, does not throw",
+              AwardMatcher.Match(cqZoneTags, "PY5SNL", null, null, null, null) == null, true);
+    }
+
+    // ── AwardMatcher.ShouldRejectAlreadyWorked: the already-worked-per-band admission
+    // gate's exception logic (WsjtxClient.AddSelectedCall) ──
+    static void AwardMatcherAlreadyWorkedGateTests()
+    {
+        Console.WriteLine("\n── AwardMatcher.ShouldRejectAlreadyWorked ──");
+
+        Check("New call on band -> never rejected regardless of other flags",
+              AwardMatcher.ShouldRejectAlreadyWorked(isNewCallOnBand: true, isPota: false, isNewDxccCategory: false, isStillNeededByActiveAward: false), false);
+
+        Check("Already worked, no exceptions apply -> rejected",
+              AwardMatcher.ShouldRejectAlreadyWorked(isNewCallOnBand: false, isPota: false, isNewDxccCategory: false, isStillNeededByActiveAward: false), true);
+
+        Check("Already worked, POTA -> allowed (POTA can repeat)",
+              AwardMatcher.ShouldRejectAlreadyWorked(isNewCallOnBand: false, isPota: true, isNewDxccCategory: false, isStillNeededByActiveAward: false), false);
+
+        Check("Already worked, new-DXCC category -> allowed",
+              AwardMatcher.ShouldRejectAlreadyWorked(isNewCallOnBand: false, isPota: false, isNewDxccCategory: true, isStillNeededByActiveAward: false), false);
+
+        Check("Already worked, still needed by an active award -> allowed (the fix)",
+              AwardMatcher.ShouldRejectAlreadyWorked(isNewCallOnBand: false, isPota: false, isNewDxccCategory: false, isStillNeededByActiveAward: true), false);
+
+        Check("Already worked, still needed AND POTA -> allowed (either alone suffices)",
+              AwardMatcher.ShouldRejectAlreadyWorked(isNewCallOnBand: false, isPota: true, isNewDxccCategory: false, isStillNeededByActiveAward: true), false);
+    }
+
+    // ── RuleEngine.ResolveBandsForEvaluation: a band override must never let an award
+    // evaluate "as" a band outside its own Bands= restriction ──
+    static void RuleEngineResolveBandsForEvaluationTests()
+    {
+        Console.WriteLine("\n── RuleEngine.ResolveBandsForEvaluation ──");
+
+        var unrestricted = new List<string>();
+        var sixMOnly = new List<string> { "6m" };
+        var multiBand = new List<string> { "6m", "10m" };
+
+        Check("No override -> unrestricted award's own (empty) Bands list is returned unchanged",
+              RuleEngine.ResolveBandsForEvaluation(unrestricted, null).Count == 0, true);
+        Check("No override -> restricted award's own Bands list is returned unchanged",
+              RuleEngine.ResolveBandsForEvaluation(sixMOnly, null).SequenceEqual(sixMOnly), true);
+
+        var overrideResult = RuleEngine.ResolveBandsForEvaluation(unrestricted, "20m");
+        Check("Override on an unrestricted award: narrows to just that band (legitimate 'browse one band' use)",
+              overrideResult.Count == 1 && overrideResult[0] == "20m", true);
+
+        var validOverride = RuleEngine.ResolveBandsForEvaluation(sixMOnly, "6m");
+        Check("Override matching a restricted award's own band: honored",
+              validOverride.Count == 1 && validOverride[0] == "6m", true);
+
+        var invalidOverride = RuleEngine.ResolveBandsForEvaluation(sixMOnly, "20m");
+        Check("Override NOT matching a restricted award's own band: ignored, falls back to the award's own Bands (the fix)",
+              invalidOverride.SequenceEqual(sixMOnly), true);
+
+        var multiValidOverride = RuleEngine.ResolveBandsForEvaluation(multiBand, "10m");
+        Check("Multi-band award: override matching one of its own bands narrows to just that one",
+              multiValidOverride.Count == 1 && multiValidOverride[0] == "10m", true);
+
+        var multiInvalidOverride = RuleEngine.ResolveBandsForEvaluation(multiBand, "20m");
+        Check("Multi-band award: override matching none of its own bands falls back to the full list",
+              multiInvalidOverride.SequenceEqual(multiBand), true);
+
+        var caseInsensitiveOverride = RuleEngine.ResolveBandsForEvaluation(sixMOnly, "6M");
+        Check("Band matching is case-insensitive (override honored despite case difference)",
+              caseInsensitiveOverride.Count == 1 && caseInsensitiveOverride[0].Equals("6M", StringComparison.OrdinalIgnoreCase), true);
+    }
+
+    // ── RuleEngine.BandChoicesFor: Still Need tab's Band dropdown contents per award ──
+    static void RuleEngineBandChoicesForTests()
+    {
+        Console.WriteLine("\n── RuleEngine.BandChoicesFor ──");
+
+        string[] allBands = { "(All Bands)", "160m", "80m", "40m", "20m", "6m" };
+
+        var unrestrictedChoices = RuleEngine.BandChoicesFor(new List<string>(), allBands);
+        Check("Unrestricted award: offers the full universal band list",
+              unrestrictedChoices.SequenceEqual(allBands), true);
+
+        var sixMChoices = RuleEngine.BandChoicesFor(new List<string> { "6m" }, allBands);
+        Check("Single-band-restricted award: offers only '(All Bands)' + its own band, not the universal list",
+              sixMChoices.SequenceEqual(new[] { "(All Bands)", "6m" }), true);
+
+        var multiChoices = RuleEngine.BandChoicesFor(new List<string> { "6m", "10m" }, allBands);
+        Check("Multi-band-restricted award: offers only '(All Bands)' + its own specific bands",
+              multiChoices.SequenceEqual(new[] { "(All Bands)", "6m", "10m" }), true);
+    }
+
+    // ── RuleEngine.EvaluateBand: confirms the intersect fix actually changes evaluation
+    // end to end, not just the pure ResolveBandsForEvaluation helper in isolation ──
+    static void RuleEngineBandOverrideIntersectEndToEndTests()
+    {
+        Console.WriteLine("\n── RuleEngine.EvaluateBand: band-override intersect (end to end) ──");
+        string tmpDb = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_RuleEngineBandOverride_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDb))
+            {
+                // TX worked+confirmed on 6m -- a 6m-only award should show it worked.
+                InsertQso(db, "W5TX", "TX", dxcc: 291, zone: 5, band: "6m", lotwRcvd: "Y");
+                // CA worked+confirmed on 20m only -- irrelevant to a 6m-only award.
+                InsertQso(db, "W6CA", "CA", dxcc: 291, zone: 3, band: "20m", lotwRcvd: "Y");
+
+                var was6m = new RuleDefinition
+                {
+                    Id = "TEST_WAS_6M", Name = "Test WAS 6m", FormatVersion = 1, Enabled = true,
+                    GroupBy = RuleGroupBy.State, Universe = "US_50_STATES",
+                    Bands = new List<string> { "6m" },
+                    Target = RuleTargetType.All, Confirmation = RuleConfirmation.Any,
+                };
+
+                // Picking "20m" for this 6m-only award must NOT evaluate as-if Bands were 20m --
+                // it must fall back to the award's own 6m restriction. (The bug: this used to
+                // silently show real 20m data mislabeled as this 6m-only award's result.)
+                var result = RuleEngine.EvaluateBand(was6m, "20m", tmpDb, null);
+                Check("Invalid band override for a 6m-only award: TX (worked on 6m) still shows worked",
+                      result.WorkedItems != null && result.WorkedItems.Contains("TX"), true);
+                Check("Invalid band override for a 6m-only award: CA (only worked on 20m) must NOT show worked",
+                      result.WorkedItems == null || !result.WorkedItems.Contains("CA"), true);
+
+                // Picking "6m" (the award's own band) is a legitimate, honored override --
+                // identical result to no override at all.
+                var validResult = RuleEngine.EvaluateBand(was6m, "6m", tmpDb, null);
+                Check("Valid band override (matches the award's own band): still shows TX worked",
+                      validResult.WorkedItems != null && validResult.WorkedItems.Contains("TX"), true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL  RuleEngineBandOverrideIntersectEndToEndTests threw: {ex.GetType().Name}: {ex.Message}");
+            failed++;
+        }
+        finally
+        {
+            try { File.Delete(tmpDb); } catch { }
+        }
+    }
+
+    // ── RowFormatter.BuildOrderedRow: shared row-building logic behind both the
+    // Stations Available row and the Raw Decodes row ──────────────────────────────
+    static void RowFormatterBuildOrderedRowTests()
+    {
+        Console.WriteLine("\n── RowFormatter.BuildOrderedRow ──");
+
+        var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "callsign", ", GB13COL" }, { "side", ", TX1" }, { "tag", ", WAS Needed" }, { "empty", "" },
+        };
+
+        Check("Null order -> fallback returned unchanged",
+              RowFormatter.BuildOrderedRow(fields, null, "FALLBACK") == "FALLBACK", true);
+
+        CheckStr("Single field: leading ', ' is stripped when it's first in the row",
+                 RowFormatter.BuildOrderedRow(fields, new List<string> { "callsign" }, "FALLBACK"), "GB13COL");
+
+        CheckStr("Two fields: separator inserted between them, in the given order",
+                 RowFormatter.BuildOrderedRow(fields, new List<string> { "callsign", "side" }, "FALLBACK"), "GB13COL, TX1");
+
+        CheckStr("Order can be reversed freely -- side first, then callsign",
+                 RowFormatter.BuildOrderedRow(fields, new List<string> { "side", "callsign" }, "FALLBACK"), "TX1, GB13COL");
+
+        CheckStr("Unknown field names are skipped, not inserted as blank/garbage",
+                 RowFormatter.BuildOrderedRow(fields, new List<string> { "callsign", "doesnotexist", "side" }, "FALLBACK"), "GB13COL, TX1");
+
+        CheckStr("Duplicate field names: only the first occurrence is used",
+                 RowFormatter.BuildOrderedRow(fields, new List<string> { "callsign", "callsign", "side" }, "FALLBACK"), "GB13COL, TX1");
+
+        CheckStr("Empty-string field values are included but contribute nothing",
+                 RowFormatter.BuildOrderedRow(fields, new List<string> { "empty", "callsign" }, "FALLBACK"), "GB13COL");
+
+        Check("Order given but every field empty/unmatched -> fallback returned",
+              RowFormatter.BuildOrderedRow(fields, new List<string> { "empty", "doesnotexist" }, "FALLBACK") == "FALLBACK", true);
+
+        Check("Null fieldMap with a non-null order -> fallback, does not throw",
+              RowFormatter.BuildOrderedRow(null, new List<string> { "callsign" }, "FALLBACK") == "FALLBACK", true);
+    }
+
+    // ── Controller.ParseRowOrder: INI parsing for both row-order settings ─────────
+    static void ParseRowOrderTests()
+    {
+        Console.WriteLine("\n── Controller.ParseRowOrder ──");
+
+        var allowed = new[] { "callsign", "side", "tag", "message" };
+
+        Check("Null/empty INI value -> null (falls back to compiled-in default)",
+              Controller.ParseRowOrder(null, allowed) == null, true);
+        Check("Whitespace-only INI value -> null",
+              Controller.ParseRowOrder("   ", allowed) == null, true);
+
+        var parsed = Controller.ParseRowOrder("callsign,side,message", allowed);
+        Check("Valid comma list parses in order",
+              parsed != null && parsed.SequenceEqual(new[] { "callsign", "side", "message" }), true);
+
+        var withInvalid = Controller.ParseRowOrder("callsign,bogus,side", allowed);
+        Check("Unknown field name in the INI value is dropped, valid ones kept in order",
+              withInvalid != null && withInvalid.SequenceEqual(new[] { "callsign", "side" }), true);
+
+        var withDupes = Controller.ParseRowOrder("callsign,side,callsign", allowed);
+        Check("Duplicate field name in the INI value: only first occurrence kept",
+              withDupes != null && withDupes.SequenceEqual(new[] { "callsign", "side" }), true);
+
+        Check("Only invalid/unknown names -> null, not an empty list",
+              Controller.ParseRowOrder("bogus1,bogus2", allowed) == null, true);
+
+        var trimmed = Controller.ParseRowOrder(" callsign , side ", allowed);
+        Check("Whitespace around tokens is trimmed",
+              trimmed != null && trimmed.SequenceEqual(new[] { "callsign", "side" }), true);
     }
 
     // ── RuleEngine: fixed single-band award restriction ([Match] Bands=) ────────
