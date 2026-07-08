@@ -40,13 +40,15 @@ namespace WSJTX_Controller
         // Callsign first, matching the same first-letter-navigation rationale as
         // Raw Decodes.
         public static readonly string[] SpotWatchDefaultFields =
-            { "callsign", "age", "band", "mode", "evenOdd", "snr", "senderGrid", "country", "spottercall", "spottergrid" };
+            { "callsign", "age", "band", "frequency", "mode", "evenOdd", "snr", "senderGrid", "country",
+              "spottercall", "spottercountry", "spottergrid" };
 
         public static readonly Dictionary<string, string> SpotWatchFieldLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            { "callsign", "Call Sign" }, { "age", "Last Spotted" }, { "band", "Band" }, { "mode", "Mode" },
-            { "evenOdd", "Even/Odd" }, { "snr", "SNR" }, { "senderGrid", "Grid" }, { "country", "Country" },
-            { "spottercall", "Spotted By" }, { "spottergrid", "Spotter Grid" }
+            { "callsign", "Call Sign" }, { "age", "Last Spotted" }, { "band", "Band" }, { "frequency", "Frequency" },
+            { "mode", "Mode" }, { "evenOdd", "Even/Odd" }, { "snr", "SNR" }, { "senderGrid", "Grid" },
+            { "country", "Country" }, { "spottercall", "Spotted By" },
+            { "spottercountry", "Spotter Country/State" }, { "spottergrid", "Spotter Grid" }
         };
 
         public List<string> SelectedCallWaitingFields { get; private set; }

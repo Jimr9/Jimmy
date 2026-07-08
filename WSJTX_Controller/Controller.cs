@@ -1933,18 +1933,58 @@ namespace WSJTX_Controller
                 }
             }
 
+            // Spotter's country/state -- sourced entirely offline. Country comes from
+            // PSKReporter's own DXCC entity number in the payload (free, authoritative,
+            // no lookup needed). State-if-USA tries the FCC ULS database (only if the
+            // user has downloaded it) then falls back to the spotter's own grid square;
+            // QRZ is deliberately never queried here, since spotters are an unbounded,
+            // uncontrolled set of stations worldwide (unlike the small curated watch
+            // list the "country" field above resolves).
+            string spotterCountry = "";
+            if (spot.SpotterDxccEntity.HasValue && wsjtxClient?.lookupManager?.ClubLog != null)
+            {
+                var entity = wsjtxClient.lookupManager.ClubLog.AllEntities
+                    .FirstOrDefault(e => e.Adif == spot.SpotterDxccEntity.Value);
+                if (entity != null && !string.IsNullOrEmpty(entity.Name))
+                {
+                    const int UsaAdif = 291;
+                    if (entity.Adif == UsaAdif && showUsStateCheckBox.Checked)
+                    {
+                        string fccState = wsjtxClient.lookupManager.FccUls.IsEnabled
+                            ? wsjtxClient.lookupManager.FccUls.Lookup(spot.SpotterCall)
+                            : null;
+                        string gridState = string.IsNullOrEmpty(spot.SpotterGrid) ? null : WsjtxClient.GridToUsState(spot.SpotterGrid);
+                        string state = !string.IsNullOrEmpty(fccState) ? fccState : gridState;
+                        spotterCountry = state != null ? $", {state}" : $", {entity.Name}";
+                    }
+                    else
+                    {
+                        spotterCountry = $", {entity.Name}";
+                    }
+                }
+            }
+
+            string frequency = "";
+            if (spot.Frequency.HasValue)
+            {
+                double kHz = spot.Frequency.Value / 1000.0;
+                frequency = $", {kHz.ToString("0.0")} kHz";
+            }
+
             var fieldMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                { "callsign",    call },
-                { "age",         $", last spotted {FormatSpotAge(spot.UtcTime)}" },
-                { "band",        string.IsNullOrEmpty(spot.Band) ? "" : $", {spot.Band}" },
-                { "mode",        string.IsNullOrEmpty(spot.Mode) ? "" : $", {spot.Mode}" },
-                { "evenOdd",     string.IsNullOrEmpty(spot.Mode) ? "" : $", {(DxSpotWatcher.IsEvenPeriod(spot.UtcTime, spot.Mode) ? "Even" : "Odd")}" },
-                { "snr",         spot.Snr.HasValue ? $", {spot.Snr.Value.ToString("+#;-#;0")}dB" : "" },
-                { "senderGrid",  string.IsNullOrEmpty(spot.SenderGrid) ? "" : $", grid {spot.SenderGrid}" },
-                { "country",     country },
-                { "spottercall", string.IsNullOrEmpty(spot.SpotterCall) ? "" : $", by {spot.SpotterCall}" },
-                { "spottergrid", string.IsNullOrEmpty(spot.SpotterGrid) ? "" : $" ({spot.SpotterGrid})" },
+                { "callsign",       call },
+                { "age",            $", last spotted {FormatSpotAge(spot.UtcTime)}" },
+                { "band",           string.IsNullOrEmpty(spot.Band) ? "" : $", {spot.Band}" },
+                { "frequency",      frequency },
+                { "mode",           string.IsNullOrEmpty(spot.Mode) ? "" : $", {spot.Mode}" },
+                { "evenOdd",        string.IsNullOrEmpty(spot.Mode) ? "" : $", {(DxSpotWatcher.IsEvenPeriod(spot.UtcTime, spot.Mode) ? "Even" : "Odd")}" },
+                { "snr",            spot.Snr.HasValue ? $", {spot.Snr.Value.ToString("+#;-#;0")}dB" : "" },
+                { "senderGrid",     string.IsNullOrEmpty(spot.SenderGrid) ? "" : $", grid {spot.SenderGrid}" },
+                { "country",        country },
+                { "spottercall",    string.IsNullOrEmpty(spot.SpotterCall) ? "" : $", by {spot.SpotterCall}" },
+                { "spottercountry", spotterCountry },
+                { "spottergrid",    string.IsNullOrEmpty(spot.SpotterGrid) ? "" : $" ({spot.SpotterGrid})" },
             };
 
             return RowFormatter.BuildOrderedRow(fieldMap, spotWatchRowOrderFields, fallback);

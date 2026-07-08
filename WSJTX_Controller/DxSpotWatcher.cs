@@ -23,6 +23,12 @@ namespace WSJTX_Controller
         // The watched station's own grid square ("sl", sender locator, in the MQTT
         // payload) -- independent of ever decoding them directly.
         public string SenderGrid;
+        // Exact frequency in Hz ("f" in the MQTT payload) -- null if not included.
+        public long?  Frequency;
+        // The spotter's ADIF/DXCC entity number ("ra", receiver ADIF entity, in the
+        // MQTT payload) -- PSKReporter's own authoritative country classification,
+        // not a grid-square guess. Null/0 if the payload didn't include one.
+        public int?   SpotterDxccEntity;
     }
 
     // Watches the PSKReporter live-spot MQTT feed (mqtt.pskreporter.info, no auth/registration)
@@ -136,15 +142,31 @@ namespace WSJTX_Controller
                     if (int.TryParse(Convert.ToString(rpObj), out rpVal)) snr = rpVal;
                 }
 
+                long? freq = null;
+                if (dict.TryGetValue("f", out var fObj))
+                {
+                    long fVal;
+                    if (long.TryParse(Convert.ToString(fObj), out fVal)) freq = fVal;
+                }
+
+                int? spotterEntity = null;
+                if (dict.TryGetValue("ra", out var raObj))
+                {
+                    int raVal;
+                    if (int.TryParse(Convert.ToString(raObj), out raVal) && raVal > 0) spotterEntity = raVal;
+                }
+
                 var spot = new SpotInfo
                 {
-                    Band        = dict.TryGetValue("b",  out var bObj)  ? bObj  as string : null,
-                    Mode        = dict.TryGetValue("md", out var mdObj) ? mdObj as string : null,
-                    SpotterCall = dict.TryGetValue("rc", out var rcObj) ? rcObj as string : null,
-                    SpotterGrid = dict.TryGetValue("rl", out var rlObj) ? rlObj as string : null,
-                    SenderGrid  = dict.TryGetValue("sl", out var slObj) ? slObj as string : null,
-                    Snr         = snr,
-                    UtcTime     = dict.TryGetValue("t",  out var tObj)  ? UnixToUtc(Convert.ToInt64(tObj)) : DateTime.UtcNow,
+                    Band              = dict.TryGetValue("b",  out var bObj)  ? bObj  as string : null,
+                    Mode              = dict.TryGetValue("md", out var mdObj) ? mdObj as string : null,
+                    SpotterCall       = dict.TryGetValue("rc", out var rcObj) ? rcObj as string : null,
+                    SpotterGrid       = dict.TryGetValue("rl", out var rlObj) ? rlObj as string : null,
+                    SenderGrid        = dict.TryGetValue("sl", out var slObj) ? slObj as string : null,
+                    Snr               = snr,
+                    Frequency         = freq,
+                    SpotterDxccEntity = spotterEntity,
+                    UtcTime           = dict.TryGetValue("t",  out var tObj)  ? UnixToUtc(Convert.ToInt64(tObj)) : DateTime.UtcNow,
                 };
 
                 bool changed;
