@@ -45,6 +45,7 @@ namespace WSJTX_Controller
         private System.Windows.Forms.CheckBox advShowRawCheckBox;
         private System.Windows.Forms.NumericUpDown rawMaxRowsNumeric;
         private System.Windows.Forms.NumericUpDown _maxQueuedCallsNumeric;
+        private System.Windows.Forms.NumericUpDown _maxCallQueueAgeNumeric;
         private System.Windows.Forms.CheckBox rawShowCqCheckBox;
         private System.Windows.Forms.CheckBox rawShowDirectedCheckBox;
         private System.Windows.Forms.CheckBox rawShowReportsCheckBox;
@@ -128,6 +129,7 @@ namespace WSJTX_Controller
 
         // General tab
         private System.Windows.Forms.CheckBox pskReporterCheckBox;
+        private System.Windows.Forms.CheckBox moveFocusToStatusCheckBox;
 
         // Appearance tab
         private System.Windows.Forms.ComboBox appearanceThemeCombo;
@@ -235,6 +237,43 @@ namespace WSJTX_Controller
                 Font                  = font,
             };
             generalPanel.Controls.Add(pskReporterCheckBox);
+
+            moveFocusToStatusCheckBox = new System.Windows.Forms.CheckBox
+            {
+                Text                  = "Move focus to status after selecting a call",
+                AccessibleName        = "Move focus to status after selecting a call",
+                AccessibleDescription = "After pressing Enter or Space to select a call in any call list (simple or advanced), move keyboard focus to the status line and re-announce it. Off by default.",
+                AutoSize              = true,
+                Location              = new System.Drawing.Point(10, 62),
+                TabIndex              = 2,
+                Checked               = ctrl.moveFocusToStatusOnCallSelect,
+                Font                  = font,
+            };
+            generalPanel.Controls.Add(moveFocusToStatusCheckBox);
+
+            var maxCallQueueAgeLabel = new System.Windows.Forms.Label
+            {
+                Text     = "Max call-queue age (periods):",
+                AutoSize = true,
+                Location = new System.Drawing.Point(10, 90),
+                Font     = font,
+                TabStop  = false
+            };
+            generalPanel.Controls.Add(maxCallQueueAgeLabel);
+
+            _maxCallQueueAgeNumeric = new System.Windows.Forms.NumericUpDown
+            {
+                AccessibleName        = "Max call-queue age in periods",
+                AccessibleDescription = "How many TX/RX periods an auto-queued call may go unheard before being dropped from the waiting list. 16 periods is about 4 minutes on FT8, 2 minutes on FT4. Manually-selected calls and New DXCC entries are never dropped by this.",
+                Location              = new System.Drawing.Point(210, 87),
+                Size                  = new System.Drawing.Size(70, 20),
+                TabIndex              = 3,
+                Minimum               = 4,
+                Maximum               = 200,
+                Value                 = Math.Max(4, Math.Min(200, ctrl.maxCallQueueAgePeriods)),
+                Font                  = font,
+            };
+            generalPanel.Controls.Add(_maxCallQueueAgeNumeric);
         }
 
         private void ApplyGeneralSettings()
@@ -244,6 +283,11 @@ namespace WSJTX_Controller
             {
                 wsjtxClient.TogglePskReporter();
             }
+
+            ctrl.moveFocusToStatusOnCallSelect = moveFocusToStatusCheckBox?.Checked ?? false;
+
+            int maxAge = (int)(_maxCallQueueAgeNumeric?.Value ?? 16);
+            ctrl.maxCallQueueAgePeriods = Math.Max(4, Math.Min(200, maxAge));
         }
 
         private void OptionsDlg_FormClosing(object sender, FormClosingEventArgs e)

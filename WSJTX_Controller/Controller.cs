@@ -57,8 +57,10 @@ namespace WSJTX_Controller
         public bool rawNewestFirst = false;
         public int rawMaxRows = 100;
         public int maxQueuedCallsBase = 5;
+        public int maxCallQueueAgePeriods = 16;
         public bool keepTransmitListDuringTx = false;
         public bool keepListPositionDuringRefresh = false;
+        public bool moveFocusToStatusOnCallSelect = false;
 
         // Sound settings: enabled flags and file paths for each sound event
         // CallAdded/CallingMe/Logged enabled state is controlled by existing checkboxes
@@ -460,8 +462,12 @@ namespace WSJTX_Controller
                 int maxQueued;
                 if (iniFile.KeyExists("maxQueuedCalls") && int.TryParse(iniFile.Read("maxQueuedCalls"), out maxQueued) && maxQueued >= 4 && maxQueued <= 100)
                     maxQueuedCallsBase = maxQueued;
+                int maxAgePeriods;
+                if (iniFile.KeyExists("maxCallQueueAgePeriods") && int.TryParse(iniFile.Read("maxCallQueueAgePeriods"), out maxAgePeriods) && maxAgePeriods >= 4 && maxAgePeriods <= 200)
+                    maxCallQueueAgePeriods = maxAgePeriods;
                 keepTransmitListDuringTx = iniFile.Read("keepTransmitListDuringTx") == "True";
                 keepListPositionDuringRefresh = iniFile.Read("keepListPositionDuringRefresh") == "True";
+                moveFocusToStatusOnCallSelect = iniFile.Read("moveFocusToStatusOnCallSelect") == "True";
 
                 // Sound settings: migrate old enabled keys for backward compat
                 // Enabled state for CallAdded/CallingMe/Logged already read above from playCallAdded/playMyCall/playLogged
@@ -815,8 +821,10 @@ namespace WSJTX_Controller
                 iniFile.Write("rawNewestFirst", rawNewestFirst.ToString());
                 iniFile.Write("rawMaxRows", rawMaxRows.ToString());
                 iniFile.Write("maxQueuedCalls", maxQueuedCallsBase.ToString());
+                iniFile.Write("maxCallQueueAgePeriods", maxCallQueueAgePeriods.ToString());
                 iniFile.Write("keepTransmitListDuringTx", keepTransmitListDuringTx.ToString());
                 iniFile.Write("keepListPositionDuringRefresh", keepListPositionDuringRefresh.ToString());
+                iniFile.Write("moveFocusToStatusOnCallSelect", moveFocusToStatusOnCallSelect.ToString());
                 // Sound settings
                 iniFile.Write("soundFile_CallAdded",        soundFile_CallAdded   ?? "");
                 iniFile.Write("soundFile_CallingMe",        soundFile_CallingMe   ?? "");
@@ -3313,6 +3321,22 @@ namespace WSJTX_Controller
             int idx = callListBox.SelectedIndex;
             int mappedIdx = wsjtxClient.MapNormalListIndex(idx);
             wsjtxClient.NextCall(false, mappedIdx, operatorSelected: true, expectedCall: wsjtxClient.GetCallAtIndex(mappedIdx));
+            MoveFocusToStatusIfEnabled();
+        }
+
+        // Optional accessibility behavior (Options > General): after selecting a call via
+        // Enter/Space in any call list (simple-mode callListBox or the advanced TX1/TX2/Raw
+        // lists), move focus to statusText and force NVDA/JAWS to announce the resulting
+        // status -- same technique already used by the NavStatus hotkey. Off by default;
+        // not everyone wants focus to jump after every selection.
+        private void MoveFocusToStatusIfEnabled()
+        {
+            if (!moveFocusToStatusOnCallSelect) return;
+            if (!statusText.Focused)
+            {
+                statusText.Focus();
+            }
+            BeginInvoke((Action)(() => SendKeys.Send("{UP}")));
         }
 
         private void statusText_TextChanged(object sender, EventArgs e)
@@ -3630,6 +3654,7 @@ namespace WSJTX_Controller
             int idx = advTx1ListBox.SelectedIndex;
             if (idx < 0) idx = 0;
             wsjtxClient.NextCallFromTx1(idx);
+            MoveFocusToStatusIfEnabled();
         }
 
         private void AdvTx2ListBox_KeyDown(object sender, KeyEventArgs e)
@@ -3669,6 +3694,7 @@ namespace WSJTX_Controller
             int idx = advTx2ListBox.SelectedIndex;
             if (idx < 0) idx = 0;
             wsjtxClient.NextCallFromTx2(idx);
+            MoveFocusToStatusIfEnabled();
         }
 
         private void AdvRawListBox_KeyDown(object sender, KeyEventArgs e)
@@ -3699,6 +3725,7 @@ namespace WSJTX_Controller
             int idx = advRawListBox.SelectedIndex;
             if (idx < 0) return;
             wsjtxClient.NextCallFromRawDecode(idx);
+            MoveFocusToStatusIfEnabled();
         }
     }
 }
