@@ -29,6 +29,9 @@ namespace WSJTX_Controller
         private readonly Action<string, bool> _onActiveAwardRuleIdsChanged;
         private readonly Func<DateTime?> _lastLotwUploadTrigger;
         private readonly Func<string> _uploadLotwHotkeyText;
+        // Offline-only callsign->US-state lookup, used when an imported ADIF record's own
+        // STATE field is blank (see AdifImporter.Normalize). Never a live network query.
+        private readonly Func<string, string> _resolveUsState;
 
         // ── Database ──────────────────────────────────────────────────────────────
         private LogbookDb _db;
@@ -113,7 +116,8 @@ namespace WSJTX_Controller
             HashSet<string> initialActiveAwardRuleIds = null,
             Action<string, bool> onActiveAwardRuleIdsChanged = null,
             Func<DateTime?> lastLotwUploadTrigger = null,
-            Func<string> uploadLotwHotkeyText = null)
+            Func<string> uploadLotwHotkeyText = null,
+            Func<string, string> resolveUsState = null)
         {
             _ini              = ini;
             _qrzApiKey        = qrzApiKey        ?? (() => "");
@@ -127,6 +131,7 @@ namespace WSJTX_Controller
             _onActiveAwardRuleIdsChanged = onActiveAwardRuleIdsChanged;
             _lastLotwUploadTrigger = lastLotwUploadTrigger ?? (() => (DateTime?)null);
             _uploadLotwHotkeyText  = uploadLotwHotkeyText  ?? (() => "Alt+U");
+            _resolveUsState        = resolveUsState        ?? (call => null);
 
             Text            = "Ham Radio Center — Logbook";
             MinimumSize     = new Size(720, 500);
@@ -278,6 +283,12 @@ namespace WSJTX_Controller
             _dashRecentLv.Columns.Add("Country",  130);
             _dashRecentLv.Columns.Add("Confirmed", 80);
             _dashRecentLv.AccessibleName = "Recent QSOs list";
+            // MakeListView()'s shared default TabIndex (10) collides with this page's own
+            // auto-numbered stat fields -- every other page using MakeListView() overrides it,
+            // this one didn't, so Tab order landed the list between WAS and DXCC instead of
+            // after every stat field (found 2026-07-09, confirmed by tracing real Tab-key
+            // focus order). 30 is safely past the last auto-numbered control on this page.
+            _dashRecentLv.TabIndex = 30;
             _myLogPanel.Controls.Add(_dashRecentLv);
         }
 
@@ -726,15 +737,21 @@ namespace WSJTX_Controller
             catch (Exception ex) { _statTotalTb.Text = "Error: " + ex.Message; }
         }
 
+        // "Synced" here means "known to already be present at this service" -- true whether
+        // Jimmy actually pushed the QSO there, or the QSO was downloaded FROM that service in
+        // the first place (in which case it obviously doesn't need uploading). Calling this
+        // "uploaded" was misleading: a download can grow this count with QSOs Jimmy never sent
+        // anywhere, which read as a phantom/unauthorized upload the first time someone noticed
+        // the count and timestamp move after only clicking Download.
         private static string FormatUploadStatus(LogbookDb.UploadSyncStatus s)
         {
             string last = s.LastUploadUtc.HasValue
                 ? s.LastUploadUtc.Value.ToLocalTime().ToString("g")
                 : "never";
-            string uploaded = $"{s.UploadedCount.ToString("N0")} uploaded";
+            string synced = $"{s.UploadedCount.ToString("N0")} synced";
             return s.PendingCount == 0
-                ? $"Up to date, {uploaded}  (last upload: {last})"
-                : $"{s.PendingCount} pending, {uploaded}  (last upload: {last})";
+                ? $"Up to date, {synced}  (last sync: {last})"
+                : $"{s.PendingCount} pending, {synced}  (last sync: {last})";
         }
 
         private void PopulateSync()
@@ -1209,10 +1226,14 @@ namespace WSJTX_Controller
             try
             {
                 var client = new QrzLogbookClient();
-                DateTime? since = (_db.TotalQsos("QRZ") > 0)
-                    ? ParseMetaDate(_ini?.Read("LogbookLastQrzRefresh"))
-                    : null;
-                string adif = await client.FetchAdifAsync(_qrzApiKey(), since).ConfigureAwait(true);
+                // Always fetch the complete log, not just records modified since the last
+                // refresh -- an incremental MODSINCE filter can never re-discover a QSO that
+                // was missed on some earlier sync (its own last-modified date on QRZ's side
+                // predates every checkpoint since), permanently hiding it. Found 2026-07-09:
+                // 3 confirmed QRZ QSOs stuck exactly this way. A full ADIF pull is a few MB
+                // and imports in under a second (dedup-key upsert is idempotent), so there's
+                // no real cost to always doing the complete, authoritative pull.
+                string adif = await client.FetchAdifAsync(_qrzApiKey(), since: null).ConfigureAwait(true);
                 if (adif == null)
                 {
                     string msg = "QRZ error: " + (client.LastError ?? "Unknown error") + " (see debug log for details)";
@@ -1222,9 +1243,7 @@ namespace WSJTX_Controller
                 }
                 if (adif.Length == 0)
                 {
-                    string msg = since.HasValue
-                        ? "QRZ: no new records since last refresh."
-                        : "QRZ: 0 QSOs returned. Verify this is your QRZ Logbook API key (qrz.com → Logbook → Settings), not the XML callsign key.";
+                    string msg = "QRZ: 0 QSOs returned. Verify this is your QRZ Logbook API key (qrz.com → Logbook → Settings), not the XML callsign key.";
                     LogSyncFailure("QRZ", msg);
                     SetStatus(msg);
                     return;
@@ -1248,14 +1267,16 @@ namespace WSJTX_Controller
             try
             {
                 var client = new LoTWQsoClient();
-                DateTime? since = (_db.TotalQsos("LOTW") > 0)
-                    ? ParseMetaDate(_ini?.Read("LogbookLastLoTWRefresh"))
-                    : null;
+                // Always fetch the complete history (since: null -> LoTWQsoClient uses
+                // 1900-01-01), not just records changed since the last refresh -- same
+                // reasoning as the QRZ sync above: an incremental filter can permanently hide
+                // a QSO confirmed before the last checkpoint if it was ever missed on an
+                // earlier sync. LoTW's own log is small enough that this costs nothing.
 
                 // LoTW splits confirmed and unconfirmed QSOs into separate API responses.
                 // Fetch both and concatenate; AdifParser handles multiple <EOH> tags.
                 SetStatus("Fetching LoTW confirmed QSOs…");
-                string adif1 = await client.FetchReportAsync(_lotwUser(), _lotwPass(), since, confirmedOnly: true).ConfigureAwait(true);
+                string adif1 = await client.FetchReportAsync(_lotwUser(), _lotwPass(), since: null, confirmedOnly: true).ConfigureAwait(true);
                 if (adif1 == null)
                 {
                     string msg = "LoTW error: " + (client.LastError ?? "Unknown error");
@@ -1265,7 +1286,7 @@ namespace WSJTX_Controller
                 }
 
                 SetStatus("Fetching LoTW unconfirmed QSOs…");
-                string adif2 = await client.FetchReportAsync(_lotwUser(), _lotwPass(), since, confirmedOnly: false).ConfigureAwait(true);
+                string adif2 = await client.FetchReportAsync(_lotwUser(), _lotwPass(), since: null, confirmedOnly: false).ConfigureAwait(true);
                 if (adif2 == null) adif2 = "";
 
                 await RunImportFromText(adif1 + "\r\n" + adif2, "LOTW", "LogbookLastLoTWRefresh").ConfigureAwait(true);
@@ -1292,12 +1313,11 @@ namespace WSJTX_Controller
             try
             {
                 var client = new ClubLogUploadClient();
-                // getadif.php only supports whole-year filtering (no day-level "since"
-                // like QRZ/LoTW), so only the year of the last refresh is passed.
-                DateTime? since = (_db.TotalQsos("CLUBLOG") > 0)
-                    ? ParseMetaDate(_ini?.Read("LogbookLastClubLogRefresh"))
-                    : null;
-                string adif = await client.FetchAdifAsync(_clubLogEmail(), _clubLogPassword(), _clubLogCallsign(), since?.Year).ConfigureAwait(true);
+                // Always fetch the complete history (sinceYear: null omits Club Log's
+                // startyear filter entirely) -- same reasoning as the QRZ/LoTW syncs above:
+                // a year-level incremental filter can permanently hide a QSO confirmed in an
+                // already-passed year if it was ever missed on an earlier sync.
+                string adif = await client.FetchAdifAsync(_clubLogEmail(), _clubLogPassword(), _clubLogCallsign(), sinceYear: null).ConfigureAwait(true);
                 if (adif == null)
                 {
                     string msg = "Club Log error: " + (client.LastError ?? "Unknown error");
@@ -1357,7 +1377,8 @@ namespace WSJTX_Controller
                 {
                     return AdifImporter.Import(_db, AdifParser.Parse(adifText), source,
                         count => BeginInvoke(new Action(() =>
-                            SetStatus($"Importing {source}: {count:N0} processed…"))));
+                            SetStatus($"Importing {source}: {count:N0} processed…"))),
+                        _resolveUsState);
                 }).ConfigureAwait(true);
 
                 _db.LogImportFinish(logId, result.Processed, result.NewQsos, result.Updated, result.Skipped, result.Errors);
@@ -1551,13 +1572,6 @@ namespace WSJTX_Controller
             if (string.IsNullOrEmpty(iso)) return "never";
             DateTime dt;
             return DateTime.TryParse(iso, out dt) ? dt.ToLocalTime().ToString("g") : "never";
-        }
-
-        private static DateTime? ParseMetaDate(string iso)
-        {
-            if (string.IsNullOrEmpty(iso)) return null;
-            DateTime dt;
-            return DateTime.TryParse(iso, out dt) ? (DateTime?)dt : null;
         }
 
         private static int SrcCount(Dictionary<string, int> d, string k)

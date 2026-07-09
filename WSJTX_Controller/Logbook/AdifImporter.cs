@@ -46,11 +46,17 @@ namespace WSJTX_Controller
         };
 
         // source: "QRZ", "LOTW", or "MANUAL"
+        // resolveUsState: optional offline callsign->state lookup (see Normalize) used only
+        // when the imported record's own STATE field is blank -- e.g. QRZ's ADIF export
+        // sometimes omits STATE for a contact even though QRZ's own site already credits
+        // the state (found 2026-07-08, several confirmed Alaska/Hawaii contacts). Pass null
+        // to disable (matches prior behavior exactly).
         public static ImportResult Import(
             LogbookDb db,
             IEnumerable<Dictionary<string, string>> records,
             string source,
-            Action<int> progressCallback = null)
+            Action<int> progressCallback = null,
+            Func<string, string> resolveUsState = null)
         {
             var result = new ImportResult();
             var errors = new StringBuilder();
@@ -63,7 +69,7 @@ namespace WSJTX_Controller
                 {
                     try
                     {
-                        var q = Normalize(raw, source);
+                        var q = Normalize(raw, source, resolveUsState);
                         if (q == null) { result.Skipped++; result.Processed++; continue; }
 
                         var (isNew, isUpdated) = db.Upsert(
@@ -137,7 +143,8 @@ namespace WSJTX_Controller
             public string exchangeSent, exchangeRcvd;
         }
 
-        private static NormalizedQso Normalize(Dictionary<string, string> f, string source)
+        private static NormalizedQso Normalize(Dictionary<string, string> f, string source,
+            Func<string, string> resolveUsState = null)
         {
             string call = GetField(f, "CALL");
             if (string.IsNullOrWhiteSpace(call)) return null;
@@ -198,6 +205,21 @@ namespace WSJTX_Controller
             string state = (GetField(f, "STATE") ?? "").ToUpperInvariant().Trim();
             if (state.Length > 2) state = state.Substring(0, 2);
 
+            string grid = (GetField(f, "GRIDSQUARE") ?? GetField(f, "GRID") ?? "").ToUpperInvariant();
+
+            // Fallback for a blank STATE field only -- never overrides a real value from the
+            // file. Offline only (resolveUsState is expected to be cache/database-backed, e.g.
+            // FCC ULS or an already-cached QRZ lookup -- never a live network query, since a
+            // bulk import/backfill can touch many callsigns at once). Grid-derived is a last
+            // resort, same source used for live-decode display elsewhere in the app.
+            if (string.IsNullOrEmpty(state))
+            {
+                string resolved = resolveUsState?.Invoke(call);
+                if (string.IsNullOrEmpty(resolved) && !string.IsNullOrEmpty(grid))
+                    resolved = WsjtxClient.GridToUsState(grid);
+                if (!string.IsNullOrEmpty(resolved)) state = resolved;
+            }
+
             int ituZone = 0;
             int.TryParse(GetField(f, "ITUZ") ?? GetField(f, "ITU_ZONE") ?? "", out ituZone);
 
@@ -216,7 +238,7 @@ namespace WSJTX_Controller
                 country      = GetField(f, "COUNTRY") ?? "",
                 dxcc         = dxcc,
                 cqZone       = cqZone,
-                grid         = (GetField(f, "GRIDSQUARE") ?? GetField(f, "GRID") ?? "").ToUpperInvariant(),
+                grid         = grid,
                 name         = GetField(f, "NAME") ?? "",
                 comment      = GetField(f, "COMMENT") ?? GetField(f, "NOTES") ?? "",
                 txPwr        = GetField(f, "TX_PWR") ?? "",

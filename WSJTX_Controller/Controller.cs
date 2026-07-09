@@ -634,6 +634,7 @@ namespace WSJTX_Controller
                 qrzLookupPolicy, qrzMinIntervalSeconds);
             wsjtxClient.lookupManager     = lookupManager;
             wsjtxClient.lotwBoostEnabled  = lotwBoostEnabled;
+            BackfillMissingStates();
             LoadHrcCache();
             lookupManager.OnLookupCompleted = () =>
                 BeginInvoke(new Action(() => wsjtxClient.RefreshQueueDisplay()));
@@ -1428,6 +1429,29 @@ namespace WSJTX_Controller
             guideTimer.Start();
         }
 
+        // Ongoing safety-net repair (see LogbookDb.BackfillMissingStates) for QSOs logged
+        // with a blank state despite the callsign being derivable. Runs every startup, not
+        // just once -- the underlying query is a cheap indexed lookup (ix_state) that finds
+        // nothing to fix once existing gaps are resolved, so re-checking costs almost nothing
+        // but catches a fresh gap automatically if one ever reappears from a source this
+        // doesn't already cover. Offline only (FCC ULS/cached QRZ data via lookupManager.Build,
+        // then grid.dat) -- never a live query. Must run after lookupManager is initialized and
+        // before LoadHrcCache()/RefreshStillNeedCache() so the first cache build already
+        // reflects any corrected states.
+        private void BackfillMissingStates()
+        {
+            try
+            {
+                using (var db = new LogbookDb())
+                {
+                    int fixedCount = db.BackfillMissingStates(call => lookupManager?.Build(call)?.State);
+                    if (fixedCount > 0)
+                        db.SetMeta("state_backfill_last_fixed", $"{DateTime.UtcNow:o} ({fixedCount} rows)");
+                }
+            }
+            catch { /* best-effort repair -- must never block startup */ }
+        }
+
         // Loads the HRC database filter sets into WsjtxClient's in-memory caches.
         // Checks the whole log regardless of band -- WAS/DXCC/WAZ don't require a
         // state/entity/zone to be confirmed on any particular band, so a station
@@ -1535,7 +1559,8 @@ namespace WSJTX_Controller
                     {
                         string s = HotkeyConfig.FormatKeys(hotkeyConfig[HotkeyAction.UploadLotw]);
                         return string.IsNullOrEmpty(s) ? "(unassigned hotkey)" : s;
-                    });
+                    },
+                    resolveUsState: call => lookupManager?.Build(call)?.State);
                 _logbookWindow.FormClosed += (s, e) => _logbookWindow = null;
                 _logbookWindow.Show();
             }

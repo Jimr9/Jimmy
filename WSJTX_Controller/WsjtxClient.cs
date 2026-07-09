@@ -2183,6 +2183,10 @@ namespace WSJTX_Controller
                 Sounds.PlaySoundEvent(ctrl.loggedCheckBox.Checked, ctrl.soundFile_Logged);
                 StatusView.ShowMessage($"Logged QSO with {dxCall}", false);
                 DebugOutput($"{spacer}OnQsoLogged: added '{dxCall}' to logList");
+                // Same reasoning as RequestLog(): without this, an award's "still needed" tag
+                // stays stale for the rest of the session on this band, which can also let the
+                // already-worked exception keep re-admitting this same call into the queue.
+                ctrl.RefreshStillNeedCache();
             }
             if (txMode == TxModes.CALL_CQ &&
                 dxCall != null &&
@@ -5692,6 +5696,12 @@ namespace WSJTX_Controller
             loggedCall = call;
             lCall = call;
             CancelDiscardCall();
+            // Without this, an award's "still needed" tag (e.g. a state for WAS) stays stale
+            // for the rest of the session on this band -- nothing else refreshes it after a
+            // logged QSO, only a band change or restart. A stale "still needed" tag also lets
+            // the already-worked exception (meant for repeatable special events like 13
+            // Colonies) keep re-admitting this same, already-logged call into the queue.
+            ctrl.RefreshStillNeedCache();
             UpdateDebug();
         }
 

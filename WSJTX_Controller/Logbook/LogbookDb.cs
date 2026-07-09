@@ -238,6 +238,61 @@ namespace WSJTX_Controller
             }
         }
 
+        // One-time repair for QSOs already sitting in the database with a blank state
+        // despite the callsign being derivable -- found 2026-07-08: QRZ's own ADIF
+        // export sometimes omits STATE for a contact even though QRZ's own site already
+        // credits the state (several confirmed Alaska/Hawaii contacts had this gap).
+        // Only ever fills a currently-blank state; never touches a row that already has
+        // one. resolveState is expected to be offline/cache-backed (e.g. FCC ULS or an
+        // already-cached QRZ lookup) -- never a live network query, since this can touch
+        // many rows in one pass. Returns the number of rows updated.
+        public int BackfillMissingStates(Func<string, string> resolveState)
+        {
+            if (resolveState == null) return 0;
+
+            var candidates = new List<(long id, string callsign, string grid)>();
+            lock (_lock)
+            {
+                using (var cmd = _conn.CreateCommand())
+                {
+                    cmd.CommandText =
+                        "SELECT id, callsign, grid FROM qso WHERE (state='' OR state IS NULL) AND callsign != '';";
+                    using (var r = cmd.ExecuteReader())
+                    {
+                        while (r.Read())
+                            candidates.Add((r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? "" : r.GetString(2)));
+                    }
+                }
+            }
+
+            int updated = 0;
+            lock (_lock)
+            {
+                using (var tx = _conn.BeginTransaction())
+                {
+                    foreach (var (id, callsign, grid) in candidates)
+                    {
+                        string state = resolveState(callsign);
+                        if (string.IsNullOrEmpty(state) && !string.IsNullOrEmpty(grid))
+                            state = WsjtxClient.GridToUsState(grid);
+                        if (string.IsNullOrEmpty(state)) continue;
+
+                        using (var upd = _conn.CreateCommand())
+                        {
+                            upd.Transaction = tx;
+                            upd.CommandText = "UPDATE qso SET state=@s WHERE id=@id;";
+                            upd.Parameters.AddWithValue("@s", state);
+                            upd.Parameters.AddWithValue("@id", id);
+                            upd.ExecuteNonQuery();
+                        }
+                        updated++;
+                    }
+                    tx.Commit();
+                }
+            }
+            return updated;
+        }
+
         // ── Upsert ───────────────────────────────────────────────────────────────
 
         // Returns (isNew, isUpdated).
@@ -712,9 +767,14 @@ ON CONFLICT(dedup_key) DO UPDATE SET
         public (int worked, int confirmed) WasProgress(string band = null)
         {
             string bf = BandFilter(band);
+            // COUNT(DISTINCT ...) must normalize the same way the WHERE filter does -- the raw
+            // state column can hold case variants of the same state (e.g. "PA" and "Pa" both
+            // resolve to Pennsylvania), which the un-normalized count previously treated as two
+            // different states, inflating "worked" past the true 50-state ceiling (found
+            // 2026-07-09: displayed 51/50 worked).
             return (
-                QueryScalar($"SELECT COUNT(DISTINCT state) FROM qso WHERE UPPER(TRIM(state)) IN ({WasInList}){bf};"),
-                QueryScalar($"SELECT COUNT(DISTINCT state) FROM qso WHERE UPPER(TRIM(state)) IN ({WasInList}) AND (lotw_qsl_rcvd='Y' OR qrz_qsl_rcvd='Y'){bf};")
+                QueryScalar($"SELECT COUNT(DISTINCT UPPER(TRIM(state))) FROM qso WHERE UPPER(TRIM(state)) IN ({WasInList}){bf};"),
+                QueryScalar($"SELECT COUNT(DISTINCT UPPER(TRIM(state))) FROM qso WHERE UPPER(TRIM(state)) IN ({WasInList}) AND (lotw_qsl_rcvd='Y' OR qrz_qsl_rcvd='Y'){bf};")
             );
         }
 
