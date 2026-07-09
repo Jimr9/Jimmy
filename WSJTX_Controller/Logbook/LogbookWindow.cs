@@ -877,26 +877,35 @@ namespace WSJTX_Controller
                 return;
             }
 
-            string basisLabel = def.Confirmation == RuleConfirmation.None ? "logged" : "confirmed";
-            int basis = def.Confirmation == RuleConfirmation.None ? result.Worked : result.Confirmed;
+            // Worked is always the basis now -- RuleEngine gates completion on Worked
+            // regardless of Confirmation, so this must match or the summary line could
+            // show a "Complete!" that disagrees with a smaller confirmed count. The
+            // confirmed count is still shown as an informational side-note when this
+            // rule tracks confirmation and it differs from Worked (e.g. some items
+            // worked but not yet confirmed via LoTW/QRZ).
+            string basisLabel = "worked";
+            int basis = result.Worked;
+            bool showConfirmedNote = def.Confirmation != RuleConfirmation.None && result.Confirmed != result.Worked;
 
             switch (def.Target)
             {
                 case RuleTargetType.All:
-                    string workedNote = basis != result.Worked ? $"  ({result.Worked} worked)" : "";
-                    _awardsProgressLbl.Text = $"{basis} / {result.UniverseSize} {basisLabel}{workedNote}" +
+                    string confirmedNote = showConfirmedNote ? $"  ({result.Confirmed} confirmed)" : "";
+                    _awardsProgressLbl.Text = $"{basis} / {result.UniverseSize} {basisLabel}{confirmedNote}" +
                         (result.Completed ? "  — Complete!" : "");
                     break;
 
                 case RuleTargetType.Count:
-                    _awardsProgressLbl.Text = $"{basis} / {def.Threshold} {basisLabel}" +
+                    string confirmedNoteCount = showConfirmedNote ? $"  ({result.Confirmed} confirmed)" : "";
+                    _awardsProgressLbl.Text = $"{basis} / {def.Threshold} {basisLabel}{confirmedNoteCount}" +
                         (result.Completed ? "  — Complete!" : "");
                     break;
 
                 case RuleTargetType.Levels:
                     string tierText = result.CurrentTier != null ? $"Current: {result.CurrentTier}" : "No level reached yet";
                     string next = NextLevelText(def, basis);
-                    _awardsProgressLbl.Text = $"{basis} {basisLabel}  —  {tierText}" +
+                    string confirmedNoteLvl = showConfirmedNote ? $"  ({result.Confirmed} confirmed)" : "";
+                    _awardsProgressLbl.Text = $"{basis} {basisLabel}{confirmedNoteLvl}  —  {tierText}" +
                         (next != null ? $"  (next: {next})" : "");
                     break;
             }
@@ -942,6 +951,8 @@ namespace WSJTX_Controller
             {
                 var worked    = new HashSet<string>(result.WorkedItems    ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
                 var confirmed = new HashSet<string>(result.ConfirmedItems ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+                var lotwConfirmed = new HashSet<string>(result.LotwConfirmedItems ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+                var qrzConfirmed  = new HashSet<string>(result.QrzConfirmedItems  ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
                 Dictionary<int, string> dxccNames =
                     def.GroupBy == RuleGroupBy.Dxcc ? _db.GetDxccCountryNames() : null;
 
@@ -971,7 +982,14 @@ namespace WSJTX_Controller
                     }
                     if (showWorkedCol)
                         row.SubItems.Add(isWorked ? "Yes" : "—");
-                    row.SubItems.Add(isConfirmed ? "Confirmed" : (isWorked ? "Not confirmed" : "—"));
+                    // Falls back to a plain "Confirmed" (rather than misreporting "—") if this
+                    // rule's Confirmation ever matches a service beyond LoTW/QRZ that isn't
+                    // broken out here yet (see Next Build TODO item 1 -- Club Log/eQSL/eQTH).
+                    bool viaLotwOrQrz = lotwConfirmed.Contains(value) || qrzConfirmed.Contains(value);
+                    string confirmedText = !isConfirmed ? (isWorked ? "Not confirmed" : "—")
+                        : viaLotwOrQrz ? ConfirmedText(lotwConfirmed.Contains(value), qrzConfirmed.Contains(value))
+                        : "Confirmed";
+                    row.SubItems.Add(confirmedText);
 
                     _awardsLv.Items.Add(row);
                 }
@@ -1559,11 +1577,17 @@ namespace WSJTX_Controller
             return $"{t.Substring(0,2)}:{t.Substring(2,2)}";
         }
 
-        private static string ConfirmedText(string lotw, string qrz)
+        private static string ConfirmedText(string lotw, string qrz) =>
+            ConfirmedText(lotw == "Y", qrz == "Y");
+
+        // Shared core: which service(s) confirmed, given a plain yes/no per service.
+        // Used both per-QSO (My Log rows, via the string overload above) and per grouped
+        // item (Awards tab checklist, via RuleResult.LotwConfirmedItems/QrzConfirmedItems).
+        private static string ConfirmedText(bool lotw, bool qrz)
         {
-            if (lotw == "Y" && qrz == "Y") return "LoTW + QRZ";
-            if (lotw == "Y")  return "LoTW";
-            if (qrz  == "Y")  return "QRZ";
+            if (lotw && qrz) return "LoTW + QRZ";
+            if (lotw)        return "LoTW";
+            if (qrz)         return "QRZ";
             return "—";
         }
 

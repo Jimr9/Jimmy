@@ -616,7 +616,7 @@ static class JimmyTests
     // band/qsoDate/continent are optional so existing calls (fixed 20m,
     // 2024-12-01, no continent) keep working unchanged.
     static void InsertQso(LogbookDb db, string call, string state,
-        int dxcc, int zone, string lotwRcvd = "",
+        int dxcc, int zone, string lotwRcvd = "", string qrzRcvd = "",
         string band = "20m", string qsoDate = "20241201", string continent = "")
     {
         string key = AdifImporter.BuildDedupKey(call, band, "FT8", qsoDate, "1200");
@@ -624,7 +624,7 @@ static class JimmyTests
         db.Upsert(call, band, "FT8", qsoDate, "1200", "1215",
             14_074_000, "-10", "-05", state, "Test", dxcc, zone,
             "", "", "", "", "", "", "",
-            "", lotwRcvd, "", "",
+            "", lotwRcvd, "", qrzRcvd,
             "MANUAL", "", key,
             continent, 0, "", "", "", "", "", "", "", "", "", "");
     }
@@ -889,7 +889,10 @@ static class JimmyTests
                 Check("Confirmation=None: 49 still needed",
                       r1.StillNeeded != null && r1.StillNeeded.Count == 49, true);
 
-                // Confirmation=Lotw: worked-but-unconfirmed must NOT count as done.
+                // Confirmation=Lotw: worked-but-unconfirmed now counts as done -- Worked
+                // always gates completion/StillNeeded, regardless of Confirmation.
+                // Confirmed/ConfirmedItems still track the real LoTW/QRZ status separately
+                // (see the "CA confirmed" check below and the Awards tab's per-item column).
                 var defConfirmed = new RuleDefinition
                 {
                     Id = "TEST_CONFIRMED", Name = "Test", FormatVersion = 1, Enabled = true,
@@ -897,13 +900,38 @@ static class JimmyTests
                     Confirmation = RuleConfirmation.Lotw, Target = RuleTargetType.All,
                 };
                 var r2 = RuleEngine.Evaluate(defConfirmed, tmpDb, null);
-                Check("Confirmation=Lotw: TX worked but unconfirmed -> still needed",
-                      r2.StillNeeded != null && r2.StillNeeded.Contains("TX"), true);
+                Check("Confirmation=Lotw: TX worked but unconfirmed -> NOT still needed (worked gates completion now)",
+                      r2.StillNeeded != null && !r2.StillNeeded.Contains("TX"), true);
+                Check("Confirmation=Lotw: TX worked but unconfirmed -> not in ConfirmedItems (still tracked for display)",
+                      r2.ConfirmedItems != null && !r2.ConfirmedItems.Contains("TX"), true);
 
                 InsertQso(db, "W6CA", "CA", dxcc: 291, zone: 3, lotwRcvd: "Y");
                 var r3 = RuleEngine.Evaluate(defConfirmed, tmpDb, null);
                 Check("Confirmation=Lotw: CA confirmed -> not still needed",
                       r3.StillNeeded != null && !r3.StillNeeded.Contains("CA"), true);
+
+                // Per-service breakdown (LotwConfirmedItems/QrzConfirmedItems): tracked
+                // independently of the rule's own Confirmation setting, so the Awards tab can
+                // show *which* service(s) confirmed each item, not just a yes/no.
+                InsertQso(db, "W7QZ", "WA", dxcc: 291, zone: 3, qrzRcvd: "Y");
+                var defAny = new RuleDefinition
+                {
+                    Id = "TEST_ANY", Name = "Test", FormatVersion = 1, Enabled = true,
+                    GroupBy = RuleGroupBy.State, Universe = "US_50_STATES",
+                    Confirmation = RuleConfirmation.Any, Target = RuleTargetType.All,
+                };
+                var r4 = RuleEngine.Evaluate(defAny, tmpDb, null);
+                Check("Per-service: CA (LoTW-confirmed) appears in LotwConfirmedItems",
+                      r4.LotwConfirmedItems != null && r4.LotwConfirmedItems.Contains("CA"), true);
+                Check("Per-service: CA (LoTW-confirmed) does NOT appear in QrzConfirmedItems",
+                      r4.QrzConfirmedItems != null && !r4.QrzConfirmedItems.Contains("CA"), true);
+                Check("Per-service: WA (QRZ-confirmed) appears in QrzConfirmedItems",
+                      r4.QrzConfirmedItems != null && r4.QrzConfirmedItems.Contains("WA"), true);
+                Check("Per-service: WA (QRZ-confirmed) does NOT appear in LotwConfirmedItems",
+                      r4.LotwConfirmedItems != null && !r4.LotwConfirmedItems.Contains("WA"), true);
+                Check("Per-service: TX (worked, unconfirmed) in neither Lotw nor Qrz confirmed sets",
+                      r4.LotwConfirmedItems != null && r4.QrzConfirmedItems != null &&
+                      !r4.LotwConfirmedItems.Contains("TX") && !r4.QrzConfirmedItems.Contains("TX"), true);
             }
         }
         catch (Exception ex)

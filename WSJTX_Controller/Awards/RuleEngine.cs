@@ -33,6 +33,14 @@ namespace WSJTX_Controller
         public List<string> WorkedItems;     // GroupBy != None only
         public List<string> ConfirmedItems;  // GroupBy != None only
 
+        // Which specific service(s) confirmed each item, independent of the rule's own
+        // Confirmation setting -- always LoTW/QRZ, purely informational (e.g. so the Awards
+        // tab can show "LoTW + QRZ" / "LoTW" / "QRZ" instead of just "Confirmed"). GroupBy !=
+        // None only. An item can appear in ConfirmedItems without appearing in either of these
+        // if it's confirmed via a service not yet tracked here (see Next Build TODO item 1).
+        public List<string> LotwConfirmedItems;
+        public List<string> QrzConfirmedItems;
+
         // Item -> distinct bands it was worked on (band-ordered, low to high), for UI display
         // ("which band(s) did I work this station/entity/etc. on"). GroupBy != None only.
         public Dictionary<string, List<string>> WorkedBands;
@@ -307,13 +315,17 @@ namespace WSJTX_Controller
         {
             var workedSet    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var confirmedSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var lotwSet      = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var qrzSet       = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var bandsByItem   = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
             using (var cmd = conn.CreateCommand())
             {
                 cmd.CommandText =
                     $"SELECT {groupExpr} AS g, MAX(CASE WHEN {confirmExpr} THEN 1 ELSE 0 END) AS conf, " +
-                    $"GROUP_CONCAT(DISTINCT band) AS bands " +
+                    $"GROUP_CONCAT(DISTINCT band) AS bands, " +
+                    $"MAX(CASE WHEN lotw_qsl_rcvd='Y' THEN 1 ELSE 0 END) AS lotwConf, " +
+                    $"MAX(CASE WHEN qrz_qsl_rcvd='Y' THEN 1 ELSE 0 END) AS qrzConf " +
                     $"FROM qso {where} GROUP BY g;";
                 foreach (var p in parms) cmd.Parameters.Add(p);
                 using (var r = cmd.ExecuteReader())
@@ -326,11 +338,13 @@ namespace WSJTX_Controller
                         workedSet.Add(g);
                         if (!r.IsDBNull(1) && Convert.ToInt32(r.GetValue(1)) != 0) confirmedSet.Add(g);
                         if (!r.IsDBNull(2)) bandsByItem[g] = OrderBands(r.GetString(2).Split(','));
+                        if (!r.IsDBNull(3) && Convert.ToInt32(r.GetValue(3)) != 0) lotwSet.Add(g);
+                        if (!r.IsDBNull(4) && Convert.ToInt32(r.GetValue(4)) != 0) qrzSet.Add(g);
                     }
                 }
             }
 
-            FinishGrouped(def, workedSet, confirmedSet, bandsByItem, universe, limitTo, result);
+            FinishGrouped(def, workedSet, confirmedSet, lotwSet, qrzSet, bandsByItem, universe, limitTo, result);
         }
 
         // GroupBy=Prefix is computed in C# (see WpxPrefixOf), so it can't use the
@@ -342,11 +356,13 @@ namespace WSJTX_Controller
         {
             var workedSet    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var confirmedSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var lotwSet      = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var qrzSet       = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var bandsByItem  = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
 
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = $"SELECT callsign, wpx_prefix, ({confirmExpr}), band FROM qso {where};";
+                cmd.CommandText = $"SELECT callsign, wpx_prefix, ({confirmExpr}), band, lotw_qsl_rcvd, qrz_qsl_rcvd FROM qso {where};";
                 foreach (var p in parms) cmd.Parameters.Add(p);
                 using (var r = cmd.ExecuteReader())
                 {
@@ -370,12 +386,14 @@ namespace WSJTX_Controller
                                 set.Add(band);
                             }
                         }
+                        if (!r.IsDBNull(4) && r.GetString(4) == "Y") lotwSet.Add(pfx);
+                        if (!r.IsDBNull(5) && r.GetString(5) == "Y") qrzSet.Add(pfx);
                     }
                 }
             }
 
             var orderedBandsByItem = bandsByItem.ToDictionary(kv => kv.Key, kv => OrderBands(kv.Value), StringComparer.OrdinalIgnoreCase);
-            FinishGrouped(def, workedSet, confirmedSet, orderedBandsByItem, universe, limitTo, result);
+            FinishGrouped(def, workedSet, confirmedSet, lotwSet, qrzSet, orderedBandsByItem, universe, limitTo, result);
         }
 
         // Canonical low-to-high band order (matches AdifImporter's frequency-ascending band
@@ -396,6 +414,7 @@ namespace WSJTX_Controller
 
         private static void FinishGrouped(
             RuleDefinition def, HashSet<string> workedSet, HashSet<string> confirmedSet,
+            HashSet<string> lotwSet, HashSet<string> qrzSet,
             Dictionary<string, List<string>> bandsByItem,
             HashSet<string> universe, HashSet<string> limitTo, RuleResult result)
         {
@@ -405,8 +424,12 @@ namespace WSJTX_Controller
             {
                 workedSet    = new HashSet<string>(workedSet,    StringComparer.OrdinalIgnoreCase);
                 confirmedSet = new HashSet<string>(confirmedSet, StringComparer.OrdinalIgnoreCase);
+                lotwSet      = new HashSet<string>(lotwSet,      StringComparer.OrdinalIgnoreCase);
+                qrzSet       = new HashSet<string>(qrzSet,       StringComparer.OrdinalIgnoreCase);
                 workedSet.IntersectWith(limitTo);
                 confirmedSet.IntersectWith(limitTo);
+                lotwSet.IntersectWith(limitTo);
+                qrzSet.IntersectWith(limitTo);
             }
 
             // For a checklist-style (ALL) award, "worked"/"confirmed" should reflect
@@ -417,30 +440,41 @@ namespace WSJTX_Controller
             {
                 workedSet    = new HashSet<string>(workedSet,    StringComparer.OrdinalIgnoreCase);
                 confirmedSet = new HashSet<string>(confirmedSet, StringComparer.OrdinalIgnoreCase);
+                lotwSet      = new HashSet<string>(lotwSet,      StringComparer.OrdinalIgnoreCase);
+                qrzSet       = new HashSet<string>(qrzSet,       StringComparer.OrdinalIgnoreCase);
                 workedSet.IntersectWith(universe);
                 confirmedSet.IntersectWith(universe);
+                lotwSet.IntersectWith(universe);
+                qrzSet.IntersectWith(universe);
             }
 
             result.Worked    = workedSet.Count;
             result.Confirmed = confirmedSet.Count;
             result.WorkedItems    = workedSet.OrderBy(w => w, StringComparer.OrdinalIgnoreCase).ToList();
             result.ConfirmedItems = confirmedSet.OrderBy(w => w, StringComparer.OrdinalIgnoreCase).ToList();
+            result.LotwConfirmedItems = lotwSet.OrderBy(w => w, StringComparer.OrdinalIgnoreCase).ToList();
+            result.QrzConfirmedItems  = qrzSet.OrderBy(w => w, StringComparer.OrdinalIgnoreCase).ToList();
             result.WorkedBands    = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in workedSet)
                 if (bandsByItem.TryGetValue(item, out var bands))
                     result.WorkedBands[item] = bands;
 
+            // StillNeeded is always worked-based -- a station drops off the needed list as
+            // soon as it's logged, not once it's separately confirmed via LoTW/QRZ. Confirmed/
+            // ConfirmedItems are still tracked above (via the real confirmExpr) purely as an
+            // informational annotation the Awards tab shows per item; Confirmation no longer
+            // gates completion for any Rule Definition, regardless of its Requires= setting.
             if (def.Target == RuleTargetType.All && universe != null)
             {
-                var basisSet = def.Confirmation == RuleConfirmation.None ? workedSet : confirmedSet;
-                result.StillNeeded = universe.Where(u => !basisSet.Contains(u)).OrderBy(u => u).ToList();
+                result.StillNeeded = universe.Where(u => !workedSet.Contains(u)).OrderBy(u => u).ToList();
             }
         }
 
+        // basis is always Worked -- see the FinishGrouped comment above. Applies uniformly to
+        // Target=All (via StillNeeded/Completed above), Count, and Levels.
         private static void ApplyTarget(RuleDefinition def, RuleResult result, HashSet<string> universe)
         {
-            bool useWorkedBasis = def.Confirmation == RuleConfirmation.None;
-            int  basis          = useWorkedBasis ? result.Worked : result.Confirmed;
+            int basis = result.Worked;
 
             switch (def.Target)
             {
