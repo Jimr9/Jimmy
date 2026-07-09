@@ -189,6 +189,15 @@
     </Compile>
     <Compile Include="UsGridStateMap.cs" />
     <Compile Include="WsjtxClient.cs" />
+    <Compile Include="WsjtxClient.Debug.cs" />
+    <Compile Include="WsjtxClient.Uploads.cs" />
+    <Compile Include="WsjtxClient.BandAudio.cs" />
+    <Compile Include="WsjtxClient.CallQueue.cs" />
+    <Compile Include="WsjtxClient.Display.cs" />
+    <Compile Include="WsjtxClient.Protocol.cs" />
+    <Compile Include="PotaLogTracker.cs" />
+    <Compile Include="Awards\AwardTagger.cs" />
+    <Compile Include="CallQueueStore.cs" />
     <Compile Include="Lookup\LookupRecord.cs" />
     <Compile Include="Lookup\ILookupProvider.cs" />
     <Compile Include="Lookup\QrzProvider.cs" />
