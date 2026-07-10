@@ -212,6 +212,73 @@ namespace WSJTX_Controller
             return false;
         }
 
+        // Validates a Logbook API key with no side effects -- ACTION=STATUS just reports
+        // on the logbook the key belongs to, unlike FETCH/INSERT it never returns or
+        // submits any QSO data. Used by the Options dialog's "Test Login" button so a bad
+        // key is caught immediately instead of only surfacing as an upload/download error.
+        public async Task<bool> TestApiKeyAsync(string apiKey)
+        {
+            LastError = null;
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                LastError = "QRZ Logbook API key is not configured.";
+                return false;
+            }
+
+            var form = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("KEY",    apiKey.Trim()),
+                new KeyValuePair<string, string>("ACTION", "STATUS"),
+            });
+
+            HttpResponseMessage resp;
+            string response;
+            try
+            {
+                resp = await _http.PostAsync(ApiUrl, form).ConfigureAwait(false);
+                response = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            }
+            catch (TaskCanceledException ex)
+            {
+                LastError = $"Timeout waiting for QRZ Logbook API ({ApiUrl}).";
+                LogFailure("Key test timeout", LastError, ex.ToString());
+                return false;
+            }
+            catch (HttpRequestException ex)
+            {
+                string category = ex.InnerException is SocketException ? "Network/DNS failure" : "HTTP request failure";
+                LastError = $"{category} contacting QRZ Logbook API ({ApiUrl}): {ex.Message}";
+                LogFailure("Key test " + category, LastError, ex.ToString());
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LastError = $"Network error contacting QRZ Logbook API ({ApiUrl}): {ex.Message}";
+                LogFailure("Key test network error", LastError, ex.ToString());
+                return false;
+            }
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                LastError = $"HTTP {(int)resp.StatusCode} {resp.ReasonPhrase} from QRZ Logbook API ({ApiUrl}).";
+                LogFailure("Key test HTTP error", LastError, response);
+                return false;
+            }
+
+            int resultIdx = response.IndexOf("RESULT=", StringComparison.OrdinalIgnoreCase);
+            string result = resultIdx >= 0 ? response.Substring(resultIdx + 7).Split('&')[0] : null;
+            if (result != null && result.Equals("OK", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            int ri = response.IndexOf("REASON=", StringComparison.OrdinalIgnoreCase);
+            string reason = ri >= 0 ? WebUtility.UrlDecode(response.Substring(ri + 7).Split('&')[0]) : null;
+            LastError = !string.IsNullOrWhiteSpace(reason)
+                ? $"QRZ API error ({result ?? "none"}): {reason}"
+                : $"QRZ API reported an invalid Logbook API key (RESULT={result ?? "none"}).";
+            LogFailure("Key test error", LastError, response);
+            return false;
+        }
+
         // Extracted for testability (JimmyTests has no InternalsVisibleTo, so
         // only public static members of a plain class are reachable from tests).
         public static bool IsDuplicateReason(string reason) =>

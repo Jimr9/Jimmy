@@ -118,6 +118,7 @@ namespace WSJTX_Controller
         public string clubLogUploadPassword  = "";
         public string clubLogUploadCallsign  = "";
         private LogbookWindow _logbookWindow;
+        private System.Windows.Forms.Button logbookButton;
 
         // Ids of the Rule Definitions checked for live FT8 tagging in the Logbook window's
         // Still Need tab, persisted so tagging survives across sessions and works even before
@@ -224,7 +225,54 @@ namespace WSJTX_Controller
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr lpdwProcessIdUnused);
+
+        [DllImport("kernel32.dll")]
+        private static extern uint GetCurrentThreadId();
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
         private bool IsJimmyForegrounded() => GetForegroundWindow() == this.Handle;
+
+        // In Debug builds, AllocConsole() (below, in Form_Load) creates -- and, when hidden,
+        // briefly activates -- a console window before this form is ever shown. That spends
+        // Windows' one automatic foreground-activation grant for this process launch, so by
+        // the time Jimmy's own window appears, a plain SetForegroundWindow() often fails
+        // silently (Windows just flashes the taskbar entry) and real keyboard input keeps
+        // going to whatever had focus before Jimmy launched (e.g. the Explorer window it was
+        // started from) until the user manually Alt+Tabs -- reported/confirmed 2026-07-10,
+        // Debug-only (Release has no console/AllocConsole, so it doesn't hit this).
+        // Attaching this thread's input queue to the current foreground thread's queue is the
+        // standard Win32 workaround: Windows then treats the two threads as cooperating, which
+        // allows SetForegroundWindow to actually succeed.
+        private void ForceForeground()
+        {
+            IntPtr foreground = GetForegroundWindow();
+            if (foreground == this.Handle) return;
+
+            uint foregroundThreadId = GetWindowThreadProcessId(foreground, IntPtr.Zero);
+            uint thisThreadId = GetCurrentThreadId();
+
+            bool attached = foregroundThreadId != thisThreadId
+                && foregroundThreadId != 0
+                && AttachThreadInput(thisThreadId, foregroundThreadId, true);
+            try
+            {
+                SetForegroundWindow(this.Handle);
+            }
+            finally
+            {
+                if (attached) AttachThreadInput(thisThreadId, foregroundThreadId, false);
+            }
+        }
+
         private void Form_Load(object sender, EventArgs e)
         {
             //use .ini file for settings (avoid .Net config file mess)
@@ -666,10 +714,10 @@ namespace WSJTX_Controller
             SyncCqIntentFromMode();     // force-sync after wsjtxClient is assigned
 
             // Logbook button — added below sortOrderButton at y=305
-            var logbookButton = new System.Windows.Forms.Button
+            logbookButton = new System.Windows.Forms.Button
             {
                 Text           = "Logbook",
-                AccessibleName = "Open Ham Radio Center Logbook",
+                AccessibleName = "Logbook, " + FormatKeysForAccessibleName(HotkeyAction.OpenLogbook),
                 Location       = new System.Drawing.Point(10, 333),
                 Size           = new System.Drawing.Size(492, 24),
                 Anchor         = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Right,
@@ -720,19 +768,36 @@ namespace WSJTX_Controller
             ApplyAdvancedLayout();
             ApplyListAppearance();
 
-            if (!this.Focused)
+            // Deferred via BeginInvoke rather than run here directly: Form_Load fires before
+            // Windows has necessarily finished activating/showing the window, so SendKeys.Send
+            // (which targets whatever window currently has real OS-level keyboard focus) can
+            // fire too early and leave keyboard input going nowhere until the user manually
+            // changes focus (e.g. Alt+Tab away and back) -- reported 2026-07-10, reproduced on
+            // the unmodified 1.80.0 release build, so this is pre-existing, not a regression.
+            // Posting this to run after Form_Load returns gives Windows a chance to finish
+            // activating the window first.
+            this.BeginInvoke(new Action(() =>
             {
-                this.Focus();
-            }
+                // Root cause (see ForceForeground's comment): Windows' automatic
+                // foreground-activation grant for this launch may already be spent, so
+                // Focus() alone (managed-only, no OS-level effect if we're not already the
+                // foreground process) isn't enough. Force real OS foreground first.
+                ForceForeground();
 
-            if (!statusText.Focused)
-            {
-                statusText.Focus();
-            }
-            // Focusing a textbox that already shows the same text doesn't trigger a fresh
-            // screen-reader announcement; moving the caret does. See RenderStatus for the
-            // same pattern used on every routine status update.
-            SendKeys.Send("{UP}");
+                if (!this.Focused)
+                {
+                    this.Focus();
+                }
+
+                if (!statusText.Focused)
+                {
+                    statusText.Focus();
+                }
+                // Focusing a textbox that already shows the same text doesn't trigger a fresh
+                // screen-reader announcement; moving the caret does. See RenderStatus for the
+                // same pattern used on every routine status update.
+                SendKeys.Send("{UP}");
+            }));
         }
 
         private void Controller_FormClosing(object sender, FormClosingEventArgs e)
@@ -905,14 +970,20 @@ namespace WSJTX_Controller
             RefreshHotkeyAccessibleNames();
         }
 
-        // optionsButton, rowOrderButton, and sortOrderButton show their assigned shortcut
-        // in AccessibleName; keep that in sync whenever hotkeys are loaded or reassigned.
+        // optionsButton, rowOrderButton, sortOrderButton, logbookButton, and modeHelpLabel
+        // show their assigned shortcut in AccessibleName; keep that in sync whenever hotkeys
+        // are loaded or reassigned. logbookButton doesn't exist yet on the first call
+        // (Form_Load reads hotkeys before creating it) -- it sets its own initial
+        // AccessibleName at construction, then this keeps it current after that.
         private void RefreshHotkeyAccessibleNames()
         {
             if (hotkeyConfig == null) return;
             optionsButton.AccessibleName   = "Options, "                       + FormatKeysForAccessibleName(HotkeyAction.Options);
             rowOrderButton.AccessibleName  = "Row Display Order, "             + FormatKeysForAccessibleName(HotkeyAction.RowOrder);
             sortOrderButton.AccessibleName = "Stations Available Sort Order, " + FormatKeysForAccessibleName(HotkeyAction.SortOrder);
+            modeHelpLabel.AccessibleName   = "Help, "                         + FormatKeysForAccessibleName(HotkeyAction.Help);
+            if (logbookButton != null)
+                logbookButton.AccessibleName = "Logbook, " + FormatKeysForAccessibleName(HotkeyAction.OpenLogbook);
         }
 
         private string FormatKeysForAccessibleName(HotkeyAction action)
@@ -1570,6 +1641,7 @@ namespace WSJTX_Controller
                         return string.IsNullOrEmpty(s) ? "(unassigned hotkey)" : s;
                     },
                     resolveUsState: call => lookupManager?.Build(call)?.State);
+                _logbookWindow.Owner = this;
                 _logbookWindow.FormClosed += (s, e) => _logbookWindow = null;
                 _logbookWindow.Show();
             }
@@ -1603,6 +1675,7 @@ namespace WSJTX_Controller
         {
             guideTimer.Stop();
             optionsDlg = new OptionsDlg(wsjtxClient, this, openOptionsOnUdpTab);
+            optionsDlg.Owner = this;
             openOptionsOnUdpTab = false;
             optionsDlg.Show();
         }
@@ -2085,7 +2158,10 @@ namespace WSJTX_Controller
 
         private void verLabel2_Click(object sender, EventArgs e)
         {
-            string command = "https://github.com/jimr9/Jimmy/releases/latest";
+            string ver = Assembly.GetExecutingAssembly()
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion ?? string.Empty;
+            string command = "https://blindsea.com/jimmy?v=" + Uri.EscapeDataString(ver);
             System.Diagnostics.Process.Start(command);
         }
 
@@ -2743,6 +2819,7 @@ namespace WSJTX_Controller
             _helpReturnFocus = this.ActiveControl;
             if (helpDlg != null) helpDlg.Close();
             helpDlg = new HelpDlg(this, $"{wsjtxClient.pgmName}{helpSuffix}", (string)helpTimer.Tag);
+            helpDlg.Owner = this;
             helpDlg.Show();
             helpDlg.Activate();
         }

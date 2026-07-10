@@ -542,7 +542,7 @@
             // 
             // modeHelpLabel
             // 
-            this.modeHelpLabel.AccessibleName = "Command key list";
+            this.modeHelpLabel.AccessibleName = "Help";
             this.modeHelpLabel.BackColor = System.Drawing.SystemColors.Control;
             this.modeHelpLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.modeHelpLabel.ForeColor = System.Drawing.SystemColors.ControlText;
@@ -550,7 +550,7 @@
             this.modeHelpLabel.Name = "modeHelpLabel";
             this.modeHelpLabel.Size = new System.Drawing.Size(69, 30);
             this.modeHelpLabel.TabIndex = 6;
-            this.modeHelpLabel.Text = "Shortcut";
+            this.modeHelpLabel.Text = "Help";
             this.modeHelpLabel.UseVisualStyleBackColor = true;
             this.modeHelpLabel.Click += new System.EventHandler(this.modeHelpLabel_Click);
             // 

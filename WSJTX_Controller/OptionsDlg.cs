@@ -2561,6 +2561,10 @@ namespace WSJTX_Controller
             ctrl.Settings.ListFontSize = (int)appearanceFontSizeNumeric.Value;
         }
 
+        // Tests QRZ.com login (username/password) as before, and -- if a Logbook API key
+        // is entered -- also validates that key (via a side-effect-free STATUS call), so a
+        // bad key is caught here instead of only surfacing later as an upload/download
+        // error. Skips the key check entirely when the field is blank.
         private async void QrzTestBtn_Click(object sender, EventArgs e)
         {
             if (ctrl.lookupManager == null) return;
@@ -2571,20 +2575,37 @@ namespace WSJTX_Controller
                 (int)(_qrzCacheDaysNum?.Value ?? 7));
             _qrzTestBtn.Enabled  = false;
             _qrzStatusLbl.Text   = "Testing login…";
-            bool ok = await ctrl.lookupManager.TestQrzAsync();
+
+            bool loginOk = await ctrl.lookupManager.TestQrzAsync();
+
+            string loginResult;
+            if (loginOk)
+            {
+                string callsign = ctrl.lookupManager.Qrz.AuthCallsign;
+                loginResult = string.IsNullOrEmpty(callsign)
+                    ? "Login successful!"
+                    : $"Login successful — authenticated as {callsign}";
+            }
+            else
+            {
+                loginResult = $"Login error: {ctrl.lookupManager.Qrz.LastError}";
+            }
+
+            string apiKey = _qrzLogbookApiKeyTb?.Text.Trim() ?? "";
+            string keyResult = null;
+            if (!string.IsNullOrEmpty(apiKey))
+            {
+                if (!IsDisposed) _qrzStatusLbl.Text = "Testing login… Testing Logbook API key…";
+                var qrzLogbookClient = new QrzLogbookClient();
+                bool keyOk = await qrzLogbookClient.TestApiKeyAsync(apiKey);
+                keyResult = keyOk
+                    ? "Logbook API key valid."
+                    : $"Logbook API key error: {qrzLogbookClient.LastError}";
+            }
+
             if (!IsDisposed)
             {
-                if (ok)
-                {
-                    string callsign = ctrl.lookupManager.Qrz.AuthCallsign;
-                    _qrzStatusLbl.Text = string.IsNullOrEmpty(callsign)
-                        ? "Login successful!"
-                        : $"Login successful — authenticated as {callsign}";
-                }
-                else
-                {
-                    _qrzStatusLbl.Text = $"Error: {ctrl.lookupManager.Qrz.LastError}";
-                }
+                _qrzStatusLbl.Text = keyResult == null ? loginResult : $"{loginResult}  {keyResult}";
                 _qrzTestBtn.Enabled = true;
                 _qrzStatusLbl.Focus();
             }
