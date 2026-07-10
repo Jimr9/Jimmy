@@ -369,6 +369,33 @@ namespace WSJTX_Controller
         public void SortCallsPublic()  { SortCalls(); ShowQueue(); if (ctrl.advancedCallLayout) ShowAdvancedQueue(null); }
         public void RefreshQueueDisplay() { ShowQueue(); if (ctrl.advancedCallLayout) ShowAdvancedQueue(null); }
 
+        // Called every time Controller.RefreshStillNeedCache() rebuilds activeAwardTags (e.g.
+        // right after a QSO is logged) so a call already sitting in the queue tagged "Needed"
+        // drops that tag immediately instead of keeping it for the rest of the session.
+        // AddSelectedCall only re-derives Category for *new* decodes; a decode of a call
+        // already in the queue short-circuits at "if (callQueue.Contains(deCall))" and is
+        // handed to CallQueueStore.UpdateCall, which only replaces the stored entry (and its
+        // Category) on a progress/priority/grid change -- never just because the award status
+        // changed. Without this, working the very station an award tag needed leaves it
+        // mislabeled "Needed" in the queue indefinitely.
+        public void RefreshQueuedAwardTags()
+        {
+            bool changed = false;
+            foreach (string call in callQueue.ToArray())
+            {
+                if (!callDict.TryGetValue(call, out EnqueueDecodeMessage d)) continue;
+                if (d.Category != CallCategory.STILL_NEEDED) continue;
+
+                CallCategory newCategory = _awardTagger.DeriveCategory(d);
+                if (newCategory != d.Category)
+                {
+                    d.Category = newCategory;
+                    changed = true;
+                }
+            }
+            if (changed) RefreshQueueDisplay();
+        }
+
         public bool ManualEnqueueCall(string callsign)
         {
             if (string.IsNullOrEmpty(callsign)) return false;

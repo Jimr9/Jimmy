@@ -1533,6 +1533,7 @@ namespace WSJTX_Controller
                 catch { /* skip this rule, keep the others */ }
             }
             wsjtxClient.activeAwardTags = tags;
+            wsjtxClient.RefreshQueuedAwardTags();
         }
 
         public void RefreshLogbookWindowIfOpen()

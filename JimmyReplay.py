@@ -375,6 +375,45 @@ class JimmyVerifier:
             print(f"           (not failed — requires: {config_note})")
             print(f"           queue={items}")
 
+    def find_queue_row(self, fragment):
+        """Return the queue row whose text contains fragment (spaces stripped from
+        both sides, matching Jimmy's spaced-out callsign display), or None."""
+        frag_nsp = fragment.lower().replace(" ", "")
+        for i in self.queue_items():
+            if frag_nsp in i.lower().replace(" ", ""):
+                return i
+        return None
+
+    def check_queue_row_contains_warn(self, call_fragment, tag_fragment, label, config_note):
+        """Soft per-row check: PASS (and returns True) if the queue row for call_fragment
+        contains tag_fragment (e.g. an award's "Needed" tag); WARNING -- not FAIL, returns
+        False -- if the row is missing entirely OR present without the tag. Both "missing"
+        cases mean the same thing here: the environment-dependent setup (an active Rule
+        Definition, plus its Call Filter) isn't configured, same reasoning as
+        check_queue_contains_warn. Callers can use the return value to skip a
+        follow-up hard assertion when this precondition wasn't actually met.
+        """
+        self.wait_for_queue(call_fragment, timeout=3.0)
+        row = self.find_queue_row(call_fragment)
+        ok  = row is not None and tag_fragment.lower() in row.lower()
+        if ok:
+            self._report(True, label, f"row='{row}'")
+        else:
+            print(f"    ⚠ WARN  {label}")
+            print(f"           (not failed — requires: {config_note})")
+            print(f"           queue={self.queue_items()}")
+        return ok
+
+    def check_queue_row_not_contains(self, call_fragment, tag_fragment, label):
+        """The queue row for call_fragment must NOT contain tag_fragment. A row that
+        disappeared entirely also satisfies this (no longer tagged, a stronger outcome)
+        -- only a row that's still present AND still shows the stale tag is a failure.
+        """
+        time.sleep(0.3)
+        row = self.find_queue_row(call_fragment)
+        ok  = (row is None) or (tag_fragment.lower() not in row.lower())
+        self._report(ok, label, f"row={row!r}")
+
     def check_status_contains_warn(self, fragment, label, config_note):
         """Soft status check: PASS if found; WARNING (not FAIL) if not.
 
@@ -1326,6 +1365,61 @@ def group16_rrr_after_logged_no_requeue(sock, v):
          ) if v.available else None)
 
 
+def group17_still_needed_tag_clears_on_log(sock, v):
+    """T36-T37: a queued call's award "Needed" tag must clear the instant it's
+    worked and logged, not stay stale for the rest of the session.
+
+    Environment-dependent, same category as Group 8's SOTA test and Group 15's
+    CQ-mode test: requires the "Replay Test Award" Rule Definition (shipped as
+    RuleDefinitions/_ReplayTestAward.ini, checklist = the single fake callsign
+    W9NEED, via RuleDefinitions/Lists/_replaytest_roster.txt) to be checked in
+    the Still Need tab, AND the "Still Needed" Call Filter category enabled,
+    before running this script. Without that one-time setup, T36 WARNs instead
+    of PASSing and T37 is skipped as uninformative -- there's nothing to prove
+    the tag actually cleared if it never appeared in the first place. Neither
+    outcome indicates a code defect on its own.
+
+    Regression coverage for the 2026-07-09 fix: Controller.RefreshStillNeedCache()
+    rebuilds the award "still needed" cache the instant a QSO is logged, but
+    previously never revisited a call already sitting in the queue -- so a
+    "Needed" tag applied at enqueue time stuck around for the rest of the
+    session even after working that exact station (real-use report: a worked
+    KF0VJY kept showing "Needed" indefinitely). WsjtxClient.
+    RefreshQueuedAwardTags() (called right after the cache rebuild) re-derives
+    Category for every queued STILL_NEEDED call so the tag clears immediately.
+    """
+    print("  ─ Group 17: Still-Needed tag clears off the queue once worked ─")
+
+    NEEDED_CALL = "W9NEED"   # matches RuleDefinitions/_ReplayTestAward.ini's roster
+    TAG_TEXT    = "Replay Test Award Needed"
+
+    tag_was_present = [False]
+
+    send(sock,
+         f"CQ from {NEEDED_CALL} (never worked -- matches the test award's roster)",
+         f"Expect: queued with the '{TAG_TEXT}' tag IF the test award is checked "
+         "in the Still Need tab (WARN, not FAIL, otherwise)",
+         build_enqueue(f"CQ {NEEDED_CALL} EM63"),
+         verify_fn=lambda: tag_was_present.__setitem__(0, v.check_queue_row_contains_warn(
+             NEEDED_CALL, TAG_TEXT,
+             f"T36: {NEEDED_CALL} queued with '{TAG_TEXT}' tag",
+             "check 'Replay Test Award' in the Still Need tab + enable its Call Filter"))
+         if v.available else None)
+
+    send(sock,
+         f"QsoLoggedMessage: {NEEDED_CALL} logged",
+         "Expect: the 'Needed' tag clears immediately (RefreshQueuedAwardTags), "
+         "instead of staying stale for the rest of the session",
+         build_qso_logged(NEEDED_CALL),
+         delay=2.0,
+         verify_fn=lambda: (
+             v.check_queue_row_not_contains(NEEDED_CALL, TAG_TEXT,
+                 f"T37: {NEEDED_CALL}'s '{TAG_TEXT}' tag cleared after being logged")
+             if tag_was_present[0] else
+             print(f"    ⚠ WARN  T37: skipped ('{TAG_TEXT}' tag never confirmed present in T36)")
+         ) if v.available else None)
+
+
 def run_tests(sock, v):
     print("──── Test Decode Messages ────")
     print(f"  Format: [DESTINATION] [SOURCE] [payload]")
@@ -1348,12 +1442,13 @@ def run_tests(sock, v):
     group14_logged_adif_fallback(sock, v)
     group15_wait_and_reply_cooperation(sock, v)
     group16_rrr_after_logged_no_requeue(sock, v)
+    group17_still_needed_tag_clears_on_log(sock, v)
 
     # ── To add a new replay test group ──────────────────────────────────────
     # 1. Define a new function, e.g.:
-    #      def group17_your_scenario(sock, v):
+    #      def group18_your_scenario(sock, v):
     #          send(sock, "Label", "Description", build_enqueue("..."),
-    #               verify_fn=lambda: v.check_queue_contains("K4YT", "T38: ..."))
+    #               verify_fn=lambda: v.check_queue_contains("K4YT", "T39: ..."))
     # 2. Call it here, above this comment block.
     # Tests are auto-numbered by the global _test_num counter.
     # ────────────────────────────────────────────────────────────────────────
@@ -1401,6 +1496,8 @@ def main():
     print("  [5] T25-T26 (Group 12) always pass regardless of HRC database state")
     print("  [6] T27-T28 (Group 13) always pass regardless of Still Need selection")
     print("  [7] T33/T35 need Jimmy actively CQ-cycling to get a full PASS instead of a WARNING")
+    print("  [8] (optional) check 'Replay Test Award' in the Still Need tab + enable its")
+    print("      Call Filter → T36-T37 PASS. Without it, T36 WARNs and T37 is skipped")
     print()
 
     if not ensure_jimmy_udp_ready():
