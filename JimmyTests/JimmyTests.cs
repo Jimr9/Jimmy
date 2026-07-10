@@ -133,6 +133,7 @@ static class JimmyTests
         LogbookDbUploadSyncStatusTests();
         QrzIsDuplicateReasonTests();
         ResolveUsStateTests();
+        AdifImporterLiveLoggedStateFallbackTests();
         DxSpotWatcherIsEvenPeriodTests();
         FccUlsProviderParseLineTests();
         FccUlsProviderLooksIncompleteTests();
@@ -524,6 +525,86 @@ static class JimmyTests
         Check("both null -> null", WsjtxClient.ResolveUsState(null, null) == null, true);
         Check("QRZ present, grid null -> QRZ wins",
               WsjtxClient.ResolveUsState("CT", null) == "CT", true);
+    }
+
+    // ── AdifImporter.Import: live-logged QSO state resolution ──────────────────
+    // Regression guard for a live-logged QSO (LiveQsoUploadOrchestrator.ImportLiveLoggedQso,
+    // fed by WsjtxClient.RequestLog) never getting a usable US state when the QSO's own
+    // fields have no STATE key -- exactly the shape RequestLog builds (GRIDSQUARE only,
+    // no STATE). Previously that path passed resolveUsState=null, so a QSO worked with no
+    // grid square heard (e.g. a bare "CQ CALL" with no grid) left state permanently blank,
+    // and that station could never satisfy a State-grouped award (the WAS family) no matter
+    // how many times it was worked. The fix wires the same lookupManager-backed callback
+    // every other US-state lookup in the app already uses into that one call site.
+    static void AdifImporterLiveLoggedStateFallbackTests()
+    {
+        Console.WriteLine("\n── AdifImporter.Import: live-logged QSO state fallback ──");
+
+        var def = new RuleDefinition
+        {
+            Id = "TEST_STATE_FALLBACK", Name = "Test", FormatVersion = 1, Enabled = true,
+            GroupBy = RuleGroupBy.State, Target = RuleTargetType.Count, Threshold = 1,
+            Confirmation = RuleConfirmation.None,
+        };
+
+        // Fields shaped exactly like WsjtxClient.RequestLog's liveFields: no STATE key,
+        // GRIDSQUARE blank -- the real-world case (a station worked with no grid heard).
+        Dictionary<string, string> LiveFieldsNoGrid(string call) => new Dictionary<string, string>
+        {
+            ["CALL"] = call, ["BAND"] = "80m", ["FREQ"] = "3.573", ["MODE"] = "FT8",
+            ["QSO_DATE"] = "20260710", ["TIME_ON"] = "104200", ["TIME_OFF"] = "104300",
+            ["RST_SENT"] = "-10", ["RST_RCVD"] = "-14", ["GRIDSQUARE"] = "",
+            ["STATION_CALLSIGN"] = "KB0UZT", ["MY_GRIDSQUARE"] = "EN34",
+        };
+
+        string tmpDbFixed = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_LiveStateFallback_Fixed_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDbFixed))
+            {
+                AdifImporter.Import(db, new[] { LiveFieldsNoGrid("K5KPE") }, "WSJTX", null,
+                    resolveUsState: call => call == "K5KPE" ? "AR" : null);
+            }
+            var r = RuleEngine.Evaluate(def, tmpDbFixed, null);
+            Check("resolveUsState callback wired in: no-grid QSO still gets a real state",
+                  r.WorkedItems != null && r.WorkedItems.Contains("AR"), true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL  AdifImporterLiveLoggedStateFallbackTests (fixed) threw: {ex.GetType().Name}: {ex.Message}");
+            failed++;
+        }
+        finally
+        {
+            try { File.Delete(tmpDbFixed); } catch { }
+        }
+
+        // Documents the pre-fix behavior for contrast: with no resolveUsState callback and
+        // no grid, the QSO is logged but with no usable state at all (AddGroupByFilter
+        // excludes blank-state rows from grouping entirely), so it can never satisfy a
+        // State-grouped award regardless of how many times the station is worked.
+        string tmpDbBroken = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_LiveStateFallback_Broken_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDbBroken))
+            {
+                AdifImporter.Import(db, new[] { LiveFieldsNoGrid("K5KPE") }, "WSJTX", null, null);
+            }
+            var r = RuleEngine.Evaluate(def, tmpDbBroken, null);
+            Check("without the callback: no-grid QSO never resolves to any state",
+                  r.WorkedItems == null || r.WorkedItems.Count == 0, true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL  AdifImporterLiveLoggedStateFallbackTests (broken) threw: {ex.GetType().Name}: {ex.Message}");
+            failed++;
+        }
+        finally
+        {
+            try { File.Delete(tmpDbBroken); } catch { }
+        }
     }
 
     // ── DxSpotWatcher.IsEvenPeriod ───────────────────────────────────────────────

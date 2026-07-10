@@ -36,6 +36,7 @@ namespace WSJTX_Controller
         private readonly Action _notifyImported;
         private readonly Action<string> _debugLog;
         private readonly Action<string, bool> _showStatus;
+        private readonly Func<string, string> _resolveUsState;
 
         // Circuit breaker for Club Log real-time upload only (matches Club Log's
         // own documented integration requirement: "if you don't receive a '200
@@ -49,12 +50,13 @@ namespace WSJTX_Controller
         private volatile bool _clubLogRealtimeBroken;
 
         public LiveQsoUploadOrchestrator(Func<LiveUploadCredentials> credentials, Action notifyImported,
-            Action<string> debugLog, Action<string, bool> showStatus)
+            Action<string> debugLog, Action<string, bool> showStatus, Func<string, string> resolveUsState)
         {
             _credentials = credentials;
             _notifyImported = notifyImported;
             _debugLog = debugLog;
             _showStatus = showStatus;
+            _resolveUsState = resolveUsState;
         }
 
         // Called when the user saves Options -- gives automatic real-time
@@ -70,7 +72,14 @@ namespace WSJTX_Controller
                 {
                     using (var db = new LogbookDb())
                     {
-                        AdifImporter.Import(db, new[] { fields }, "WSJTX", null);
+                        // resolveUsState is the same lookupManager-backed callback every other US
+                        // state lookup in the app already uses (queue display, raw decodes row,
+                        // HRC award check, the Rule Definitions engine, and the Logbook window's
+                        // own ADIF import) -- without it, a live-logged QSO's state only ever came
+                        // from the grid square, which is blank when no grid was heard and an
+                        // unusable compound string like "OR-ID" when the grid straddles a state
+                        // border, so the QSO silently never counted toward a State-grouped award.
+                        AdifImporter.Import(db, new[] { fields }, "WSJTX", null, _resolveUsState);
 
                         // Keep award tracking current for this new QSO without requiring a
                         // restart: refresh the live-tag "still needed" cache used during

@@ -522,7 +522,8 @@ namespace WSJTX_Controller
                     ctrl.RefreshLogbookWindowIfOpen();
                 })),
                 debugLog: msg => DebugOutput($"{Time()} {msg}"),
-                showStatus: (msg, sound) => ctrl.BeginInvoke(new Action(() => ctrl.ShowUploadStatus(msg, sound))));
+                showStatus: (msg, sound) => ctrl.BeginInvoke(new Action(() => ctrl.ShowUploadStatus(msg, sound))),
+                resolveUsState: call => lookupManager?.Build(call)?.State);
             ipAddress = reqIpAddress;
             port = reqPort;
             multicast = reqMulticast;
