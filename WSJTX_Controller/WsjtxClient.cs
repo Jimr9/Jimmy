@@ -3079,18 +3079,21 @@ namespace WSJTX_Controller
 
             if (ctrl.showUsStateCheckBox.Checked && country == "USA" && msg != null)
             {
+                // QRZ's cached state doesn't depend on this particular message carrying a
+                // grid -- by the time a QSO is logged, msg is often the final 73/RR73 (no
+                // grid in that message type), which previously skipped state resolution
+                // entirely instead of falling back to QRZ. Same QRZ-first/grid.dat-fallback
+                // priority as ResolveUsState's other call sites (BuildCallWaitingRow, Raw
+                // Decodes row, IsHrcWasNeeded, MatchedAwardRuleId).
                 string g = WsjtxMessage.Grid(msg.Message);
-                if (g != null)
+                string qrzState = null;
+                if (lookupManager != null && lookupManager.Enabled)
                 {
-                    string qrzState = null;
-                    if (lookupManager != null && lookupManager.Enabled)
-                    {
-                        var rec = lookupManager.Build(call);
-                        qrzState = rec.State;
-                    }
-                    string state = ResolveUsState(qrzState, GridToUsState(g));
-                    if (state != null) country = state;
+                    var rec = lookupManager.Build(call);
+                    qrzState = rec.State;
                 }
+                string state = ResolveUsState(qrzState, g == null ? null : GridToUsState(g));
+                if (state != null) country = state;
             }
 
             return country;
