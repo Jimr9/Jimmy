@@ -882,11 +882,12 @@ namespace WSJTX_Controller
                         {
                             DisableAutoFreqPause();
                             ClearAudioOffsets();
-                            if (ctrl.freqCheckBox.Checked) _requireOffsetForActive = true;
+                            // See WsjtxClient.BandAudio.cs BandUp() -- not arming
+                            // _requireOffsetForActive on band change (2026-07-12).
                             newBand = true;
                             decodeCount = 0;
                             consecNoDecodes = 0;
-                            AutoFreqChanged(ctrl.freqCheckBox.Checked, true);
+                            AutoFreqChanged(false, true);
                             DebugOutput($"{spacer}band changed:'{FreqToBandStr(dialFrequency / 1e6)}' (was:'{FreqToBandStr(lastDialFrequency / 1e6)}')");
 
                             _rawDecodeHistory.Clear();

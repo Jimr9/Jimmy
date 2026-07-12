@@ -63,8 +63,11 @@ namespace WSJTX_Controller
             if (bandToFreq(targetIdx) == null) return false;
 
             ClearAudioOffsets();
-            if (ctrl.freqCheckBox.Checked) _requireOffsetForActive = true;
-            AutoFreqChanged(ctrl.freqCheckBox.Checked, true);
+            // Deliberately not arming _requireOffsetForActive here -- 2026-07-12, found that
+            // pausing to re-search the best Tx slot on every band change caused the radio to
+            // double-switch. Best-slot search still happens silently in the background via
+            // CalcBestOffset once decodes resume; only the foreground pause-and-wait is skipped.
+            AutoFreqChanged(false, true);
             Pause(true, false);
             CancelQso();
 
@@ -82,8 +85,8 @@ namespace WSJTX_Controller
             if (bandToFreq(targetIdx) == null) return false;
 
             ClearAudioOffsets();
-            if (ctrl.freqCheckBox.Checked) _requireOffsetForActive = true;
-            AutoFreqChanged(ctrl.freqCheckBox.Checked, true);
+            // See BandUp() -- not arming _requireOffsetForActive on band change (2026-07-12).
+            AutoFreqChanged(false, true);
             Pause(true, false);
             CancelQso();
 
@@ -101,8 +104,8 @@ namespace WSJTX_Controller
             if (bandIdx != null && (int)bandIdx == targetIdx) return false;
 
             ClearAudioOffsets();
-            if (ctrl.freqCheckBox.Checked) _requireOffsetForActive = true;
-            AutoFreqChanged(ctrl.freqCheckBox.Checked, true);
+            // See BandUp() -- not arming _requireOffsetForActive on band change (2026-07-12).
+            AutoFreqChanged(false, true);
             Pause(true, false);
             CancelQso();
 

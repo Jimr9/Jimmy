@@ -27,6 +27,8 @@ if errorlevel 1 (
 )
 
 set "JIMMY_EXE=%~dp0WSJTX_Controller\bin\Debug\Jimmy.exe"
+set "STARTED_BY_SCRIPT="
+set "JIMMY_PID="
 
 tasklist /FI "IMAGENAME eq Jimmy.exe" 2>NUL | find /I "Jimmy.exe" >NUL
 if not %ERRORLEVEL%==0 (
@@ -35,8 +37,12 @@ if not %ERRORLEVEL%==0 (
         exit /b 1
     )
     echo Starting Jimmy.exe in test mode...
-    start "" "%JIMMY_EXE%"
-    timeout /t 3 /nobreak >nul
+    for /f "usebackq delims=" %%p in (`powershell -NoProfile -Command "(Start-Process -FilePath '%JIMMY_EXE%' -WorkingDirectory '%~dp0WSJTX_Controller\bin\Debug' -PassThru).Id"`) do set "JIMMY_PID=%%p"
+    set "STARTED_BY_SCRIPT=1"
+    rem Launching via PowerShell (needed to capture the PID for cleanup below) adds a
+    rem little startup latency versus the old plain "start" -- give the window extra
+    rem time to come up so JimmyVerifier's Win32 window search doesn't miss it.
+    timeout /t 5 /nobreak >nul
 ) else (
     echo NOTE: Jimmy.exe is already running. This script cannot confirm that
     echo instance was started with JIMMY_TEST_DB_PATH set. If you started it
@@ -45,3 +51,11 @@ if not %ERRORLEVEL%==0 (
 )
 
 python "%~dp0JimmyReplay.py"
+
+rem ── Cleanup: only close the test-mode Jimmy instance THIS run launched
+rem    (tracked by PID above) -- never touches an instance that was already
+rem    running before this script started, real or otherwise.
+if defined STARTED_BY_SCRIPT if defined JIMMY_PID (
+    echo Closing test-mode Jimmy.exe ^(PID %JIMMY_PID%^)...
+    taskkill /PID %JIMMY_PID% /F >nul 2>&1
+)

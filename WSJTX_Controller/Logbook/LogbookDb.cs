@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
+using System.Linq;
 using System.Data.SQLite;
 
 namespace WSJTX_Controller
@@ -14,6 +15,7 @@ namespace WSJTX_Controller
         public string Mode        { get; set; }
         public string QsoDate     { get; set; }
         public string TimeOn      { get; set; }
+        public string TimeOff     { get; set; }
         public string Country     { get; set; }
         public string State       { get; set; }
         public int    Dxcc        { get; set; }
@@ -25,6 +27,7 @@ namespace WSJTX_Controller
         public string Name        { get; set; }
         public string RstSent     { get; set; }
         public string RstRcvd     { get; set; }
+        public string Comment     { get; set; }
         public bool   IsConfirmed => LotwQslRcvd == "Y" || QrzQslRcvd == "Y";
     }
 
@@ -909,6 +912,254 @@ ON CONFLICT(dedup_key) DO UPDATE SET
             }
         }
 
+        // ── Edit Log (search/edit/delete/export) ────────────────────────────────────
+        // Backs the Edit Log tab: unlike SearchByCallsign (a quick "have I worked this
+        // call" lookup), this supports filtering by source and date range too, and
+        // returns the row id so callers can Edit/Delete/Export specific records.
+
+        private static readonly string[] EditLogSelectCols =
+        {
+            "id", "qso_date", "time_on", "time_off", "callsign", "band", "mode",
+            "state", "country", "grid", "name", "rst_sent", "rst_rcvd", "comment",
+            "dxcc", "cq_zone", "lotw_qsl_rcvd", "qrz_qsl_rcvd", "source",
+        };
+
+        private static QsoRecord ReadEditLogRow(IDataReader r) => new QsoRecord
+        {
+            Id          = r.GetInt32(0),
+            QsoDate     = Str(r, 1),
+            TimeOn      = Str(r, 2),
+            TimeOff     = Str(r, 3),
+            Callsign    = Str(r, 4),
+            Band        = Str(r, 5),
+            Mode        = Str(r, 6),
+            State       = Str(r, 7),
+            Country     = Str(r, 8),
+            Grid        = Str(r, 9),
+            Name        = Str(r, 10),
+            RstSent     = Str(r, 11),
+            RstRcvd     = Str(r, 12),
+            Comment     = Str(r, 13),
+            Dxcc        = r.IsDBNull(14) ? 0 : r.GetInt32(14),
+            CqZone      = r.IsDBNull(15) ? 0 : r.GetInt32(15),
+            LotwQslRcvd = Str(r, 16),
+            QrzQslRcvd  = Str(r, 17),
+            Source      = Str(r, 18),
+        };
+
+        // callsignPattern/source/dateFrom/dateTo are all optional (null/blank = no filter).
+        // dateFrom/dateTo are inclusive, expected in qso_date's own YYYYMMDD form.
+        public List<QsoRecord> SearchQsos(string callsignPattern, string source,
+            string dateFrom, string dateTo, int limit = 500)
+        {
+            lock (_lock)
+            {
+                var result = new List<QsoRecord>();
+                using (var cmd = _conn.CreateCommand())
+                {
+                    var where = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(callsignPattern))
+                    {
+                        string p = callsignPattern.Trim().ToUpperInvariant();
+                        if (!p.Contains("%")) p += "%";
+                        where.Add("callsign LIKE @call");
+                        cmd.Parameters.AddWithValue("@call", p);
+                    }
+                    if (!string.IsNullOrWhiteSpace(source))
+                    {
+                        where.Add("source = @source");
+                        cmd.Parameters.AddWithValue("@source", source);
+                    }
+                    if (!string.IsNullOrWhiteSpace(dateFrom))
+                    {
+                        where.Add("qso_date >= @dfrom");
+                        cmd.Parameters.AddWithValue("@dfrom", dateFrom);
+                    }
+                    if (!string.IsNullOrWhiteSpace(dateTo))
+                    {
+                        where.Add("qso_date <= @dto");
+                        cmd.Parameters.AddWithValue("@dto", dateTo);
+                    }
+                    string whereClause = where.Count > 0 ? "WHERE " + string.Join(" AND ", where) : "";
+                    cmd.CommandText =
+                        $"SELECT {string.Join(", ", EditLogSelectCols)} FROM qso {whereClause} " +
+                        $"ORDER BY qso_date DESC, time_on DESC LIMIT {limit};";
+                    using (var r = cmd.ExecuteReader())
+                    {
+                        while (r.Read())
+                            result.Add(ReadEditLogRow(r));
+                    }
+                }
+                return result;
+            }
+        }
+
+        public QsoRecord GetQso(int id)
+        {
+            lock (_lock)
+            {
+                using (var cmd = _conn.CreateCommand())
+                {
+                    cmd.CommandText = $"SELECT {string.Join(", ", EditLogSelectCols)} FROM qso WHERE id=@id;";
+                    cmd.Parameters.AddWithValue("@id", id);
+                    using (var r = cmd.ExecuteReader())
+                        return r.Read() ? ReadEditLogRow(r) : null;
+                }
+            }
+        }
+
+        // Updates the user-editable fields of one QSO. Recomputes dedup_key from the
+        // (possibly changed) callsign/band/mode/date/time -- if that now collides with
+        // another existing row's dedup_key, the UNIQUE constraint throws and the caller
+        // is expected to show that as a "duplicate" error rather than silently merge.
+        public bool UpdateQso(int id, string callsign, string band, string mode,
+            string qsoDate, string timeOn, string timeOff, string state, string country,
+            string grid, string name, string rstSent, string rstRcvd, string comment)
+        {
+            callsign = (callsign ?? "").Trim().ToUpperInvariant();
+            band     = (band     ?? "").Trim().ToLowerInvariant();
+            mode     = (mode     ?? "").Trim().ToUpperInvariant();
+            qsoDate  = (qsoDate  ?? "").Trim();
+            timeOn   = (timeOn   ?? "").Trim();
+            string dedupKey = AdifImporter.BuildDedupKey(callsign, band, mode, qsoDate, timeOn);
+
+            lock (_lock)
+            {
+                using (var cmd = _conn.CreateCommand())
+                {
+                    cmd.CommandText = @"
+UPDATE qso SET
+    callsign=@callsign, band=@band, mode=@mode, qso_date=@qso_date, time_on=@time_on,
+    time_off=@time_off, state=@state, country=@country, grid=@grid, name=@name,
+    rst_sent=@rst_sent, rst_rcvd=@rst_rcvd, comment=@comment, dedup_key=@dedup_key
+WHERE id=@id;";
+                    cmd.Parameters.AddWithValue("@callsign",  callsign);
+                    cmd.Parameters.AddWithValue("@band",      band);
+                    cmd.Parameters.AddWithValue("@mode",      mode);
+                    cmd.Parameters.AddWithValue("@qso_date",  qsoDate);
+                    cmd.Parameters.AddWithValue("@time_on",   timeOn);
+                    cmd.Parameters.AddWithValue("@time_off",  (timeOff ?? "").Trim());
+                    cmd.Parameters.AddWithValue("@state",     (state   ?? "").Trim().ToUpperInvariant());
+                    cmd.Parameters.AddWithValue("@country",   (country ?? "").Trim());
+                    cmd.Parameters.AddWithValue("@grid",      (grid    ?? "").Trim().ToUpperInvariant());
+                    cmd.Parameters.AddWithValue("@name",      (name    ?? "").Trim());
+                    cmd.Parameters.AddWithValue("@rst_sent",  (rstSent ?? "").Trim());
+                    cmd.Parameters.AddWithValue("@rst_rcvd",  (rstRcvd ?? "").Trim());
+                    cmd.Parameters.AddWithValue("@comment",   (comment ?? "").Trim());
+                    cmd.Parameters.AddWithValue("@dedup_key", dedupKey);
+                    cmd.Parameters.AddWithValue("@id", id);
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+        }
+
+        // Deletes the given rows by id. Local-only -- never touches QRZ/Club Log/LoTW;
+        // those remain separate services a local delete has no effect on.
+        public int DeleteQsos(IEnumerable<int> ids)
+        {
+            var idList = ids?.Distinct().ToList() ?? new List<int>();
+            if (idList.Count == 0) return 0;
+            lock (_lock)
+            {
+                using (var cmd = _conn.CreateCommand())
+                {
+                    string placeholders = string.Join(",", idList.Select((_, i) => $"@id{i}"));
+                    cmd.CommandText = $"DELETE FROM qso WHERE id IN ({placeholders});";
+                    for (int i = 0; i < idList.Count; i++)
+                        cmd.Parameters.AddWithValue($"@id{i}", idList[i]);
+                    return cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        // Returns full-fidelity ADIF field dictionaries (every stored column, not just
+        // the Edit Log tab's display subset) for export. ids null/empty exports every QSO.
+        public List<Dictionary<string, string>> GetAdifFieldDicts(IEnumerable<int> ids)
+        {
+            var idList = ids?.Distinct().ToList();
+            lock (_lock)
+            {
+                var result = new List<Dictionary<string, string>>();
+                using (var cmd = _conn.CreateCommand())
+                {
+                    string whereClause = "";
+                    if (idList != null && idList.Count > 0)
+                    {
+                        string placeholders = string.Join(",", idList.Select((_, i) => $"@id{i}"));
+                        whereClause = $"WHERE id IN ({placeholders})";
+                        for (int i = 0; i < idList.Count; i++)
+                            cmd.Parameters.AddWithValue($"@id{i}", idList[i]);
+                    }
+                    cmd.CommandText = $"SELECT * FROM qso {whereClause} ORDER BY qso_date, time_on;";
+                    using (var r = cmd.ExecuteReader())
+                    {
+                        while (r.Read())
+                        {
+                            var f = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                            void AddText(string tag, string col)
+                            {
+                                string v = StrByName(r, col);
+                                if (v.Length > 0) f[tag] = v;
+                            }
+                            void AddNum(string tag, string col)
+                            {
+                                long v;
+                                long.TryParse(StrByName(r, col), out v);
+                                if (v > 0) f[tag] = v.ToString();
+                            }
+
+                            AddText("CALL", "callsign");
+                            AddText("BAND", "band");
+                            AddText("MODE", "mode");
+                            AddText("QSO_DATE", "qso_date");
+                            AddText("TIME_ON", "time_on");
+                            AddText("TIME_OFF", "time_off");
+                            long freqHz;
+                            long.TryParse(StrByName(r, "freq_hz"), out freqHz);
+                            if (freqHz > 0)
+                                f["FREQ"] = (freqHz / 1_000_000.0).ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture);
+                            AddText("RST_SENT", "rst_sent");
+                            AddText("RST_RCVD", "rst_rcvd");
+                            AddText("STATE", "state");
+                            AddText("COUNTRY", "country");
+                            AddNum ("DXCC", "dxcc");
+                            AddNum ("CQZ", "cq_zone");
+                            AddText("GRIDSQUARE", "grid");
+                            AddText("NAME", "name");
+                            AddText("COMMENT", "comment");
+                            AddText("TX_PWR", "tx_pwr");
+                            AddText("OPERATOR", "operator_call");
+                            AddText("STATION_CALLSIGN", "station_call");
+                            AddText("MY_GRIDSQUARE", "my_grid");
+                            AddText("LOTW_QSL_SENT", "lotw_qsl_sent");
+                            AddText("LOTW_QSL_RCVD", "lotw_qsl_rcvd");
+                            AddText("QSL_SENT", "qrz_qsl_sent");
+                            AddText("QSL_RCVD", "qrz_qsl_rcvd");
+                            // Jimmy-specific bookkeeping (which source last supplied this row) --
+                            // not a standard ADIF field, kept as an APP-namespaced tag so a
+                            // re-import of this export elsewhere doesn't misread it as anything else.
+                            AddText("APP_JIMMY_SOURCE", "source");
+                            AddText("CONT", "continent");
+                            AddNum ("ITUZ", "itu_zone");
+                            AddText("CNTY", "county");
+                            AddText("IOTA", "iota");
+                            AddText("SIG", "sig");
+                            AddText("SIG_INFO", "sig_info");
+                            AddText("MY_SIG", "my_sig");
+                            AddText("MY_SIG_INFO", "my_sig_info");
+                            AddText("DARC_DOK", "darc_dok");
+                            AddText("PFX", "wpx_prefix");
+                            AddText("STX_STRING", "exchange_sent");
+                            AddText("SRX_STRING", "exchange_rcvd");
+
+                            result.Add(f);
+                        }
+                    }
+                }
+                return result;
+            }
+        }
+
         // Returns best-known country name per DXCC entity, derived from QSO records.
         public Dictionary<int, string> GetDxccCountryNames()
         {
@@ -1030,6 +1281,12 @@ ON CONFLICT(dedup_key) DO UPDATE SET
 
         private static string Str(IDataReader r, int i) =>
             r.IsDBNull(i) ? "" : r.GetString(i);
+
+        private static string StrByName(IDataReader r, string col)
+        {
+            object v = r[col];
+            return (v == null || v is DBNull) ? "" : v.ToString();
+        }
 
         public void Dispose()
         {

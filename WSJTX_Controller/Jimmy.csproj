@@ -85,12 +85,15 @@
     <Compile Include="Logbook\AdifParser.cs" />
     <Compile Include="Logbook\AdifImporter.cs" />
     <Compile Include="Logbook\AdifRecordBuilder.cs" />
+    <Compile Include="Logbook\AdifExporter.cs" />
     <Compile Include="Logbook\QrzLogbookClient.cs" />
     <Compile Include="Logbook\ClubLogUploadClient.cs" />
     <Compile Include="Logbook\LoTWQsoClient.cs" />
     <Compile Include="Logbook\LogbookWindow.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="Logbook\EditQsoDlg.cs" />
+    <Compile Include="Logbook\EditLogRowOrderDlg.cs" />
     <Compile Include="Awards\RuleFile.cs" />
     <Compile Include="Awards\RuleDefinition.cs" />
     <Compile Include="Awards\RuleUniverse.cs" />

@@ -107,6 +107,8 @@ static class JimmyTests
         RuleEngineWorkedBandsTests();
         RuleEngineCountTargetStillNeededTests();
         AdifRecordBuilderTests();
+        AdifExporterTests();
+        LogbookDbEditLogTests();
         LogbookDbAuthoritativeSourceOverrideTests();
         LogbookDbNewlyConfirmedVsCorrectedTests();
         LogbookDbDownloadMarksUploadedTests();
@@ -1393,6 +1395,128 @@ static class JimmyTests
             "", "", "KB0UZT", "EN34");
         Check("Build(): qso_date_off omitted entirely when not supplied (same-day QSO, existing callers unaffected)",
               !withoutDateOff.Contains("<qso_date_off:"), true);
+    }
+
+    // ── AdifExporter: export-direction record building (Edit Log / Sync "Export ADIF") ──
+    static void AdifExporterTests()
+    {
+        Console.WriteLine("\n── AdifExporter: field dictionary -> ADIF text ──");
+
+        var rec = new Dictionary<string, string>
+        {
+            ["CALL"]        = "K4YT",
+            ["BAND"]        = "20m",
+            ["QSO_DATE"]    = "20260706",
+            ["EMPTY_FIELD"] = "",
+        };
+        string built = AdifExporter.BuildRecord(rec);
+        Check("BuildRecord: includes call", built.Contains("<CALL:4>K4YT"), true);
+        Check("BuildRecord: includes band", built.Contains("<BAND:3>20m"), true);
+        Check("BuildRecord: omits blank-valued fields", !built.Contains("<EMPTY_FIELD:"), true);
+        Check("BuildRecord: terminates with <eor>", built.TrimEnd().EndsWith("<eor>"), true);
+
+        string header = AdifExporter.Header();
+        Check("Header: ends with <EOH>", header.TrimEnd().EndsWith("<EOH>"), true);
+
+        var records = new List<Dictionary<string, string>> { rec, rec };
+        string file = AdifExporter.BuildFile(records);
+        Check("BuildFile: starts with the header", file.StartsWith(header), true);
+        Check("BuildFile: contains one <eor> per record",
+              file.Split(new[] { "<eor>" }, StringSplitOptions.None).Length - 1 == 2, true);
+    }
+
+    // ── LogbookDb: Edit Log tab support (search/edit/delete/export) ─────────────
+    // Local-only data hygiene tooling added after a real incident where fake
+    // replay-test QSOs (K4YT, W1ADIF, W9NEED, etc.) leaked into the production
+    // logbook and real QRZ/Club Log accounts -- this is what lets a user find and
+    // remove them without touching QRZ/Club Log/LoTW's own APIs.
+    static void LogbookDbEditLogTests()
+    {
+        Console.WriteLine("\n── LogbookDb: SearchQsos/GetQso/UpdateQso/DeleteQsos/GetAdifFieldDicts ──");
+        string tmpDb = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_EditLog_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDb))
+            {
+                InsertQso(db, "K4YT",   "GA", dxcc: 291, zone: 4, band: "20m", qsoDate: "20260706");
+                InsertQso(db, "W1ADIF", "CT", dxcc: 291, zone: 5, band: "20m", qsoDate: "20260708");
+                InsertQso(db, "W9NEED", "IL", dxcc: 291, zone: 4, band: "40m", qsoDate: "20260710");
+
+                // ── SearchQsos filters ──────────────────────────────────────
+                var byCall = db.SearchQsos("K4YT", null, null, null);
+                Check("SearchQsos: callsign filter matches", byCall.Count == 1 && byCall[0].Callsign == "K4YT", true);
+
+                var byDateFrom = db.SearchQsos(null, null, "20260707", null);
+                Check("SearchQsos: date-from excludes the earlier K4YT row (2 remain)", byDateFrom.Count == 2, true);
+
+                var byDateRange = db.SearchQsos(null, null, "20260707", "20260709");
+                Check("SearchQsos: date range narrows to just W1ADIF",
+                      byDateRange.Count == 1 && byDateRange[0].Callsign == "W1ADIF", true);
+
+                var bySource = db.SearchQsos(null, "MANUAL", null, null);
+                Check("SearchQsos: source filter matches (InsertQso writes source=MANUAL)", bySource.Count == 3, true);
+
+                var all = db.SearchQsos(null, null, null, null);
+                Check("SearchQsos: no filters returns all 3", all.Count == 3, true);
+
+                // ── GetQso / UpdateQso ───────────────────────────────────────
+                int id = byCall[0].Id;
+                Check("SearchQsos: row id is populated (non-zero)", id != 0, true);
+
+                var fetched = db.GetQso(id);
+                Check("GetQso: fetches the right row", fetched != null && fetched.Callsign == "K4YT", true);
+
+                bool updated = db.UpdateQso(id, "K4YT", "20m", "FT8", "20260706", "1200", "1215",
+                    "FL", "Test", "EM63", "Test Name", "-10", "-05", "Fixed via editor");
+                Check("UpdateQso: reports a change", updated, true);
+
+                var afterUpdate = db.GetQso(id);
+                Check("UpdateQso: state updated",   afterUpdate.State   == "FL", true);
+                Check("UpdateQso: comment updated", afterUpdate.Comment == "Fixed via editor", true);
+
+                // Attempting to rename this row to collide with another row's identity
+                // (same callsign/band/mode/date/time) must throw, not silently merge --
+                // the caller shows this as a "duplicate" error rather than losing data.
+                bool threwOnCollision = false;
+                try
+                {
+                    db.UpdateQso(id, "W1ADIF", "20m", "FT8", "20260708", "1200", "1215",
+                        "FL", "Test", "", "", "", "", "");
+                }
+                catch (Exception) { threwOnCollision = true; }
+                Check("UpdateQso: colliding with another row's identity throws instead of silently merging",
+                      threwOnCollision, true);
+
+                // ── DeleteQsos ────────────────────────────────────────────────
+                var toDelete = db.SearchQsos("W1ADIF", null, null, null);
+                int deleted = db.DeleteQsos(new[] { toDelete[0].Id });
+                Check("DeleteQsos: reports 1 row deleted", deleted == 1, true);
+                Check("DeleteQsos: row actually gone", db.SearchQsos("W1ADIF", null, null, null).Count == 0, true);
+                Check("DeleteQsos: unrelated rows untouched", db.SearchQsos(null, null, null, null).Count == 2, true);
+                Check("DeleteQsos: empty id list is a safe no-op", db.DeleteQsos(new int[0]) == 0, true);
+
+                // ── GetAdifFieldDicts ─────────────────────────────────────────
+                var exportAll = db.GetAdifFieldDicts(null);
+                Check("GetAdifFieldDicts: exports every remaining row", exportAll.Count == 2, true);
+                Check("GetAdifFieldDicts: CALL field present",
+                      exportAll.Any(f => f.ContainsKey("CALL") && f["CALL"] == "K4YT"), true);
+                Check("GetAdifFieldDicts: zero-valued numeric fields omitted (no DXCC=0 noise)",
+                      exportAll.All(f => !f.ContainsKey("DXCC") || f["DXCC"] != "0"), true);
+
+                var idsLeft = db.SearchQsos(null, null, null, null).Select(q => q.Id).ToList();
+                var exportOne = db.GetAdifFieldDicts(new[] { idsLeft[0] });
+                Check("GetAdifFieldDicts: scoped id list exports exactly that count", exportOne.Count == 1, true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Check("LogbookDbEditLogTests: unexpected exception -- " + ex.Message, false, true);
+        }
+        finally
+        {
+            try { if (File.Exists(tmpDb)) File.Delete(tmpDb); } catch { }
+        }
     }
 
     // ── LogbookDb.Upsert: authoritative source overrides Jimmy's own guess ─────

@@ -48,6 +48,7 @@ namespace WSJTX_Controller
         private Panel _awardsPanel;
         private Panel _stillNeedPanel;
         private Panel _lookupPanel;
+        private Panel _editLogPanel;
         private Panel _syncPanel;
 
         // ── My Log controls ───────────────────────────────────────────────────────
@@ -88,6 +89,7 @@ namespace WSJTX_Controller
 
         // ── Sync controls ─────────────────────────────────────────────────────────
         private Button   _syncImportBtn;
+        private Button   _syncExportBtn;
         private Button   _syncQrzBtn;
         private Button   _syncLotwBtn;
         private Button   _syncClubLogBtn;
@@ -96,12 +98,38 @@ namespace WSJTX_Controller
         private Label    _srcClubLogStatusLbl;
         private ListView _srcHistoryLv;
 
+        // ── Edit Log controls ─────────────────────────────────────────────────────
+        // Local-only data hygiene tab: search/filter, then edit or delete specific rows,
+        // or export exactly what's selected before touching it. Never calls out to
+        // QRZ/Club Log/LoTW -- see LogbookDb.UpdateQso/DeleteQsos/GetAdifFieldDicts.
+        private TextBox  _editCallTb;
+        private ComboBox _editSourceCb;
+        private TextBox  _editDateFromTb;
+        private TextBox  _editDateToTb;
+        private Button   _editSearchBtn;
+        private Button   _editClearBtn;
+        private Label    _editCountLbl;
+        private ListView _editLv;
+        private Button   _editAddBtn;
+        private Button   _editEditBtn;
+        private Button   _editDeleteBtn;
+        private Button   _editExportBtn;
+        private Button   _editRowOrderBtn;
+        private List<string> _editLogRowOrder;
+
+        private static readonly Dictionary<string, int> EditLogFieldWidths = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "date", 80 }, { "time", 55 }, { "callsign", 90 }, { "band", 55 }, { "mode", 55 },
+            { "state", 50 }, { "country", 120 }, { "confirmed", 80 }, { "source", 60 },
+        };
+
         // ── Page constants ────────────────────────────────────────────────────────
         private const int PAGE_MYLOG     = 0;
         private const int PAGE_AWARDS    = 1;
         private const int PAGE_STILLNEED = 2;
         private const int PAGE_LOOKUP    = 3;
-        private const int PAGE_SYNC      = 4;
+        private const int PAGE_EDITLOG   = 4;
+        private const int PAGE_SYNC      = 5;
 
         private static readonly string[] AllBands =
         {
@@ -151,6 +179,9 @@ namespace WSJTX_Controller
                 this.Load += (s, e) =>
                     SetStatus("Database error: " + ex.Message);
             }
+
+            _editLogRowOrder = Controller.ParseRowOrder(_ini?.Read("editLogRowOrder"), EditLogRowOrderDlg.DefaultFields)
+                ?? new List<string>(EditLogRowOrderDlg.DefaultFields);
 
             BuildUi();
 
@@ -210,10 +241,11 @@ namespace WSJTX_Controller
             BuildAwardsPage(font, hfont);
             BuildStillNeedPage(font, hfont);
             BuildLookupPage(font, hfont);
+            BuildEditLogPage(font, hfont);
             BuildSyncPage(font, hfont);
 
-            string[] tabNames  = { "My Log", "Awards", "Still Need", "Lookup", "Sync" };
-            Panel[]  tabPanels = { _myLogPanel, _awardsPanel, _stillNeedPanel, _lookupPanel, _syncPanel };
+            string[] tabNames  = { "My Log", "Awards", "Still Need", "Lookup", "Edit Log", "Sync" };
+            Panel[]  tabPanels = { _myLogPanel, _awardsPanel, _stillNeedPanel, _lookupPanel, _editLogPanel, _syncPanel };
             for (int i = 0; i < tabNames.Length; i++)
             {
                 tabPanels[i].Dock    = DockStyle.Fill;
@@ -347,6 +379,19 @@ namespace WSJTX_Controller
             _syncClubLogBtn.Click += ClubLogRefreshBtn_Click;
 
             _syncPanel.Controls.AddRange(new Control[] { _syncImportBtn, _syncQrzBtn, _syncLotwBtn, _syncClubLogBtn });
+            y += 34;
+
+            _syncExportBtn = new Button
+            {
+                Text           = "Export ADIF...",
+                AccessibleName = "Export all QSOs to ADIF file",
+                Size           = new Size(120, 26),
+                Location       = new Point(8, y),
+                Font           = font,
+                TabIndex       = 5,
+            };
+            _syncExportBtn.Click += (s, e) => ExportAdif(null);
+            _syncPanel.Controls.Add(_syncExportBtn);
             y += 34;
 
             AddSectionLabel(_syncPanel, "QRZ Logbook", hfont, ref y);
@@ -660,11 +705,415 @@ namespace WSJTX_Controller
             _searchTb.Focus();
         }
 
+        private void BuildEditLogPage(Font font, Font hfont)
+        {
+            _editLogPanel = MakePage();
+
+            var callLbl = new Label { Text = "Callsign:", Font = font, Location = new Point(8, 11), AutoSize = true };
+            _editLogPanel.Controls.Add(callLbl);
+
+            _editCallTb = new TextBox
+            {
+                Font           = font,
+                Location       = new Point(68, 8),
+                Size           = new Size(120, 20),
+                TabIndex       = 1,
+                AccessibleName = "Callsign filter",
+            };
+            _editCallTb.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; DoEditSearch(); } };
+            _editLogPanel.Controls.Add(_editCallTb);
+
+            var sourceLbl = new Label { Text = "Source:", Font = font, Location = new Point(196, 11), AutoSize = true };
+            _editLogPanel.Controls.Add(sourceLbl);
+
+            _editSourceCb = new ComboBox
+            {
+                Font           = font,
+                Location       = new Point(244, 8),
+                Size           = new Size(110, 21),
+                DropDownStyle  = ComboBoxStyle.DropDownList,
+                TabIndex       = 2,
+                AccessibleName = "Source filter",
+            };
+            _editSourceCb.Items.AddRange(new object[] { "(Any)", "WSJTX", "QRZ", "LOTW", "CLUBLOG", "MANUAL" });
+            _editSourceCb.SelectedIndex = 0;
+            _editLogPanel.Controls.Add(_editSourceCb);
+
+            var dateFromLbl = new Label { Text = "Date from:", Font = font, Location = new Point(8, 37), AutoSize = true };
+            _editLogPanel.Controls.Add(dateFromLbl);
+
+            _editDateFromTb = new TextBox
+            {
+                Font           = font,
+                Location       = new Point(70, 34),
+                Size           = new Size(80, 20),
+                TabIndex       = 3,
+                AccessibleName = "Date from, format year month day, optional",
+            };
+            _editDateFromTb.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; DoEditSearch(); } };
+            _editLogPanel.Controls.Add(_editDateFromTb);
+
+            var dateToLbl = new Label { Text = "to:", Font = font, Location = new Point(156, 37), AutoSize = true };
+            _editLogPanel.Controls.Add(dateToLbl);
+
+            _editDateToTb = new TextBox
+            {
+                Font           = font,
+                Location       = new Point(176, 34),
+                Size           = new Size(80, 20),
+                TabIndex       = 4,
+                AccessibleName = "Date to, format year month day, optional",
+            };
+            _editDateToTb.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; DoEditSearch(); } };
+            _editLogPanel.Controls.Add(_editDateToTb);
+
+            _editSearchBtn = new Button
+            {
+                Text           = "Search",
+                AccessibleName = "Search",
+                Font           = font,
+                Location       = new Point(264, 33),
+                Size           = new Size(70, 23),
+                TabIndex       = 5,
+            };
+            _editSearchBtn.Click += (s, e) => DoEditSearch();
+            _editLogPanel.Controls.Add(_editSearchBtn);
+
+            _editClearBtn = new Button
+            {
+                Text           = "Clear",
+                AccessibleName = "Clear filters",
+                Font           = font,
+                Location       = new Point(340, 33),
+                Size           = new Size(70, 23),
+                TabIndex       = 6,
+            };
+            _editClearBtn.Click += (s, e) => ClearEditLog();
+            _editLogPanel.Controls.Add(_editClearBtn);
+
+            _editCountLbl = new Label
+            {
+                Text           = "",
+                Font           = font,
+                Location       = new Point(8, 62),
+                AutoSize       = true,
+                AccessibleName = "Result count",
+            };
+            _editLogPanel.Controls.Add(_editCountLbl);
+
+            _editRowOrderBtn = new Button
+            {
+                Text           = "Row Order...",
+                AccessibleName = "Choose Edit Log column order",
+                Font           = font,
+                Location       = new Point(416, 33),
+                Size           = new Size(90, 23),
+                TabIndex       = 7,
+            };
+            _editRowOrderBtn.Click += RowOrderBtn_Click;
+            _editLogPanel.Controls.Add(_editRowOrderBtn);
+
+            _editLv = MakeListView(font);
+            _editLv.Location    = new Point(8, 86);
+            _editLv.Anchor      = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            _editLv.Size        = new Size(700, 330);
+            _editLv.MultiSelect = true;
+            _editLv.TabIndex    = 8;
+            RebuildEditLogColumns();
+            _editLv.AccessibleName = "Edit Log results list";
+            _editLv.SelectedIndexChanged += (s, e) => UpdateEditLogButtons();
+            _editLogPanel.Controls.Add(_editLv);
+
+            _editAddBtn = new Button
+            {
+                Text           = "Add New...",
+                AccessibleName = "Add a new QSO",
+                Font           = font,
+                Location       = new Point(8, 420),
+                Size           = new Size(90, 23),
+                Anchor         = AnchorStyles.Bottom | AnchorStyles.Left,
+                TabIndex       = 9,
+            };
+            _editAddBtn.Click += AddQsoBtn_Click;
+            _editLogPanel.Controls.Add(_editAddBtn);
+
+            _editEditBtn = new Button
+            {
+                Text           = "Edit...",
+                AccessibleName = "Edit selected QSO",
+                Font           = font,
+                Location       = new Point(104, 420),
+                Size           = new Size(70, 23),
+                Anchor         = AnchorStyles.Bottom | AnchorStyles.Left,
+                TabIndex       = 10,
+                Enabled        = false,
+            };
+            _editEditBtn.Click += EditQsoBtn_Click;
+            _editLogPanel.Controls.Add(_editEditBtn);
+
+            _editDeleteBtn = new Button
+            {
+                Text           = "Delete...",
+                AccessibleName = "Delete selected QSOs",
+                Font           = font,
+                Location       = new Point(180, 420),
+                Size           = new Size(80, 23),
+                Anchor         = AnchorStyles.Bottom | AnchorStyles.Left,
+                TabIndex       = 11,
+                Enabled        = false,
+            };
+            _editDeleteBtn.Click += DeleteQsosBtn_Click;
+            _editLogPanel.Controls.Add(_editDeleteBtn);
+
+            _editExportBtn = new Button
+            {
+                Text           = "Export Selected...",
+                AccessibleName = "Export selected QSOs to ADIF",
+                Font           = font,
+                Location       = new Point(266, 420),
+                Size           = new Size(130, 23),
+                Anchor         = AnchorStyles.Bottom | AnchorStyles.Left,
+                TabIndex       = 12,
+                Enabled        = false,
+            };
+            _editExportBtn.Click += ExportSelectedBtn_Click;
+            _editLogPanel.Controls.Add(_editExportBtn);
+        }
+
+        private void ClearEditLog()
+        {
+            _editCallTb.Text = "";
+            _editSourceCb.SelectedIndex = 0;
+            _editDateFromTb.Text = "";
+            _editDateToTb.Text = "";
+            _editLv.Items.Clear();
+            _editCountLbl.Text = "";
+            UpdateEditLogButtons();
+            _editCallTb.Focus();
+        }
+
+        private void UpdateEditLogButtons()
+        {
+            int n = _editLv.SelectedItems.Count;
+            _editEditBtn.Enabled   = n == 1;
+            _editDeleteBtn.Enabled = n >= 1;
+            _editExportBtn.Enabled = n >= 1;
+        }
+
+        // Normalizes a user-typed date filter (accepts "2026-07-12" or "20260712")
+        // to the qso_date column's own bare YYYYMMDD form. Blank/unparseable -> "".
+        private static string NormalizeDateFilter(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return "";
+            string digits = new string(s.Where(char.IsDigit).ToArray());
+            return digits.Length >= 8 ? digits.Substring(0, 8) : "";
+        }
+
+        private void DoEditSearch()
+        {
+            if (_db == null) return;
+            try
+            {
+                string call   = _editCallTb.Text.Trim();
+                string source = _editSourceCb.SelectedIndex > 0 ? (string)_editSourceCb.SelectedItem : null;
+                string dFrom  = NormalizeDateFilter(_editDateFromTb.Text);
+                string dTo    = NormalizeDateFilter(_editDateToTb.Text);
+
+                var results = _db.SearchQsos(call, source, dFrom, dTo);
+                _editLv.Items.Clear();
+                foreach (var q in results)
+                {
+                    var item = new ListViewItem(GetEditLogFieldValue(q, _editLogRowOrder[0])) { Tag = q.Id };
+                    for (int i = 1; i < _editLogRowOrder.Count; i++)
+                        item.SubItems.Add(GetEditLogFieldValue(q, _editLogRowOrder[i]));
+                    _editLv.Items.Add(item);
+                }
+                _editCountLbl.Text = results.Count == 0
+                    ? "No QSOs found."
+                    : $"{results.Count} QSO{(results.Count == 1 ? "" : "s")} found.";
+                UpdateEditLogButtons();
+            }
+            catch (Exception ex) { SetStatus("Edit Log search error: " + ex.Message); }
+        }
+
+        private string GetEditLogFieldValue(QsoRecord q, string field)
+        {
+            switch (field.ToLowerInvariant())
+            {
+                case "date":      return FormatDate(q.QsoDate);
+                case "time":      return FormatTime(q.TimeOn);
+                case "callsign":  return q.Callsign;
+                case "band":      return q.Band;
+                case "mode":      return q.Mode;
+                case "state":     return q.State;
+                case "country":   return q.Country;
+                case "confirmed": return ConfirmedText(q.LotwQslRcvd, q.QrzQslRcvd);
+                case "source":    return q.Source;
+                default:          return "";
+            }
+        }
+
+        private void RebuildEditLogColumns()
+        {
+            _editLv.Columns.Clear();
+            foreach (var field in _editLogRowOrder)
+            {
+                string label = EditLogRowOrderDlg.FieldLabels.TryGetValue(field, out var l) ? l : field;
+                int width = EditLogFieldWidths.TryGetValue(field, out var w) ? w : 80;
+                _editLv.Columns.Add(label, width);
+            }
+        }
+
+        private void RowOrderBtn_Click(object sender, EventArgs e)
+        {
+            using (var dlg = new EditLogRowOrderDlg(_editLogRowOrder) { Owner = this })
+            {
+                if (dlg.ShowDialog(this) != DialogResult.OK || dlg.SelectedFields == null) return;
+
+                _editLogRowOrder = dlg.SelectedFields;
+                _ini?.Write("editLogRowOrder", string.Join(",", _editLogRowOrder));
+                RebuildEditLogColumns();
+                if (_editLv.Items.Count > 0) DoEditSearch();
+            }
+        }
+
+        private List<int> SelectedEditIds() =>
+            _editLv.SelectedItems.Cast<ListViewItem>().Select(i => (int)i.Tag).ToList();
+
+        // Manually hand-logs a QSO Jimmy never heard over WSJT-X -- e.g. CW or Phone,
+        // worked on a separate rig/program. Local-only, same as Edit/Delete (see
+        // LogbookDb.Upsert / project memory "Logbook Edit Log tab" for why). DXCC/CQ
+        // Zone/state/country aren't looked up automatically here -- left at 0/blank,
+        // same as a manual ADIF import with those fields absent; Edit can fill them in
+        // later once the call queue/award-lookup path (or a future enhancement) has them.
+        private void AddQsoBtn_Click(object sender, EventArgs e)
+        {
+            if (_db == null) return;
+            var blank = new QsoRecord
+            {
+                QsoDate = DateTime.UtcNow.ToString("yyyyMMdd"),
+                TimeOn  = DateTime.UtcNow.ToString("HHmm"),
+            };
+
+            using (var dlg = new EditQsoDlg(blank, "Add New QSO") { Owner = this })
+            {
+                if (dlg.ShowDialog(this) != DialogResult.OK || dlg.Result == null) return;
+
+                try
+                {
+                    var r = dlg.Result;
+                    string dedupKey = AdifImporter.BuildDedupKey(r.Callsign, r.Band, r.Mode, r.QsoDate, r.TimeOn);
+                    _db.Upsert(r.Callsign, r.Band, r.Mode, r.QsoDate, r.TimeOn, r.TimeOff,
+                        0, r.RstSent, r.RstRcvd, r.State, r.Country, 0, 0,
+                        r.Grid, r.Name, r.Comment, "",
+                        "", "", "",
+                        "", "", "", "",
+                        "MANUAL", "", dedupKey,
+                        "", 0, "", "", "", "", "", "", "", "",
+                        "", "");
+                    SetStatus($"Added {r.Callsign}.");
+                    DoEditSearch();
+                }
+                catch (Exception ex)
+                {
+                    SetStatus("Add failed: " + ex.Message +
+                        " (a QSO with this callsign/band/mode/date/time may already exist)");
+                }
+            }
+        }
+
+        private void EditQsoBtn_Click(object sender, EventArgs e)
+        {
+            if (_db == null || _editLv.SelectedItems.Count != 1) return;
+            int id = (int)_editLv.SelectedItems[0].Tag;
+            var q = _db.GetQso(id);
+            if (q == null) { SetStatus("That QSO no longer exists — refreshing."); DoEditSearch(); return; }
+
+            using (var dlg = new EditQsoDlg(q) { Owner = this })
+            {
+                if (dlg.ShowDialog(this) != DialogResult.OK || dlg.Result == null) return;
+
+                try
+                {
+                    var r = dlg.Result;
+                    bool ok = _db.UpdateQso(id, r.Callsign, r.Band, r.Mode, r.QsoDate, r.TimeOn, r.TimeOff,
+                        r.State, r.Country, r.Grid, r.Name, r.RstSent, r.RstRcvd, r.Comment);
+                    SetStatus(ok ? $"Updated {r.Callsign}." : "No changes were saved.");
+                    DoEditSearch();
+                }
+                catch (Exception ex)
+                {
+                    SetStatus("Edit failed: " + ex.Message +
+                        " (a QSO with this callsign/band/mode/date/time may already exist)");
+                }
+            }
+        }
+
+        private void DeleteQsosBtn_Click(object sender, EventArgs e)
+        {
+            if (_db == null || _editLv.SelectedItems.Count == 0) return;
+            var ids = SelectedEditIds();
+
+            var sample = _editLv.SelectedItems.Cast<ListViewItem>().Take(5)
+                .Select(i => $"{i.SubItems[0].Text}  {i.SubItems[2].Text}  {i.SubItems[3].Text}/{i.SubItems[4].Text}");
+            string sampleText = string.Join("\n", sample);
+            if (ids.Count > 5) sampleText += $"\n… and {ids.Count - 5} more";
+
+            using (var confDlg = new ConfirmDlg
+            {
+                Owner = this,
+                text  = $"Delete {ids.Count} QSO(s) from Jimmy's local logbook?\n\n{sampleText}\n\n" +
+                        "This only removes them locally -- it does not contact QRZ, Club Log, or LoTW, " +
+                        "and cannot be undone.",
+            })
+            {
+                confDlg.ShowDialog(this);
+                if (confDlg.DialogResult != DialogResult.Yes) return;
+            }
+
+            try
+            {
+                int n = _db.DeleteQsos(ids);
+                SetStatus($"Deleted {n} QSO(s) from the local logbook.");
+                DoEditSearch();
+            }
+            catch (Exception ex) { SetStatus("Delete failed: " + ex.Message); }
+        }
+
+        private void ExportSelectedBtn_Click(object sender, EventArgs e)
+        {
+            if (_db == null || _editLv.SelectedItems.Count == 0) return;
+            ExportAdif(SelectedEditIds());
+        }
+
+        // ids == null exports every QSO in the database (used by the Sync tab's
+        // "Export ADIF..." button); a non-null list exports just those rows.
+        private void ExportAdif(List<int> ids)
+        {
+            if (_db == null) return;
+            using (var dlg = new SaveFileDialog
+            {
+                Title    = "Export ADIF File",
+                Filter   = "ADIF files (*.adi)|*.adi|All files (*.*)|*.*",
+                FileName = $"jimmy_export_{DateTime.Now:yyyyMMdd_HHmmss}.adi",
+            })
+            {
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                try
+                {
+                    var fields = _db.GetAdifFieldDicts(ids);
+                    File.WriteAllText(dlg.FileName, AdifExporter.BuildFile(fields));
+                    SetStatus($"Exported {fields.Count:N0} QSO(s) to {dlg.FileName}.");
+                }
+                catch (Exception ex) { SetStatus("Export error: " + ex.Message); }
+            }
+        }
+
         // ── Navigation ────────────────────────────────────────────────────────────
 
         private void NavigateToPage(int page)
         {
-            Panel[] pages = { _myLogPanel, _awardsPanel, _stillNeedPanel, _lookupPanel, _syncPanel };
+            Panel[] pages = { _myLogPanel, _awardsPanel, _stillNeedPanel, _lookupPanel, _editLogPanel, _syncPanel };
             if (page >= 0 && page < pages.Length)
                 _activePage = pages[page];
 
@@ -680,6 +1129,9 @@ namespace WSJTX_Controller
                 case PAGE_LOOKUP:
                     // Do NOT auto-focus the callsign box here — that steals focus from
                     // normal tab navigation.  GoToLookup() (Ctrl+F) focuses it explicitly.
+                    break;
+                case PAGE_EDITLOG:
+                    // Same reasoning as PAGE_LOOKUP -- no auto-search/auto-focus on switch.
                     break;
                 case PAGE_SYNC:      PopulateSync();   break;
             }
@@ -1461,6 +1913,7 @@ namespace WSJTX_Controller
             else if (_activePage == _awardsPanel)    PopulateAwards();
             else if (_activePage == _stillNeedPanel) PopulateNeeded();
             else if (_activePage == _lookupPanel)    DoSearch();
+            else if (_activePage == _editLogPanel)   { if (_editLv.Items.Count > 0) DoEditSearch(); }
             else if (_activePage == _syncPanel)      PopulateSync();
         }
 
