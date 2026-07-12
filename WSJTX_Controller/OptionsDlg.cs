@@ -89,6 +89,7 @@ namespace WSJTX_Controller
         private System.Windows.Forms.NumericUpDown   _lotwRefreshDaysNum;
         private System.Windows.Forms.Button          _lotwUpdateBtn;
         private System.Windows.Forms.TextBox         _lotwStatusLbl;
+        private System.Windows.Forms.CheckBox        _lotwUploadEnabledCb;
         private System.Windows.Forms.TextBox         _lotwLogbookUserTb;
         private System.Windows.Forms.TextBox         _lotwLogbookPassTb;
         private System.Windows.Forms.NumericUpDown   _clubLogRefreshDaysNum;
@@ -1139,14 +1140,10 @@ namespace WSJTX_Controller
 
         private void ReparentControlsToDialog()
         {
-            // Calling / CQ Mode section → Receive / Auto Reply tab
-            ReparentTo(ctrl.callNonDirCqCheckBox, rcvCallingGroupBox, new Point(10, 18));
-            ReparentTo(ctrl.callCqDxCheckBox,     rcvCallingGroupBox, new Point(10, 40));
-            ReparentTo(ctrl.callDirCqCheckBox,    rcvCallingGroupBox, new Point(10, 62));
-            ReparentTo(ctrl.directedTextBox,      rcvCallingGroupBox, new Point(175, 60));
-            ReparentTo(ctrl.UseDirectedHelpLabel, rcvCallingGroupBox, new Point(350, 63));
-            ReparentTo(ctrl.ignoreNonDxCheckBox,  rcvCallingGroupBox, new Point(10, 86));
-            ReparentTo(ctrl.IgnoreNonDxHelpLabel, rcvCallingGroupBox, new Point(350, 89));
+            // Calling / CQ Mode section (what kind of CQ, and its directed-CQ text) moved to
+            // the Call CQ dialog (main screen button) -- no longer reparented into Options.
+            ReparentTo(ctrl.ignoreNonDxCheckBox,  rcvCallingGroupBox, new Point(10, 18));
+            ReparentTo(ctrl.IgnoreNonDxHelpLabel, rcvCallingGroupBox, new Point(350, 21));
 
             // Replying section (DX/Local + band/message filter) → Receive / Auto Reply tab
             ReparentTo(ctrl.replyNormCqLabel,   rcvReplyingGroupBox, new Point(8, 22));
@@ -2035,13 +2032,22 @@ namespace WSJTX_Controller
             };
             lotwBox.Controls.Add(_lotwStatusLbl);
 
-            // LoTW upload has no on/off toggle here -- unlike QRZ/Club Log, it's not
-            // something Jimmy can automate in the background (WSJT-X's own TQSL
-            // signing/upload is a manual, batch-oriented action, not a per-QSO API
-            // call), so a checkbox implying otherwise was more confusing than useful.
-            lotwBox.Controls.Add(MakeLabel(
-                $"LoTW upload is handled by WSJT-X itself. Press {uploadLotwKeyText} in Jimmy to have WSJT-X upload any pending contacts to LoTW.",
-                10, 116, font));
+            // LoTW upload itself stays a manual, WSJT-X-driven action (its own TQSL
+            // signing/upload is batch-oriented, not a per-QSO API call like QRZ/Club Log,
+            // so there is no real-time-upload option to offer here) -- this checkbox only
+            // gates whether the upload hotkey below tells WSJT-X to do it at all, for
+            // operators who don't use LoTW and would otherwise see WSJT-X report an error.
+            _lotwUploadEnabledCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = $"Have WSJT-X upload to LoTW when pressing {uploadLotwKeyText} (uncheck if you don't use LoTW)",
+                Checked        = ctrl.lotwUploadEnabled,
+                Location       = new System.Drawing.Point(10, 116),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Upload to LoTW when pressing the upload hotkey",
+            };
+            lotwBox.Controls.Add(_lotwUploadEnabledCb);
 
             // ── LoTW Logbook Download ────────────────────────────────────────────
             var lotwLogbookBox = MakeGroupBox("LoTW Logbook Download", 5, 624, pw, 116, font);
@@ -2349,6 +2355,7 @@ namespace WSJTX_Controller
             ctrl.qrzUploadRealtime       = _qrzUploadRealtimeCb?.Checked        ?? false;
             ctrl.lotwEnabled             = _lotwEnabledCb?.Checked              ?? false;
             ctrl.lotwBoostEnabled        = _lotwBoostCb?.Checked                ?? false;
+            ctrl.lotwUploadEnabled       = _lotwUploadEnabledCb?.Checked        ?? true;
             ctrl.lotwRefreshDays         = (int)(_lotwRefreshDaysNum?.Value      ?? 30);
             ctrl.lotwLogbookUser         = _lotwLogbookUserTb?.Text.Trim()      ?? "";
             ctrl.lotwLogbookPass         = _lotwLogbookPassTb?.Text            ?? "";

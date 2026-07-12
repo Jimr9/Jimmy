@@ -481,8 +481,8 @@ namespace WSJTX_Controller
             var ts = new TimeSpan(0, 0, ((int)_wc.trPeriod * _wc.ctrl.maxCallQueueAgePeriods) / 1000);    //total periods
 
             foreach (var entry in _wc.callDict)
-            {   //                              old call                                                          not a high priority                                             not manually selected
-                if (entry.Key != _wc.callInProg && (dtNow - (entry.Value.RxDate + entry.Value.SinceMidnight)) > ts && entry.Value.Priority > (int)WsjtxClient.CallPriority.NEW_COUNTRY_ON_BAND && entry.Value.AutoGen)  //entry is older than wanted
+            {   //                              old call                                                          not manually selected
+                if (entry.Key != _wc.callInProg && (dtNow - (entry.Value.RxDate + entry.Value.SinceMidnight)) > ts && entry.Value.AutoGen)  //entry is older than wanted
                 {
                     keys.Add(entry.Key);        //collect keys to delete
                 }

@@ -91,7 +91,7 @@ namespace WSJTX_Controller
             [HotkeyAction.UploadLotw]      = Keys.Alt | Keys.U,
             [HotkeyAction.SortOrder]       = Keys.Alt | Keys.S,
             [HotkeyAction.RowOrder]        = Keys.Alt | Keys.I,
-            [HotkeyAction.AnalyzeSlot]     = Keys.None,
+            [HotkeyAction.AnalyzeSlot]     = Keys.Alt | Keys.Z,
             [HotkeyAction.LookupStation]   = Keys.None,
             [HotkeyAction.OpenLogbook]     = Keys.None,
             [HotkeyAction.ResetWindowSize] = Keys.Control | Keys.Shift | Keys.R,

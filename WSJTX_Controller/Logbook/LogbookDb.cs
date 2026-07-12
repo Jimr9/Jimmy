@@ -30,14 +30,15 @@ namespace WSJTX_Controller
 
     public class ImportLogEntry
     {
-        public int      Id         { get; set; }
-        public string   Source     { get; set; }
-        public DateTime StartedAt  { get; set; }
-        public int      TotalQso   { get; set; }
-        public int      NewQso     { get; set; }
-        public int      UpdatedQso { get; set; }
-        public int      SkippedQso { get; set; }
-        public string   ErrorText  { get; set; }
+        public int      Id             { get; set; }
+        public string   Source         { get; set; }
+        public DateTime StartedAt      { get; set; }
+        public int      TotalQso       { get; set; }
+        public int      NewQso         { get; set; }
+        public int      NewlyConfirmed { get; set; }
+        public int      Corrected      { get; set; }
+        public int      SkippedQso     { get; set; }
+        public string   ErrorText      { get; set; }
     }
 
     public class BandStat
@@ -204,6 +205,19 @@ namespace WSJTX_Controller
 
                 SetMeta("db_version", "4");
             }
+
+            // v5: split import_log's single "updated_qso" count into what actually changed --
+            // a QSL newly received (moves award progress) vs. other details corrected
+            // (state/country/grid/etc.) -- so the sync status can say which happened instead
+            // of just "N updated". Old rows keep updated_qso=0 in both new columns (that
+            // history predates the distinction and can't be reconstructed).
+            if (ver < 5)
+            {
+                Exec("ALTER TABLE import_log ADD COLUMN newly_confirmed_qso INTEGER DEFAULT 0;");
+                Exec("ALTER TABLE import_log ADD COLUMN corrected_qso       INTEGER DEFAULT 0;");
+
+                SetMeta("db_version", "5");
+            }
         }
 
         // ── Meta ─────────────────────────────────────────────────────────────────
@@ -296,7 +310,13 @@ namespace WSJTX_Controller
         // ── Upsert ───────────────────────────────────────────────────────────────
 
         // Returns (isNew, isUpdated).
-        public (bool isNew, bool isUpdated) Upsert(
+        // Column indices within mutableCols (below) that represent a QSL actually being
+        // received -- the one kind of "updated" a ham actually cares about (it moves award
+        // progress). Everything else mutableCols tracks (state/country/grid/DXCC/etc.) is
+        // grouped as "corrected" instead -- a data-quality fix, not new award credit.
+        private static readonly int[] ConfirmColumnIndices = { 1, 3 }; // lotw_qsl_rcvd, qrz_qsl_rcvd
+
+        public (bool isNew, bool newlyConfirmed, bool corrected) Upsert(
             string callsign, string band, string mode,
             string qsoDate, string timeOn, string timeOff,
             long freqHz, string rstSent, string rstRcvd,
@@ -450,7 +470,8 @@ ON CONFLICT(dedup_key) DO UPDATE SET
                     cmd.ExecuteNonQuery();
                 }
 
-                bool isUpdated = false;
+                bool newlyConfirmed = false;
+                bool corrected = false;
                 if (existed)
                 {
                     using (var check2 = _conn.CreateCommand())
@@ -465,14 +486,16 @@ ON CONFLICT(dedup_key) DO UPDATE SET
                                 r.GetValues(after);
                                 for (int i = 0; i < before.Length; i++)
                                 {
-                                    if (!Equals(before[i], after[i])) { isUpdated = true; break; }
+                                    if (Equals(before[i], after[i])) continue;
+                                    if (Array.IndexOf(ConfirmColumnIndices, i) >= 0) newlyConfirmed = true;
+                                    else corrected = true;
                                 }
                             }
                         }
                     }
                 }
 
-                return (!existed, isUpdated);
+                return (!existed, newlyConfirmed, corrected);
             }
         }
 
@@ -494,7 +517,7 @@ ON CONFLICT(dedup_key) DO UPDATE SET
             }
         }
 
-        public void LogImportFinish(int logId, int total, int newCount, int updated, int skipped, string errorText)
+        public void LogImportFinish(int logId, int total, int newCount, int newlyConfirmed, int corrected, int skipped, string errorText)
         {
             lock (_lock)
             {
@@ -502,11 +525,12 @@ ON CONFLICT(dedup_key) DO UPDATE SET
                 {
                     cmd.CommandText =
                         "UPDATE import_log SET finished_at=@f, total_qso=@t, new_qso=@n, " +
-                        "updated_qso=@u, skipped_qso=@s, error_text=@e WHERE id=@id;";
+                        "newly_confirmed_qso=@c, corrected_qso=@r, skipped_qso=@s, error_text=@e WHERE id=@id;";
                     cmd.Parameters.AddWithValue("@f",  DateTime.UtcNow.ToString("o"));
                     cmd.Parameters.AddWithValue("@t",  total);
                     cmd.Parameters.AddWithValue("@n",  newCount);
-                    cmd.Parameters.AddWithValue("@u",  updated);
+                    cmd.Parameters.AddWithValue("@c",  newlyConfirmed);
+                    cmd.Parameters.AddWithValue("@r",  corrected);
                     cmd.Parameters.AddWithValue("@s",  skipped);
                     cmd.Parameters.AddWithValue("@e",  errorText ?? "");
                     cmd.Parameters.AddWithValue("@id", logId);
@@ -523,7 +547,7 @@ ON CONFLICT(dedup_key) DO UPDATE SET
                 using (var cmd = _conn.CreateCommand())
                 {
                     cmd.CommandText =
-                        "SELECT id, source, started_at, total_qso, new_qso, updated_qso, skipped_qso, error_text " +
+                        "SELECT id, source, started_at, total_qso, new_qso, newly_confirmed_qso, corrected_qso, skipped_qso, error_text " +
                         $"FROM import_log ORDER BY id DESC LIMIT {limit};";
                     using (var r = cmd.ExecuteReader())
                     {
@@ -533,14 +557,15 @@ ON CONFLICT(dedup_key) DO UPDATE SET
                             DateTime.TryParse(r.IsDBNull(2) ? "" : r.GetString(2), out dt);
                             result.Add(new ImportLogEntry
                             {
-                                Id         = r.GetInt32(0),
-                                Source     = r.IsDBNull(1) ? "" : r.GetString(1),
-                                StartedAt  = dt,
-                                TotalQso   = r.IsDBNull(3) ? 0  : r.GetInt32(3),
-                                NewQso     = r.IsDBNull(4) ? 0  : r.GetInt32(4),
-                                UpdatedQso = r.IsDBNull(5) ? 0  : r.GetInt32(5),
-                                SkippedQso = r.IsDBNull(6) ? 0  : r.GetInt32(6),
-                                ErrorText  = r.IsDBNull(7) ? "" : r.GetString(7),
+                                Id             = r.GetInt32(0),
+                                Source         = r.IsDBNull(1) ? "" : r.GetString(1),
+                                StartedAt      = dt,
+                                TotalQso       = r.IsDBNull(3) ? 0  : r.GetInt32(3),
+                                NewQso         = r.IsDBNull(4) ? 0  : r.GetInt32(4),
+                                NewlyConfirmed = r.IsDBNull(5) ? 0  : r.GetInt32(5),
+                                Corrected      = r.IsDBNull(6) ? 0  : r.GetInt32(6),
+                                SkippedQso     = r.IsDBNull(7) ? 0  : r.GetInt32(7),
+                                ErrorText      = r.IsDBNull(8) ? "" : r.GetString(8),
                             });
                         }
                     }

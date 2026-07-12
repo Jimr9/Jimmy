@@ -108,6 +108,7 @@ static class JimmyTests
         RuleEngineCountTargetStillNeededTests();
         AdifRecordBuilderTests();
         LogbookDbAuthoritativeSourceOverrideTests();
+        LogbookDbNewlyConfirmedVsCorrectedTests();
         LogbookDbDownloadMarksUploadedTests();
         Colonies13RosterRegressionTest();
         CallQueueRankerCategoryTierTests();
@@ -1465,6 +1466,78 @@ static class JimmyTests
         catch (Exception ex)
         {
             Console.WriteLine($"  FAIL  LogbookDbAuthoritativeSourceOverrideTests threw: {ex.GetType().Name}: {ex.Message}");
+            failed++;
+        }
+        finally
+        {
+            try { File.Delete(tmpDb); } catch { }
+        }
+    }
+
+    // ── LogbookDb.Upsert: newly-confirmed vs corrected categorization ──────────
+    // A sync's "N updated" used to be a single opaque bucket. Confirming a QSL
+    // (moves award progress) and correcting a data-quality field (state/country/
+    // etc.) are independent signals -- a row can be neither, either, or both.
+    static void LogbookDbNewlyConfirmedVsCorrectedTests()
+    {
+        Console.WriteLine("\n── LogbookDb.Upsert: newly-confirmed vs corrected categorization ──");
+        string tmpDb = Path.Combine(Path.GetTempPath(),
+            "JimmyTest_UpsertCategorize_" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (var db = new LogbookDb(tmpDb))
+            {
+                string key = AdifImporter.BuildDedupKey("K1ABC", "20m", "FT8", "20260706", "1200");
+                (bool isNew, bool newlyConfirmed, bool corrected) DoUpsert(
+                    string state, string qrzQslRcvd, string source = "QRZ")
+                {
+                    return db.Upsert("K1ABC", "20m", "FT8", "20260706", "1200", "1215",
+                        14_074_000, "-10", "-05", state, "", 0, 0,
+                        "", "", "", "", "", "", "",
+                        "", "", "", qrzQslRcvd,
+                        source, "", key,
+                        "", 0, "", "", "", "", "", "", "", "", "", "");
+                }
+
+                var first = DoUpsert("", "");
+                Check("first insert: isNew", first.isNew, true);
+                Check("first insert: not newlyConfirmed", first.newlyConfirmed, false);
+                Check("first insert: not corrected", first.corrected, false);
+
+                var noChange = DoUpsert("", "");
+                Check("re-upsert identical data: not new", noChange.isNew, false);
+                Check("re-upsert identical data: not newlyConfirmed", noChange.newlyConfirmed, false);
+                Check("re-upsert identical data: not corrected", noChange.corrected, false);
+
+                var confirmed = DoUpsert("", "Y");
+                Check("QRZ confirms QSL: not new", confirmed.isNew, false);
+                Check("QRZ confirms QSL: newlyConfirmed", confirmed.newlyConfirmed, true);
+                Check("QRZ confirms QSL: not corrected", confirmed.corrected, false);
+
+                var stateFixed = DoUpsert("CA", "Y");
+                Check("state corrected (already confirmed): not newlyConfirmed again", stateFixed.newlyConfirmed, false);
+                Check("state corrected (already confirmed): corrected", stateFixed.corrected, true);
+
+                string key2 = AdifImporter.BuildDedupKey("K2DEF", "20m", "FT8", "20260706", "1300");
+                db.Upsert("K2DEF", "20m", "FT8", "20260706", "1300", "1315",
+                    14_074_000, "-10", "-05", "", "", 0, 0,
+                    "", "", "", "", "", "", "",
+                    "", "", "", "",
+                    "QRZ", "", key2,
+                    "", 0, "", "", "", "", "", "", "", "", "", "");
+                var bothAtOnce = db.Upsert("K2DEF", "20m", "FT8", "20260706", "1300", "1315",
+                    14_074_000, "-10", "-05", "TX", "", 0, 0,
+                    "", "", "", "", "", "", "",
+                    "", "", "", "Y",
+                    "QRZ", "", key2,
+                    "", 0, "", "", "", "", "", "", "", "", "", "");
+                Check("confirmed + corrected in same sync: newlyConfirmed", bothAtOnce.newlyConfirmed, true);
+                Check("confirmed + corrected in same sync: corrected", bothAtOnce.corrected, true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL  LogbookDbNewlyConfirmedVsCorrectedTests threw: {ex.GetType().Name}: {ex.Message}");
             failed++;
         }
         finally

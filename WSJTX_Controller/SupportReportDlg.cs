@@ -106,6 +106,10 @@ namespace WSJTX_Controller
                 Location       = new Point(lx, y),
                 Size           = new Size(fw, 80),
                 Multiline      = true,
+                // Multiline alone doesn't make Enter insert a newline -- AcceptsReturn defaults
+                // to false regardless, so without this, Enter fell through to the form's
+                // AcceptButton (OK) instead, making it impossible to write more than one line.
+                AcceptsReturn  = true,
                 ScrollBars     = ScrollBars.Vertical,
                 AccessibleName = "Problem description",
                 TabIndex       = tab++,
@@ -130,6 +134,7 @@ namespace WSJTX_Controller
                 Location       = new Point(lx, y),
                 Size           = new Size(fw, 80),
                 Multiline      = true,
+                AcceptsReturn  = true,
                 ScrollBars     = ScrollBars.Vertical,
                 AccessibleName = "Steps to reproduce",
                 TabIndex       = tab++,

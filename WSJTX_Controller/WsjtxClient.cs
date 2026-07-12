@@ -212,6 +212,17 @@ namespace WSJTX_Controller
         public int cachedEvenOffset = 0;
         private bool analysisCompleted = false;
         private bool pendingCqAfterAnalysis = false;
+        // Transmit-slot analysis needs decodes in both the even and odd periods before it can
+        // finish (see CalcBestOffset) -- on a quiet band that can take a long time, or never
+        // happen at all, previously leaving the operator staring at "Analyzing transmit slot..."
+        // forever with no further feedback and CQ never auto-starting. A flat wall-clock
+        // timeout (not a decode-cycle count) is used because cycle length varies wildly by mode
+        // (FT4 ~7.5s vs FST4 up to minutes) -- a cycle-count budget would be wildly inconsistent
+        // in real wait time across modes.
+        private System.Windows.Forms.Timer _slotAnalysisWatchdog;
+        private int _slotAnalysisElapsedSeconds;
+        private const int SlotAnalysisStatusIntervalSeconds = 20;
+        private const int SlotAnalysisTimeoutSeconds = 60;
         private string cancelledCall = null;
         private int maxTxRepeat = 4;
         private bool _manualCallInProg = false;
@@ -908,19 +919,22 @@ namespace WSJTX_Controller
 
         public void UpdateModeVisible()
         {
+            // modeGroupBox (the 4-choice Listen/CQ-only/CQ-DX-only/CQ-and-DX radio group) is
+            // superseded by the Call CQ button + dialog -- kept in the Designer only because
+            // its radio buttons still back SyncCqSubtypeRadio()/cqIntentXxx_Click(), but it must
+            // never actually be shown on screen anymore.
+            ctrl.callCqOptionsButton.Visible = opMode == OpModes.ACTIVE;
             if (opMode == OpModes.ACTIVE)
             {
                 ctrl.listenModeButton.Visible = true;
                 ctrl.cqModeButton.Visible = true;
-                ctrl.modeGroupBox.Visible = true;
             }
             else
             {
                 ctrl.listenModeButton.Visible = false;
                 ctrl.cqModeButton.Visible = false;
-                ctrl.modeGroupBox.Visible = false;
-                ctrl.modeGroupBox.Visible = false;
             }
+            ctrl.modeGroupBox.Visible = false;
 
             UpdateListenModeTxPeriod();
             DebugOutput($"{spacer}UpdateModeVisible, txMode:{txMode}");
@@ -1930,7 +1944,16 @@ namespace WSJTX_Controller
 
             if ((ctrl.callDirCqCheckBox.Checked && ctrl.directedTextBox.Text.Trim().Length > 0))
             {
-                dirList.AddRange(ctrl.CallDirCqEntries());
+                // A locked entry (picked in the Call CQ dialog) always wins over rotation --
+                // but only while it's still one of the currently-typed entries, so editing the
+                // text box to drop a locked code falls back to Random instead of silently
+                // repeating a code the operator no longer wants at all.
+                string locked = ctrl.directedCqLockedEntry;
+                string[] entries = ctrl.CallDirCqEntries();
+                if (!string.IsNullOrEmpty(locked) && entries.Contains(locked, StringComparer.OrdinalIgnoreCase))
+                    dirList.Add(locked);
+                else
+                    dirList.AddRange(entries);
             }
 
             if (dirList.Count > 0)
@@ -2270,6 +2293,47 @@ namespace WSJTX_Controller
             ClearAudioOffsets();
             pendingCqAfterAnalysis = pendingCq;
             StatusView.ShowMessage("Analyzing transmit slot...", false);
+
+            if (pendingCq)
+            {
+                _slotAnalysisElapsedSeconds = 0;
+                if (_slotAnalysisWatchdog == null)
+                {
+                    _slotAnalysisWatchdog = new System.Windows.Forms.Timer { Interval = SlotAnalysisStatusIntervalSeconds * 1000 };
+                    _slotAnalysisWatchdog.Tick += SlotAnalysisWatchdog_Tick;
+                }
+                _slotAnalysisWatchdog.Start();
+            }
+        }
+
+        // Fires every SlotAnalysisStatusIntervalSeconds while a CQ start is waiting on
+        // analysis. Gives periodic "still working" feedback instead of silence, and gives up
+        // (starting CQ anyway) once SlotAnalysisTimeoutSeconds have passed with no completion --
+        // e.g. a quiet band that never produces a decode in one of the two periods.
+        private void SlotAnalysisWatchdog_Tick(object sender, EventArgs e)
+        {
+            // Already resolved (completed normally, or superseded by a band change / new
+            // analysis request) -- ClearAudioOffsets() resets pendingCqAfterAnalysis to false,
+            // and DecodesCompleted() stops this timer directly on real completion, but this
+            // guard covers any other path that leaves it stale.
+            if (!pendingCqAfterAnalysis || analysisCompleted)
+            {
+                _slotAnalysisWatchdog.Stop();
+                return;
+            }
+
+            _slotAnalysisElapsedSeconds += SlotAnalysisStatusIntervalSeconds;
+            if (_slotAnalysisElapsedSeconds >= SlotAnalysisTimeoutSeconds)
+            {
+                _slotAnalysisWatchdog.Stop();
+                pendingCqAfterAnalysis = false;
+                StatusView.ShowMessage("Transmit slot analysis timed out; starting CQ anyway.", false);
+                ctrl.cqModeButton_Click(null, null);
+            }
+            else
+            {
+                StatusView.ShowMessage($"Still analyzing transmit slot... ({_slotAnalysisElapsedSeconds}s)", false);
+            }
         }
 
         public bool ToggleTxFirst()
@@ -2860,21 +2924,13 @@ namespace WSJTX_Controller
             }
             else
             {
-                //final calculation of best offset
-                bool wasCompleted = analysisCompleted;
+                //final calculation of best offset -- completion announcement itself now lives
+                //inside CalcBestOffset (see its own comment), since this is only one of three
+                //call sites and not reliably the one that first observes completion.
                 if (CalcBestOffset(audioOffsets, period, true))       //calc for period when decodes started
                 {
                     ctrl.freqCheckBox.Text = "Use best Tx frequency";
                     ctrl.freqCheckBox.ForeColor = Color.Black;
-                    if (!wasCompleted)      // show status and trigger pending CQ only on first completion
-                    {
-                        StatusView.ShowMessage("Transmit slot analysis complete.", false);
-                        if (pendingCqAfterAnalysis)
-                        {
-                            pendingCqAfterAnalysis = false;
-                            ctrl.cqModeButton_Click(null, null);
-                        }
-                    }
                 }
                 CalcAvgTimeOffset(true);
             }

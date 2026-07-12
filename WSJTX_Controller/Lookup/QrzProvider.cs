@@ -193,6 +193,14 @@ namespace WSJTX_Controller
 
         private async Task<string> GetSessionKeyAsync()
         {
+            // Sole choke point for every real network call this provider makes (both the
+            // auth POST here and LookupAsync's own GET only proceed once this returns a real
+            // key) -- gating here alone covers LookupAsync, TestAsync, and any future caller.
+            if (TestModeGuard.IsTestMode)
+            {
+                LastError = "Blocked: JIMMY_TEST_DB_PATH is set (test mode) -- no real QRZ traffic allowed.";
+                return null;
+            }
             await _authLock.WaitAsync().ConfigureAwait(false);
             try
             {

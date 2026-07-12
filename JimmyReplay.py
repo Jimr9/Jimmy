@@ -1467,6 +1467,24 @@ def run_tests(sock, v):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def main():
+    # Safety: this script simulates real WSJT-X traffic (decodes, QSO-logged
+    # messages, etc.) against a live Jimmy instance. If that Jimmy was not
+    # started with JIMMY_TEST_DB_PATH set, its logging code writes to the
+    # REAL logbook and can upload fake QSOs to real QRZ/Club Log. Refuse to
+    # run at all unless this process's own environment has it set, so a
+    # direct "python JimmyReplay.py" (bypassing run_replay_tests.bat) can't
+    # silently hit production. This does not run Jimmy.exe itself, so it
+    # cannot force the OTHER process's environment -- always launch Jimmy
+    # via run_replay_tests.bat, which sets this for both processes.
+    if not os.environ.get("JIMMY_TEST_DB_PATH"):
+        print("ERROR: JIMMY_TEST_DB_PATH is not set in this shell.")
+        print("Refusing to run -- this script sends simulated WSJT-X traffic")
+        print("that Jimmy will log for real unless it's isolated to a test")
+        print("database. Run via run_replay_tests.bat instead of calling")
+        print("this script directly, or set JIMMY_TEST_DB_PATH yourself")
+        print("before starting BOTH Jimmy.exe and this script.")
+        sys.exit(1)
+
     print("=" * 60)
     print("  JimmyReplay.py — UDP test sender + auto-verifier")
     print("=" * 60)

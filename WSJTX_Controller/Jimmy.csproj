@@ -126,6 +126,8 @@
     <Compile Include="LiveQsoUploadOrchestrator.cs" />
     <Compile Include="HotkeyCaptureBox.cs" />
     <Compile Include="ManualCallDlg.cs" />
+    <Compile Include="CallCqDlg.cs" />
+    <Compile Include="TestModeGuard.cs" />
     <Compile Include="TextPromptDlg.cs" />
     <Compile Include="SupportReportDlg.cs" />
     <Compile Include="SupportReportBuilder.cs" />

@@ -111,6 +111,11 @@ namespace WSJTX_Controller
         public async Task<bool> RefreshAsync()
         {
             LastError = null;
+            if (TestModeGuard.IsTestMode)
+            {
+                LastError = "Blocked: JIMMY_TEST_DB_PATH is set (test mode) -- no real FCC ULS traffic allowed.";
+                return false;
+            }
             int previousCount = RecordCount;
             string tmpZip = Path.Combine(_dir, "l_amat.tmp.zip");
             string tmpDb  = Path.Combine(_dir, "fcc_uls.tmp.db");

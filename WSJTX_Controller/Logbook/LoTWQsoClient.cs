@@ -24,6 +24,11 @@ namespace WSJTX_Controller
             bool confirmedOnly = true)
         {
             LastError = null;
+            if (TestModeGuard.IsTestMode)
+            {
+                LastError = "Blocked: JIMMY_TEST_DB_PATH is set (test mode) -- no real LoTW traffic allowed.";
+                return null;
+            }
             if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
             {
                 LastError = "LoTW username or password is not configured.";

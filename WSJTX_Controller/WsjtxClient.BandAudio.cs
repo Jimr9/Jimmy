@@ -201,7 +201,27 @@ namespace WSJTX_Controller
             DebugOutput($"{spacer}evenOffset:{evenOffset} oddOffset:{oddOffset}");
 
             bool bothKnown = oddOffset > 0 && evenOffset > 0;
-            if (bothKnown) analysisCompleted = true;
+            // Announce here, not at any individual call site -- CalcBestOffset is called from
+            // three places (the pre-negotiation decode-end path, the normal post-negotiation
+            // decode-end path, and DecodesCompleted's own end-of-cycle path), and the decode-end
+            // paths run BEFORE DecodesCompleted on every cycle. Found 2026-07-11: with the
+            // announcement only in DecodesCompleted, one of the decode-end call sites always won
+            // the race to flip analysisCompleted first (silently, no message), so by the time
+            // DecodesCompleted checked "was this already completed", it always had been --
+            // the announcement was permanently unreachable in practice, not just occasionally.
+            if (bothKnown && !analysisCompleted)
+            {
+                analysisCompleted = true;
+                _slotAnalysisWatchdog?.Stop();
+                StatusView.ShowMessage(
+                    $"Transmit slot analysis complete. Even period: {evenOffset} Hz, odd period: {oddOffset} Hz.",
+                    true);
+                if (pendingCqAfterAnalysis)
+                {
+                    pendingCqAfterAnalysis = false;
+                    ctrl.cqModeButton_Click(null, null);
+                }
+            }
             return bothKnown;
         }
 

@@ -162,12 +162,17 @@ namespace WSJTX_Controller
         // triggers the QRZ/Club Log upload catch-up, so pressing this one key
         // sends everything pending to every configured service. Each part is
         // independently gated -- an unconfigured/disabled service is silently
-        // skipped, never attempted.
+        // skipped, never attempted. LoTW's gate (ctrl.lotwUploadEnabled, default
+        // true) exists for operators who don't use LoTW at all -- WSJT-X reports
+        // an error on this command when it has no LoTW/TQSL setup of its own.
         public bool UploadLotw()
         {
             HaltTuning();
-            StartUploadLotw();
-            lastLotwUploadTrigger = DateTime.Now;
+            if (ctrl.lotwUploadEnabled)
+            {
+                StartUploadLotw();
+                lastLotwUploadTrigger = DateTime.Now;
+            }
             RunUploadCatchUp();
             return true;
         }

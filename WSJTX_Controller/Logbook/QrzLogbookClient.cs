@@ -26,6 +26,11 @@ namespace WSJTX_Controller
         public async Task<string> FetchAdifAsync(string apiKey, DateTime? since = null)
         {
             LastError = null;
+            if (TestModeGuard.IsTestMode)
+            {
+                LastError = "Blocked: JIMMY_TEST_DB_PATH is set (test mode) -- no real QRZ traffic allowed.";
+                return null;
+            }
             if (string.IsNullOrWhiteSpace(apiKey))
             {
                 LastError = "QRZ Logbook API key is not configured.";
@@ -136,6 +141,11 @@ namespace WSJTX_Controller
         public async Task<bool> InsertAsync(string apiKey, string adifRecord)
         {
             LastError = null;
+            if (TestModeGuard.IsTestMode)
+            {
+                LastError = "Blocked: JIMMY_TEST_DB_PATH is set (test mode) -- no real QRZ traffic allowed.";
+                return false;
+            }
             if (string.IsNullOrWhiteSpace(apiKey))
             {
                 LastError = "QRZ Logbook API key is not configured.";
@@ -219,6 +229,11 @@ namespace WSJTX_Controller
         public async Task<bool> TestApiKeyAsync(string apiKey)
         {
             LastError = null;
+            if (TestModeGuard.IsTestMode)
+            {
+                LastError = "Blocked: JIMMY_TEST_DB_PATH is set (test mode) -- no real QRZ traffic allowed.";
+                return false;
+            }
             if (string.IsNullOrWhiteSpace(apiKey))
             {
                 LastError = "QRZ Logbook API key is not configured.";

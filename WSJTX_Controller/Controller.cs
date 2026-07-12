@@ -112,6 +112,16 @@ namespace WSJTX_Controller
         // used for read-only country data (see ClubLogAppKey.cs).
         public bool   qrzUploadEnabled       = false;
         public bool   qrzUploadRealtime      = false;
+        // Default true -- unlike QRZ/Club Log (opt-in, need credentials), LoTW upload has
+        // always fired unconditionally on the upload hotkey. Defaulting true here preserves
+        // that existing behavior for everyone; only someone who doesn't use LoTW needs to
+        // uncheck it (Options > Lookup) to stop WSJT-X reporting an error on that keypress.
+        public bool   lotwUploadEnabled      = true;
+        // Which entry in directedTextBox's space-separated list (e.g. "POTA SOTA") the Call
+        // CQ dialog should use every time, instead of Jimmy's default random rotation. Empty
+        // means "Random" -- NextDirCq() falls back to rotating through all entries whenever
+        // this is blank or no longer matches one of them (e.g. the text box was edited since).
+        public string directedCqLockedEntry  = "";
         public bool   clubLogUploadEnabled   = false;
         public bool   clubLogUploadRealtime  = false;
         public string clubLogUploadEmail     = "";
@@ -119,6 +129,7 @@ namespace WSJTX_Controller
         public string clubLogUploadCallsign  = "";
         private LogbookWindow _logbookWindow;
         private System.Windows.Forms.Button logbookButton;
+        public System.Windows.Forms.Button callCqOptionsButton;
 
         // Ids of the Rule Definitions checked for live FT8 tagging in the Logbook window's
         // Still Need tab, persisted so tagging survives across sessions and works even before
@@ -181,6 +192,7 @@ namespace WSJTX_Controller
         public System.Windows.Forms.Timer guideTimer;
         public System.Windows.Forms.Timer callListBoxClickTimer;
         public System.Windows.Forms.Timer helpTimer;
+        public System.Windows.Forms.Timer spotWatchAgeTimer;
 
         private string nl = Environment.NewLine;
         private static string alphaOnly = "[^A-Za-z]";         //match if any numeric
@@ -211,6 +223,9 @@ namespace WSJTX_Controller
             helpTimer = new System.Windows.Forms.Timer();
             helpTimer.Interval = 20;
             helpTimer.Tick += new System.EventHandler(helpTimer_Tick);
+            spotWatchAgeTimer = new System.Windows.Forms.Timer();
+            spotWatchAgeTimer.Interval = 60000;
+            spotWatchAgeTimer.Tick += new System.EventHandler(spotWatchAgeTimer_Tick);
         }
 
 #if DEBUG
@@ -437,6 +452,7 @@ namespace WSJTX_Controller
                 timeoutNumUpDown.Value = i;
                 directedTextBox.Text = iniFile.Read("directeds");
                 callDirCqCheckBox.Checked = iniFile.Read("useDirected") == "True";
+                if (iniFile.KeyExists("directedCqLockedEntry")) directedCqLockedEntry = iniFile.Read("directedCqLockedEntry");
                 mycallCheckBox.Checked = iniFile.Read("playMyCall") != "False";
                 loggedCheckBox.Checked = iniFile.Read("playLogged") != "False";
                 callAddedCheckBox.Checked = iniFile.Read("playCallAdded") != "False";
@@ -565,6 +581,7 @@ namespace WSJTX_Controller
                 if (iniFile.KeyExists("lotwLogbookPass"))  lotwLogbookPass  = CredentialProtector.Unprotect(iniFile.Read("lotwLogbookPass"));
                 if (iniFile.KeyExists("qrzUploadEnabled"))      qrzUploadEnabled      = iniFile.Read("qrzUploadEnabled")      == "True";
                 if (iniFile.KeyExists("qrzUploadRealtime"))     qrzUploadRealtime     = iniFile.Read("qrzUploadRealtime")     == "True";
+                if (iniFile.KeyExists("lotwUploadEnabled"))     lotwUploadEnabled     = iniFile.Read("lotwUploadEnabled")     == "True";
                 if (iniFile.KeyExists("clubLogUploadEnabled"))  clubLogUploadEnabled  = iniFile.Read("clubLogUploadEnabled")  == "True";
                 if (iniFile.KeyExists("clubLogUploadRealtime")) clubLogUploadRealtime = iniFile.Read("clubLogUploadRealtime") == "True";
                 if (iniFile.KeyExists("clubLogUploadEmail"))    clubLogUploadEmail    = iniFile.Read("clubLogUploadEmail")    ?? "";
@@ -618,6 +635,25 @@ namespace WSJTX_Controller
                 ShowWindow(GetConsoleWindow(), 0);
             }
 #endif
+
+            // Call CQ options button — replaces the old modeGroupBox 4-radio group (Listen /
+            // CQ only / CQ DX only / CQ and DX), which is kept in the Designer for its radio
+            // buttons' internal wiring but is never shown anymore (see WsjtxClient.UpdateModeVisible).
+            // Must exist before WsjtxClient's constructor below, which calls UpdateModeVisible()
+            // and sets this button's Visible state. Same on-screen footprint modeGroupBox used
+            // to occupy.
+            callCqOptionsButton = new System.Windows.Forms.Button
+            {
+                Text           = "Call CQ options...",
+                AccessibleName = "Call CQ options",
+                Location       = new System.Drawing.Point(15, 141),
+                Size           = new System.Drawing.Size(230, 26),
+                TabIndex       = 51,
+                Visible        = false,
+            };
+            callCqOptionsButton.Click += (s2, e2) => OpenCallCqDialog();
+            this.Controls.Add(callCqOptionsButton);
+            callCqOptionsButton.BringToFront();
 
             //start the UDP message server
             wsjtxClient = new WsjtxClient(this, IPAddress.Parse(ipAddrStr), port, multicast, overrideUdpDetect, debug, diagLog, txMode);
@@ -673,6 +709,7 @@ namespace WSJTX_Controller
             dxSpotWatcher = new DxSpotWatcher();
             dxSpotWatcher.Updated += () => BeginInvoke(new Action(RenderSpotWatchList));
             dxSpotWatcher.UpdateWatchList(wsjtxClient.spotWatchCalls);
+            spotWatchAgeTimer.Start();
             wsjtxClient.rawPriorityTags = rawPriorityTags;
             wsjtxClient.cmdPrompts = cmdPrompts;
             wsjtxClient.usePskReporter = usePskReporter;
@@ -822,6 +859,7 @@ namespace WSJTX_Controller
                 iniFile.Write("ignoreWeakSnr", ignoreWeakSnrCheckBox.Checked.ToString());
                 iniFile.Write("minSnr", ((int)minSnrNumUpDown.Value).ToString());
                 iniFile.Write("useDirected", callDirCqCheckBox.Checked.ToString());
+                iniFile.Write("directedCqLockedEntry", directedCqLockedEntry ?? "");
                 if (directedTextBox.Text == separateBySpaces) directedTextBox.Clear();
                 iniFile.Write("directeds", directedTextBox.Text.Trim());
                 iniFile.Write("playMyCall", mycallCheckBox.Checked.ToString());
@@ -938,6 +976,7 @@ namespace WSJTX_Controller
                 iniFile.Write("lotwLogbookPass",         CredentialProtector.Protect(lotwLogbookPass));
                 iniFile.Write("qrzUploadEnabled",        qrzUploadEnabled.ToString());
                 iniFile.Write("qrzUploadRealtime",       qrzUploadRealtime.ToString());
+                iniFile.Write("lotwUploadEnabled",        lotwUploadEnabled.ToString());
                 iniFile.Write("clubLogUploadEnabled",    clubLogUploadEnabled.ToString());
                 iniFile.Write("clubLogUploadRealtime",   clubLogUploadRealtime.ToString());
                 iniFile.Write("clubLogUploadEmail",      clubLogUploadEmail       ?? "");
@@ -1120,9 +1159,15 @@ namespace WSJTX_Controller
 
             if (keyData == hotkeyConfig[HotkeyAction.CallCqMode])
             {
-                if (modeGroupBox.Visible && cqIntentListenButton.Checked)
-                    ShowMsg("Listen mode selected; CQ not started.", true);
-                else if (modeGroupBox.Visible)
+                // modeGroupBox itself is never shown anymore (see WsjtxClient.UpdateModeVisible).
+                // The previous "Listen mode selected; CQ not started" branch here (guarded by
+                // cqIntentListenButton.Checked) is removed -- found 2026-07-11 to be dead-wrong,
+                // not just stale: SyncCqIntentFromMode keeps that checkbox permanently mirroring
+                // wsjtxClient.txMode == LISTEN (it's never set any other way once the radio group
+                // is hidden), so the guard was really just "if currently in Listen mode, refuse to
+                // switch to CQ mode" -- which made Alt+C, whose entire purpose is that exact
+                // switch, permanently unable to start CQ from Listen mode.
+                if (wsjtxClient.ConnectedToWsjtx())
                 {
                     if (wsjtxClient.txMode == WsjtxClient.TxModes.LISTEN && wsjtxClient.AnalysisNeeded)
                     {
@@ -1641,7 +1686,12 @@ namespace WSJTX_Controller
                         return string.IsNullOrEmpty(s) ? "(unassigned hotkey)" : s;
                     },
                     resolveUsState: call => lookupManager?.Build(call)?.State);
-                _logbookWindow.Owner = this;
+                // Deliberately no Owner assignment -- an owned window is always kept in front
+                // of its owner at the Win32 level, which made it impossible to Alt+Tab back to
+                // Jimmy's main window while the Logbook was open (found 2026-07-11: previously
+                // added as a belt-and-suspenders way to ensure this closes with Jimmy, but
+                // Controller_FormClosing already does that explicitly via _logbookWindow?.Close()
+                // below, so Owner was redundant for that and only cost the Alt+Tab behavior).
                 _logbookWindow.FormClosed += (s, e) => _logbookWindow = null;
                 _logbookWindow.Show();
             }
@@ -1675,7 +1725,10 @@ namespace WSJTX_Controller
         {
             guideTimer.Stop();
             optionsDlg = new OptionsDlg(wsjtxClient, this, openOptionsOnUdpTab);
-            optionsDlg.Owner = this;
+            // No Owner -- see the matching comment on _logbookWindow's Show() call; an owned
+            // window always stays in front of its owner at the Win32 level, which breaks
+            // Alt+Tab back to the main window. Controller_FormClosing already closes this
+            // explicitly (optionsDlg?.Close()), so Owner isn't needed for that either.
             openOptionsOnUdpTab = false;
             optionsDlg.Show();
         }
@@ -1949,6 +2002,16 @@ namespace WSJTX_Controller
         }
 
         private List<string> _spotWatchKeys = new List<string>();
+
+        // Runs every 60 seconds so each row's "last spotted X min ago" age counts forward
+        // smoothly, instead of only updating whenever a new MQTT spot happens to arrive for
+        // some watched call (which could leave the display frozen for many minutes, then jump).
+        // RenderSpotWatchList's own change-detection guard keeps this a no-op (no redraw, no
+        // screen-reader chatter) unless a formatted row string actually changed.
+        private void spotWatchAgeTimer_Tick(object sender, EventArgs e)
+        {
+            RenderSpotWatchList();
+        }
 
         // Called (via BeginInvoke, already marshalled to the UI thread) whenever
         // DxSpotWatcher's watch list or any watched call's last-seen data changes. One row per
@@ -2819,7 +2882,7 @@ namespace WSJTX_Controller
             _helpReturnFocus = this.ActiveControl;
             if (helpDlg != null) helpDlg.Close();
             helpDlg = new HelpDlg(this, $"{wsjtxClient.pgmName}{helpSuffix}", (string)helpTimer.Tag);
-            helpDlg.Owner = this;
+            // No Owner -- see the matching comment on _logbookWindow's Show() call.
             helpDlg.Show();
             helpDlg.Activate();
         }
@@ -3487,6 +3550,26 @@ namespace WSJTX_Controller
         // Pre-fills the Manual Call dialog on its next open -- overwrite to call
         // someone new, or just hit Enter/OK again to repeat the same call.
         private string _lastManualCall = "";
+
+        private CallCqDlg _callCqDlg;
+
+        // Non-modal (Show(), not ShowDialog()) -- found 2026-07-11: a modal dialog here
+        // blocked Alt+Tab back to the main window's status bar entirely, which matters a lot
+        // for this one specifically since its own "Find open slot" button kicks off up to a
+        // minute of live status updates on the main window. No Owner either, same reasoning
+        // as Logbook/Options/Help (see their Show() call sites) -- an owned window is always
+        // kept in front of its owner at the Win32 level regardless of modality.
+        private void OpenCallCqDialog()
+        {
+            if (_callCqDlg != null && !_callCqDlg.IsDisposed)
+            {
+                _callCqDlg.Activate();
+                return;
+            }
+            _callCqDlg = new CallCqDlg(this, wsjtxClient);
+            _callCqDlg.FormClosed += (s, e) => _callCqDlg = null;
+            _callCqDlg.Show();
+        }
 
         private void OpenManualCallDialog()
         {

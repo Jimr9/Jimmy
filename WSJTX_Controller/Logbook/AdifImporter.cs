@@ -8,14 +8,18 @@ namespace WSJTX_Controller
 {
     public class ImportResult
     {
-        public int    Processed { get; set; }
-        public int    NewQsos   { get; set; }
-        public int    Updated   { get; set; }
-        public int    Skipped   { get; set; }
-        public string Errors    { get; set; } = "";
+        public int    Processed       { get; set; }
+        public int    NewQsos         { get; set; }
+        // A QSO can be both newly confirmed and have other details corrected in the same
+        // sync, so these are independent counts, not a partition of "Updated" -- a row that
+        // changed in both ways is counted in both.
+        public int    NewlyConfirmed  { get; set; }
+        public int    Corrected       { get; set; }
+        public int    Skipped         { get; set; }
+        public string Errors          { get; set; } = "";
 
         public override string ToString() =>
-            $"Processed {Processed}: {NewQsos} new, {Updated} updated, {Skipped} skipped" +
+            $"Processed {Processed}: {NewQsos} new, {NewlyConfirmed} newly confirmed, {Corrected} corrected, {Skipped} unchanged" +
             (string.IsNullOrEmpty(Errors) ? "" : $"; {Errors.Split('\n').Length} errors");
     }
 
@@ -72,7 +76,7 @@ namespace WSJTX_Controller
                         var q = Normalize(raw, source, resolveUsState);
                         if (q == null) { result.Skipped++; result.Processed++; continue; }
 
-                        var (isNew, isUpdated) = db.Upsert(
+                        var (isNew, newlyConfirmed, corrected) = db.Upsert(
                             q.callsign, q.band, q.mode, q.qsoDate, q.timeOn, q.timeOff,
                             q.freqHz, q.rstSent, q.rstRcvd, q.state, q.country,
                             q.dxcc, q.cqZone, q.grid, q.name, q.comment, q.txPwr,
@@ -83,9 +87,16 @@ namespace WSJTX_Controller
                             q.sig, q.sigInfo, q.mySig, q.mySigInfo,
                             q.darcDok, q.wpxPrefix, q.exchangeSent, q.exchangeRcvd);
 
-                        if (isNew)         result.NewQsos++;
-                        else if (isUpdated) result.Updated++;
-                        else                result.Skipped++;
+                        if (isNew)
+                        {
+                            result.NewQsos++;
+                        }
+                        else
+                        {
+                            if (newlyConfirmed) result.NewlyConfirmed++;
+                            if (corrected)       result.Corrected++;
+                            if (!newlyConfirmed && !corrected) result.Skipped++;
+                        }
 
                         result.Processed++;
 

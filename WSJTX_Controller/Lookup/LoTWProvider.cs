@@ -71,6 +71,11 @@ namespace WSJTX_Controller
         public async Task<bool> RefreshAsync()
         {
             LastError = null;
+            if (TestModeGuard.IsTestMode)
+            {
+                LastError = "Blocked: JIMMY_TEST_DB_PATH is set (test mode) -- no real LoTW traffic allowed.";
+                return false;
+            }
             var tmp = Path.Combine(_dir, "lotw-user-activity.tmp");
             try
             {

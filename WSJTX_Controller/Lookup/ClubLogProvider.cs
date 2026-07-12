@@ -66,6 +66,11 @@ namespace WSJTX_Controller
         public async Task<bool> RefreshAsync()
         {
             LastError = null;
+            if (TestModeGuard.IsTestMode)
+            {
+                LastError = "Blocked: JIMMY_TEST_DB_PATH is set (test mode) -- no real Club Log traffic allowed.";
+                return false;
+            }
             var url = string.IsNullOrWhiteSpace(_apiKey)
                 ? BaseUrl
                 : $"{BaseUrl}?api={Uri.EscapeDataString(_apiKey)}";

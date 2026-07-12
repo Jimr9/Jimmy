@@ -34,6 +34,11 @@ namespace WSJTX_Controller
         public async Task<string> FetchAdifAsync(string email, string password, string callsign, int? sinceYear = null)
         {
             LastError = null;
+            if (TestModeGuard.IsTestMode)
+            {
+                LastError = "Blocked: JIMMY_TEST_DB_PATH is set (test mode) -- no real Club Log traffic allowed.";
+                return null;
+            }
             if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(callsign))
             {
                 LastError = "Club Log upload email, Application Password, or callsign is not configured.";
@@ -98,6 +103,11 @@ namespace WSJTX_Controller
         public async Task<bool> RealtimeUploadAsync(string email, string password, string callsign, string apiKey, string adifRecord)
         {
             LastError = null;
+            if (TestModeGuard.IsTestMode)
+            {
+                LastError = "Blocked: JIMMY_TEST_DB_PATH is set (test mode) -- no real Club Log traffic allowed.";
+                return false;
+            }
             if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(callsign))
             {
                 LastError = "Club Log upload email, Application Password, or callsign is not configured.";
@@ -131,6 +141,11 @@ namespace WSJTX_Controller
         public async Task<bool> BatchUploadAsync(string email, string password, string callsign, string apiKey, string adifFileText)
         {
             LastError = null;
+            if (TestModeGuard.IsTestMode)
+            {
+                LastError = "Blocked: JIMMY_TEST_DB_PATH is set (test mode) -- no real Club Log traffic allowed.";
+                return false;
+            }
             if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(callsign))
             {
                 LastError = "Club Log upload email, Application Password, or callsign is not configured.";

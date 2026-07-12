@@ -375,12 +375,13 @@ namespace WSJTX_Controller
             _srcHistoryLv.Location = new Point(8, y);
             _srcHistoryLv.Size     = new Size(700, 200);
             _srcHistoryLv.Anchor   = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            _srcHistoryLv.Columns.Add("Date/Time",  135);
-            _srcHistoryLv.Columns.Add("Source",      65);
-            _srcHistoryLv.Columns.Add("New",         55);
-            _srcHistoryLv.Columns.Add("Updated",     65);
-            _srcHistoryLv.Columns.Add("Total",       55);
-            _srcHistoryLv.Columns.Add("Errors",     200);
+            _srcHistoryLv.Columns.Add("Date/Time",       135);
+            _srcHistoryLv.Columns.Add("Source",           65);
+            _srcHistoryLv.Columns.Add("New",              50);
+            _srcHistoryLv.Columns.Add("Newly Confirmed",  95);
+            _srcHistoryLv.Columns.Add("Corrected",        70);
+            _srcHistoryLv.Columns.Add("Total",            55);
+            _srcHistoryLv.Columns.Add("Errors",          170);
             _srcHistoryLv.AccessibleName = "Import history list";
             _syncPanel.Controls.Add(_srcHistoryLv);
         }
@@ -797,7 +798,8 @@ namespace WSJTX_Controller
                     var item = new ListViewItem(h.StartedAt == DateTime.MinValue ? "?" : h.StartedAt.ToLocalTime().ToString("g"));
                     item.SubItems.Add(h.Source);
                     item.SubItems.Add(h.NewQso.ToString("N0"));
-                    item.SubItems.Add(h.UpdatedQso.ToString("N0"));
+                    item.SubItems.Add(h.NewlyConfirmed.ToString("N0"));
+                    item.SubItems.Add(h.Corrected.ToString("N0"));
                     item.SubItems.Add(h.TotalQso.ToString("N0"));
                     item.SubItems.Add(h.ErrorText?.Length > 0 ? h.ErrorText.Split('\n')[0] : "");
                     _srcHistoryLv.Items.Add(item);
@@ -1364,7 +1366,7 @@ namespace WSJTX_Controller
         {
             if (_db == null) return;
             int logId = _db.LogImportStart(source);
-            _db.LogImportFinish(logId, 0, 0, 0, 0, message);
+            _db.LogImportFinish(logId, 0, 0, 0, 0, 0, message);
         }
 
         private async Task RunImport(string filePath, string source)
@@ -1399,12 +1401,12 @@ namespace WSJTX_Controller
                         _resolveUsState);
                 }).ConfigureAwait(true);
 
-                _db.LogImportFinish(logId, result.Processed, result.NewQsos, result.Updated, result.Skipped, result.Errors);
+                _db.LogImportFinish(logId, result.Processed, result.NewQsos, result.NewlyConfirmed, result.Corrected, result.Skipped, result.Errors);
 
                 if (metaKey != null)
                     _ini?.Write(metaKey, DateTime.UtcNow.ToString("o"));
 
-                SetStatus($"{source} import complete: {result.NewQsos:N0} new, {result.Updated:N0} updated, {result.Skipped:N0} skipped.");
+                SetStatus($"{source} import complete: {result.NewQsos:N0} new, {result.NewlyConfirmed:N0} newly confirmed, {result.Corrected:N0} corrected, {result.Skipped:N0} unchanged.");
 
                 if (!string.IsNullOrWhiteSpace(result.Errors))
                 {
@@ -1421,7 +1423,7 @@ namespace WSJTX_Controller
             }
             catch (Exception ex)
             {
-                _db.LogImportFinish(logId, 0, 0, 0, 0, ex.Message);
+                _db.LogImportFinish(logId, 0, 0, 0, 0, 0, ex.Message);
                 SetStatus($"{source} import error: " + ex.Message);
             }
             finally { SetBusy(false); }
