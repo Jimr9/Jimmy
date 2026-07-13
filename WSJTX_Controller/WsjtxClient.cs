@@ -1302,6 +1302,7 @@ namespace WSJTX_Controller
                 UpdateCallListAccessibleName();
                 ctrl.LoadHrcCache();    //refresh HRC sets (band-independent; harmless to re-run here)
                 ctrl.RefreshStillNeedCache();    //reload Still Need live-tag cache now that the current band is known
+                ctrl.OnJimmyReachedActive();    //kicks off automatic logbook sync, once per session, after a short delay
                 DebugOutput($"{spacer}CheckActive, opMode:{opMode}");
                 UpdateDebug();
                 return true;

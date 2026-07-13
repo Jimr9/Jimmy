@@ -17,6 +17,8 @@ namespace WSJTX_Controller
         private void InitializeComponent()
         {
             this.tabControl1 = new System.Windows.Forms.TabControl();
+            this.logbookSyncTabPage = new System.Windows.Forms.TabPage();
+            this.logbookSyncPanel   = new System.Windows.Forms.Panel();
             this.lookupTabPage = new System.Windows.Forms.TabPage();
             this.lookupPanel   = new System.Windows.Forms.Panel();
             this.generalTabPage = new System.Windows.Forms.TabPage();
@@ -115,13 +117,14 @@ namespace WSJTX_Controller
             this.tabControl1.Controls.Add(this.spotWatchTabPage);     // index 7
             this.tabControl1.Controls.Add(this.soundsTabPage);        // index 8
             this.tabControl1.Controls.Add(this.udpTabPage);           // index 9
-            this.tabControl1.Controls.Add(this.lookupTabPage);        // index 10
-            this.tabControl1.Controls.Add(this.appearanceTabPage);    // index 11
+            this.tabControl1.Controls.Add(this.logbookSyncTabPage);   // index 10
+            this.tabControl1.Controls.Add(this.lookupTabPage);        // index 11
+            this.tabControl1.Controls.Add(this.appearanceTabPage);    // index 12
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Multiline = true;
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
-            this.tabControl1.Size = new System.Drawing.Size(680, 380);
+            this.tabControl1.Size = new System.Drawing.Size(830, 380);
             this.tabControl1.TabIndex = 0;
             this.tabControl1.AccessibleName = "";
             //
@@ -332,10 +335,23 @@ namespace WSJTX_Controller
             this.appearancePanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.appearancePanel.Name = "appearancePanel";
             //
+            // logbookSyncTabPage
+            //
+            this.logbookSyncTabPage.Controls.Add(this.logbookSyncPanel);
+            this.logbookSyncTabPage.Text           = "Logbook Sync";
+            this.logbookSyncTabPage.Name           = "logbookSyncTabPage";
+            this.logbookSyncTabPage.AccessibleName = "Logbook Sync tab";
+            //
+            // logbookSyncPanel
+            //
+            this.logbookSyncPanel.AutoScroll = true;
+            this.logbookSyncPanel.Dock       = System.Windows.Forms.DockStyle.Fill;
+            this.logbookSyncPanel.Name       = "logbookSyncPanel";
+            //
             // lookupTabPage
             //
             this.lookupTabPage.Controls.Add(this.lookupPanel);
-            this.lookupTabPage.Text           = "Lookup / Data";
+            this.lookupTabPage.Text           = "Lookup Data";
             this.lookupTabPage.Name           = "lookupTabPage";
             this.lookupTabPage.AccessibleName = "Lookup Data tab";
             //
@@ -702,7 +718,7 @@ namespace WSJTX_Controller
             //
             this.okButton.AccessibleName = "OK, confirm changes";
             this.okButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F, System.Drawing.FontStyle.Bold);
-            this.okButton.Location = new System.Drawing.Point(468, 386);
+            this.okButton.Location = new System.Drawing.Point(618, 386);
             this.okButton.Name = "okButton";
             this.okButton.Size = new System.Drawing.Size(100, 27);
             this.okButton.TabIndex = 1;
@@ -714,7 +730,7 @@ namespace WSJTX_Controller
             //
             this.cancelButton.AccessibleName = "Cancel, discard changes";
             this.cancelButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F, System.Drawing.FontStyle.Bold);
-            this.cancelButton.Location = new System.Drawing.Point(573, 386);
+            this.cancelButton.Location = new System.Drawing.Point(723, 386);
             this.cancelButton.Name = "cancelButton";
             this.cancelButton.Size = new System.Drawing.Size(100, 27);
             this.cancelButton.TabIndex = 2;
@@ -726,7 +742,7 @@ namespace WSJTX_Controller
             //
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(680, 418);
+            this.ClientSize = new System.Drawing.Size(830, 418);
             this.Controls.Add(this.tabControl1);
             this.Controls.Add(this.okButton);
             this.Controls.Add(this.cancelButton);
@@ -830,6 +846,8 @@ namespace WSJTX_Controller
         private System.Windows.Forms.Panel spotWatchPanel;
         private System.Windows.Forms.TabPage soundsTabPage;
         private System.Windows.Forms.Panel soundsPanel;
+        private System.Windows.Forms.TabPage logbookSyncTabPage;
+        private System.Windows.Forms.Panel logbookSyncPanel;
         private System.Windows.Forms.TabPage lookupTabPage;
         private System.Windows.Forms.Panel lookupPanel;
         private System.Windows.Forms.TabPage appearanceTabPage;

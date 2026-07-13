@@ -66,7 +66,7 @@ namespace WSJTX_Controller
 
         // ── Awards controls ───────────────────────────────────────────────────────
         private ComboBox _awardsViewCb;
-        private Label    _awardsProgressLbl;
+        private TextBox  _awardsProgressLbl;
         private ListView _awardsLv;
         private List<RuleDefinition> _awardsDefs = new List<RuleDefinition>();
         private bool     _suppressAwardsEvent;
@@ -76,7 +76,7 @@ namespace WSJTX_Controller
         private CheckBox _neededActiveCb;
         private ComboBox _neededBandCb;
         private ListView _neededLv;
-        private Label    _neededCountLbl;
+        private TextBox  _neededCountLbl;
         private List<RuleDefinition> _neededDefs = new List<RuleDefinition>();
         private bool     _suppressNeededEvent;
 
@@ -458,12 +458,23 @@ namespace WSJTX_Controller
             _awardsViewCb.SelectedIndexChanged += (s, e) => { if (!_suppressAwardsEvent) PopulateAwards(); };
             _awardsPanel.Controls.Add(_awardsViewCb);
 
-            _awardsProgressLbl = new Label
+            // Read-only TextBox, not a Label -- a plain Label is never reachable by Tab,
+            // so JAWS/NVDA users tabbing through this page would never hear the progress
+            // summary at all (found 2026-07-12: a blind JAWS user's screen-reader
+            // transcript jumped straight from the combo box to the list, confirming this
+            // was genuinely unreachable, not just easy to miss). Matches the same
+            // focusable-readonly-TextBox pattern the My Log tab's stat fields already use.
+            _awardsProgressLbl = new TextBox
             {
                 Text           = "",
                 Font           = font,
-                Location       = new Point(366, 10),
-                AutoSize       = true,
+                Location       = new Point(366, 8),
+                Size           = new Size(340, 20),
+                ReadOnly       = true,
+                BorderStyle    = BorderStyle.None,
+                BackColor      = SystemColors.Control,
+                TabStop        = true,
+                TabIndex       = 2,
                 AccessibleName = "Award progress summary",
             };
             _awardsPanel.Controls.Add(_awardsProgressLbl);
@@ -472,7 +483,7 @@ namespace WSJTX_Controller
             _awardsLv.Location = new Point(8, 66);
             _awardsLv.Anchor   = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             _awardsLv.Size     = new Size(700, 350);
-            _awardsLv.TabIndex = 2;
+            _awardsLv.TabIndex = 3;
             _awardsLv.AccessibleName = "Award detail list";
             _awardsPanel.Controls.Add(_awardsLv);
 
@@ -482,7 +493,7 @@ namespace WSJTX_Controller
                 Font           = font,
                 Location       = new Point(8, 34),
                 Size           = new Size(180, 24),
-                TabIndex       = 3,
+                TabIndex       = 4,
                 AccessibleName = "Manage Rule Definitions",
             };
             manageBtn.Click += (s, e) => OpenRuleDefinitionManager();
@@ -494,7 +505,7 @@ namespace WSJTX_Controller
                 Font           = font,
                 Location       = new Point(196, 34),
                 Size           = new Size(90, 24),
-                TabIndex       = 4,
+                TabIndex       = 5,
                 AccessibleName = "Refresh award progress",
                 AccessibleDescription = "Re-checks award progress against QSOs logged since this page was last shown.",
             };
@@ -570,12 +581,19 @@ namespace WSJTX_Controller
             _neededBandCb.SelectedIndexChanged += (s, e) => { if (!_suppressNeededEvent) PopulateNeeded(); };
             _stillNeedPanel.Controls.Add(_neededBandCb);
 
-            _neededCountLbl = new Label
+            // Read-only TextBox, not a Label -- see the same fix on the Awards tab's
+            // _awardsProgressLbl for why a plain Label is unreachable by Tab/screen reader.
+            _neededCountLbl = new TextBox
             {
-                Text     = "",
-                Font     = font,
-                Location = new Point(500, 10),
-                AutoSize = true,
+                Text           = "",
+                Font           = font,
+                Location       = new Point(500, 8),
+                Size           = new Size(200, 20),
+                ReadOnly       = true,
+                BorderStyle    = BorderStyle.None,
+                BackColor      = SystemColors.Control,
+                TabStop        = true,
+                TabIndex       = 3,
                 AccessibleName = "Count of needed entries",
             };
             _stillNeedPanel.Controls.Add(_neededCountLbl);
@@ -586,7 +604,7 @@ namespace WSJTX_Controller
                 Font           = font,
                 Location       = new Point(8, 32),
                 AutoSize       = true,
-                TabIndex       = 3,
+                TabIndex       = 4,
                 AccessibleName = "Actively track this award for live alerts",
             };
             _neededActiveCb.CheckedChanged += (s, e) =>
@@ -604,7 +622,7 @@ namespace WSJTX_Controller
                 Font           = font,
                 Location       = new Point(600, 6),
                 Size           = new Size(100, 23),
-                TabIndex       = 5,
+                TabIndex       = 6,
                 AccessibleName = "Refresh needed list",
                 AccessibleDescription = "Re-checks the needed list against QSOs logged since this page was last shown.",
             };
@@ -615,7 +633,7 @@ namespace WSJTX_Controller
             _neededLv.Location = new Point(8, 58);
             _neededLv.Anchor   = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             _neededLv.Size     = new Size(700, 358);
-            _neededLv.TabIndex = 4;
+            _neededLv.TabIndex = 5;
             _neededLv.AccessibleName = "Needed items list";
             _stillNeedPanel.Controls.Add(_neededLv);
         }

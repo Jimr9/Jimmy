@@ -84,6 +84,8 @@ namespace WSJTX_Controller
         private System.Windows.Forms.TextBox         _qrzLogbookApiKeyTb;
         private System.Windows.Forms.CheckBox        _qrzUploadEnabledCb;
         private System.Windows.Forms.CheckBox        _qrzUploadRealtimeCb;
+        private System.Windows.Forms.CheckBox        _qrzLogbookAutoSyncCb;
+        private System.Windows.Forms.NumericUpDown   _qrzLogbookRefreshDaysNum;
         private System.Windows.Forms.CheckBox        _lotwEnabledCb;
         private System.Windows.Forms.CheckBox        _lotwBoostCb;
         private System.Windows.Forms.NumericUpDown   _lotwRefreshDaysNum;
@@ -92,6 +94,8 @@ namespace WSJTX_Controller
         private System.Windows.Forms.CheckBox        _lotwUploadEnabledCb;
         private System.Windows.Forms.TextBox         _lotwLogbookUserTb;
         private System.Windows.Forms.TextBox         _lotwLogbookPassTb;
+        private System.Windows.Forms.CheckBox        _lotwLogbookAutoSyncCb;
+        private System.Windows.Forms.NumericUpDown   _lotwLogbookRefreshDaysNum;
         private System.Windows.Forms.NumericUpDown   _clubLogRefreshDaysNum;
         private System.Windows.Forms.Button          _clubLogUpdateBtn;
         private System.Windows.Forms.TextBox         _clubLogStatusLbl;
@@ -104,6 +108,8 @@ namespace WSJTX_Controller
         private System.Windows.Forms.TextBox         _clubLogUploadEmailTb;
         private System.Windows.Forms.TextBox         _clubLogUploadPasswordTb;
         private System.Windows.Forms.TextBox         _clubLogUploadCallsignTb;
+        private System.Windows.Forms.CheckBox        _clubLogLogbookAutoSyncCb;
+        private System.Windows.Forms.NumericUpDown   _clubLogLogbookRefreshDaysNum;
 
         private sealed class SoundRow
         {
@@ -194,7 +200,8 @@ namespace WSJTX_Controller
             BuildWantedCallsTab();
             BuildSpotWatchTab();
             BuildSoundsTab();
-            BuildLookupTab();
+            BuildLogbookSyncTab();
+            BuildLookupDataTab();
             BuildAppearanceTab();
             ReparentControlsToDialog();
 
@@ -1755,20 +1762,308 @@ namespace WSJTX_Controller
 
         // ===== LOOKUP / DATA TAB =====
 
-        private void BuildLookupTab()
+        // Two tabs share one "pick a service from a list, its settings show in a detail
+        // panel beside it" mechanism -- see WireServiceList. Logbook Sync (this method)
+        // covers the three services' own-account credentials and QSO upload/download;
+        // Lookup Data (below) covers reference/enrichment data most of which needs no
+        // personal account at all. Split decided with the user 2026-07-13: by *purpose*
+        // (my logbook vs. helping Jimmy operate), not by brand -- QRZ legitimately has
+        // an entry in both, since it genuinely does both jobs.
+        private void BuildLogbookSyncTab()
         {
-            lookupPanel.Controls.Clear();
-            var font  = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
-            int tabIdx = 0;
-            int pw    = 630;    // panel usable width
+            logbookSyncPanel.Controls.Clear();
+            var font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
+            int pw = 630;   // detail panel usable width -- matches the original single-column
+                             // width exactly, so no description label needed re-wrapping.
 
-            // Reflects whatever key is actually configured on the Hotkeys tab for
-            // "Upload to Logbook of the World" -- must not hardcode "Alt+U", since
-            // the user can rebind it.
             string uploadLotwKeyText = ctrl.hotkeyConfig != null
                 ? HotkeyConfig.FormatKeys(ctrl.hotkeyConfig[HotkeyAction.UploadLotw])
                 : "";
             if (string.IsNullOrEmpty(uploadLotwKeyText)) uploadLotwKeyText = "(unassigned hotkey)";
+
+            var serviceList = new System.Windows.Forms.ListBox
+            {
+                Location       = new System.Drawing.Point(5, 5),
+                Size           = new System.Drawing.Size(160, 340),
+                Font           = font,
+                TabIndex       = 0,
+                AccessibleName = "Logbook service list",
+            };
+            logbookSyncPanel.Controls.Add(serviceList);
+
+            var panels = new List<System.Windows.Forms.GroupBox>();
+            int tabIdx;
+
+            // ── QRZ Logbook Download / Upload ────────────────────────────────────
+            tabIdx = 1;
+            var qrzLogbookBox = MakeGroupBox("QRZ Logbook Download / Upload", 175, 5, pw, 182, font);
+            logbookSyncPanel.Controls.Add(qrzLogbookBox);
+            panels.Add(qrzLogbookBox);
+            serviceList.Items.Add("QRZ");
+
+            qrzLogbookBox.Controls.Add(MakeLabel("API key:", 10, 23, font));
+            _qrzLogbookApiKeyTb = new System.Windows.Forms.TextBox
+            {
+                Text           = ctrl.qrzLogbookApiKey ?? "",
+                Location       = new System.Drawing.Point(68, 20),
+                Size           = new System.Drawing.Size(300, 20),
+                PasswordChar   = '●',
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "QRZ Logbook API key",
+            };
+            qrzLogbookBox.Controls.Add(_qrzLogbookApiKeyTb);
+
+            qrzLogbookBox.Controls.Add(MakeLabel(
+                "Downloads QSOs you've already logged to your QRZ online logbook (Logbook > Sync tab). From",
+                10, 48, font));
+            qrzLogbookBox.Controls.Add(MakeLabel(
+                "qrz.com → Logbook → Settings → API Access. Requires a paid QRZ XML Data subscription -- this",
+                10, 64, font));
+            qrzLogbookBox.Controls.Add(MakeLabel(
+                "key only reaches your own logbook, but also unlocks full Callsign Lookup data (Lookup Data tab).",
+                10, 80, font));
+
+            _qrzUploadEnabledCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Enable QRZ Logbook upload (uses the same API key above)",
+                Checked        = ctrl.qrzUploadEnabled,
+                Location       = new System.Drawing.Point(10, 104),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Enable QRZ Logbook upload",
+            };
+            qrzLogbookBox.Controls.Add(_qrzUploadEnabledCb);
+
+            _qrzUploadRealtimeCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = $"Upload automatically as each QSO completes (otherwise, use {uploadLotwKeyText})",
+                Checked        = ctrl.qrzUploadRealtime,
+                Location       = new System.Drawing.Point(28, 126),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Upload to QRZ automatically in real time",
+            };
+            qrzLogbookBox.Controls.Add(_qrzUploadRealtimeCb);
+
+            // Automatic download: opt-in (default off), reuses the exact same fetch/import
+            // path the Logbook window's manual "Download from QRZ" button already uses --
+            // see LogbookAutoSync.cs. Minimum=1 day is a hard floor (can't be set lower),
+            // so this can never be configured into hammering QRZ's API.
+            _qrzLogbookAutoSyncCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Automatically download and sync every",
+                Checked        = ctrl.qrzLogbookAutoSyncEnabled,
+                Location       = new System.Drawing.Point(10, 150),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Automatically download and sync the QRZ Logbook",
+            };
+            qrzLogbookBox.Controls.Add(_qrzLogbookAutoSyncCb);
+
+            _qrzLogbookRefreshDaysNum = new System.Windows.Forms.NumericUpDown
+            {
+                Minimum        = 1,
+                Maximum        = 365,
+                Value          = Math.Max(1, Math.Min(365, ctrl.qrzLogbookRefreshDays)),
+                Location       = new System.Drawing.Point(216, 148),
+                Size           = new System.Drawing.Size(50, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "QRZ Logbook automatic sync interval in days",
+            };
+            qrzLogbookBox.Controls.Add(_qrzLogbookRefreshDaysNum);
+            qrzLogbookBox.Controls.Add(MakeLabel("days", 270, 150, font));
+
+            // ── LoTW Logbook Download ────────────────────────────────────────────
+            tabIdx = 1;
+            var lotwLogbookBox = MakeGroupBox("LoTW Logbook Download", 175, 5, pw, 142, font);
+            logbookSyncPanel.Controls.Add(lotwLogbookBox);
+            panels.Add(lotwLogbookBox);
+            serviceList.Items.Add("LoTW");
+
+            lotwLogbookBox.Controls.Add(MakeLabel("Username:", 10, 23, font));
+            _lotwLogbookUserTb = new System.Windows.Forms.TextBox
+            {
+                Text           = ctrl.lotwLogbookUser ?? "",
+                Location       = new System.Drawing.Point(90, 20),
+                Size           = new System.Drawing.Size(160, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "LoTW username for logbook download",
+            };
+            lotwLogbookBox.Controls.Add(_lotwLogbookUserTb);
+
+            lotwLogbookBox.Controls.Add(MakeLabel("Password:", 10, 47, font));
+            _lotwLogbookPassTb = new System.Windows.Forms.TextBox
+            {
+                Text           = ctrl.lotwLogbookPass ?? "",
+                Location       = new System.Drawing.Point(90, 44),
+                Size           = new System.Drawing.Size(160, 20),
+                PasswordChar   = '●',
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "LoTW password for logbook download",
+            };
+            lotwLogbookBox.Controls.Add(_lotwLogbookPassTb);
+
+            lotwLogbookBox.Controls.Add(MakeLabel(
+                "Downloads your confirmed QSOs from LoTW (Logbook > Sync tab). Separate feature from LoTW User",
+                10, 71, font));
+            lotwLogbookBox.Controls.Add(MakeLabel(
+                "Activity (Lookup Data tab) -- this is your standard LoTW.org login; no TQSL certificate here.",
+                10, 87, font));
+
+            // Automatic download: opt-in (default off), same shape as QRZ's above -- see
+            // LogbookAutoSync.cs. Minimum=1 day hard floor.
+            _lotwLogbookAutoSyncCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Automatically download and sync every",
+                Checked        = ctrl.lotwLogbookAutoSyncEnabled,
+                Location       = new System.Drawing.Point(10, 111),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Automatically download and sync the LoTW Logbook",
+            };
+            lotwLogbookBox.Controls.Add(_lotwLogbookAutoSyncCb);
+
+            _lotwLogbookRefreshDaysNum = new System.Windows.Forms.NumericUpDown
+            {
+                Minimum        = 1,
+                Maximum        = 365,
+                Value          = Math.Max(1, Math.Min(365, ctrl.lotwLogbookRefreshDays)),
+                Location       = new System.Drawing.Point(216, 109),
+                Size           = new System.Drawing.Size(50, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "LoTW Logbook automatic sync interval in days",
+            };
+            lotwLogbookBox.Controls.Add(_lotwLogbookRefreshDaysNum);
+            lotwLogbookBox.Controls.Add(MakeLabel("days", 270, 111, font));
+
+            // ── Club Log Logbook Upload ──────────────────────────────────────────
+            // A per-user credential (Application Password), entirely separate from
+            // the app-wide Club Log key used for country data (Lookup Data tab) -- see
+            // ClubLogUploadClient.cs for why these cannot be the same credential.
+            tabIdx = 1;
+            var clUploadBox = MakeGroupBox("Club Log Logbook Upload", 175, 5, pw, 222, font);
+            logbookSyncPanel.Controls.Add(clUploadBox);
+            panels.Add(clUploadBox);
+            serviceList.Items.Add("Club Log");
+
+            _clubLogUploadEnabledCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Enable Club Log Logbook upload",
+                Checked        = ctrl.clubLogUploadEnabled,
+                Location       = new System.Drawing.Point(10, 20),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Enable Club Log Logbook upload",
+            };
+            clUploadBox.Controls.Add(_clubLogUploadEnabledCb);
+
+            _clubLogUploadRealtimeCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = $"Upload automatically as each QSO completes (otherwise, use {uploadLotwKeyText})",
+                Checked        = ctrl.clubLogUploadRealtime,
+                Location       = new System.Drawing.Point(28, 42),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Upload to Club Log automatically in real time",
+            };
+            clUploadBox.Controls.Add(_clubLogUploadRealtimeCb);
+
+            clUploadBox.Controls.Add(MakeLabel("Email:", 10, 68, font));
+            _clubLogUploadEmailTb = new System.Windows.Forms.TextBox
+            {
+                Text           = ctrl.clubLogUploadEmail ?? "",
+                Location       = new System.Drawing.Point(90, 65),
+                Size           = new System.Drawing.Size(220, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Club Log account email for upload",
+            };
+            clUploadBox.Controls.Add(_clubLogUploadEmailTb);
+
+            clUploadBox.Controls.Add(MakeLabel("App Password:", 10, 92, font));
+            _clubLogUploadPasswordTb = new System.Windows.Forms.TextBox
+            {
+                Text           = ctrl.clubLogUploadPassword ?? "",
+                Location       = new System.Drawing.Point(90, 89),
+                Size           = new System.Drawing.Size(220, 20),
+                PasswordChar   = '●',
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Club Log Application Password for upload",
+            };
+            clUploadBox.Controls.Add(_clubLogUploadPasswordTb);
+
+            clUploadBox.Controls.Add(MakeLabel("Callsign:", 10, 116, font));
+            _clubLogUploadCallsignTb = new System.Windows.Forms.TextBox
+            {
+                Text           = ctrl.clubLogUploadCallsign ?? "",
+                Location       = new System.Drawing.Point(90, 113),
+                Size           = new System.Drawing.Size(120, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Callsign for Club Log upload",
+            };
+            clUploadBox.Controls.Add(_clubLogUploadCallsignTb);
+
+            // Automatic download: opt-in (default off), same shape as QRZ/LoTW above --
+            // see LogbookAutoSync.cs. Minimum=1 day hard floor -- worth being especially
+            // conservative here given Club Log's own documented anti-abuse rules (a past
+            // real incident: repeated failed requests can get an IP firewalled).
+            _clubLogLogbookAutoSyncCb = new System.Windows.Forms.CheckBox
+            {
+                Text           = "Automatically download and sync every",
+                Checked        = ctrl.clubLogLogbookAutoSyncEnabled,
+                Location       = new System.Drawing.Point(10, 142),
+                AutoSize       = true,
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Automatically download and sync the Club Log Logbook",
+            };
+            clUploadBox.Controls.Add(_clubLogLogbookAutoSyncCb);
+
+            _clubLogLogbookRefreshDaysNum = new System.Windows.Forms.NumericUpDown
+            {
+                Minimum        = 1,
+                Maximum        = 365,
+                Value          = Math.Max(1, Math.Min(365, ctrl.clubLogLogbookRefreshDays)),
+                Location       = new System.Drawing.Point(216, 140),
+                Size           = new System.Drawing.Size(50, 20),
+                TabIndex       = tabIdx++,
+                Font           = font,
+                AccessibleName = "Club Log Logbook automatic sync interval in days",
+            };
+            clUploadBox.Controls.Add(_clubLogLogbookRefreshDaysNum);
+            clUploadBox.Controls.Add(MakeLabel("days", 270, 142, font));
+
+            clUploadBox.Controls.Add(MakeLabel(
+                "Uploads QSOs to your Club Log online logbook (Logbook > Sync tab, or automatically as you log",
+                10, 168, font));
+            clUploadBox.Controls.Add(MakeLabel(
+                "each contact). Requires a Club Log Application Password (clublog.org → Settings → App",
+                10, 184, font));
+            clUploadBox.Controls.Add(MakeLabel(
+                "Passwords) -- NOT your normal Club Log website login. Separate from the country-data key (Lookup Data tab).",
+                10, 200, font));
+
+            WireServiceList(serviceList, panels);
+        }
+
+        private void BuildLookupDataTab()
+        {
+            lookupPanel.Controls.Clear();
+            var font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
+            int pw = 630;
 
             // ── General ──────────────────────────────────────────────────────────
             var genBox = MakeGroupBox("General", 5, 5, pw, 48, font);
@@ -1780,15 +2075,31 @@ namespace WSJTX_Controller
                 Checked        = ctrl.useLookupData,
                 Location       = new System.Drawing.Point(10, 18),
                 AutoSize       = true,
-                TabIndex       = tabIdx++,
+                TabIndex       = 0,
                 Font           = font,
                 AccessibleName = "Use lookup data master enable",
             };
             genBox.Controls.Add(_useLookupDataCb);
 
+            var serviceList = new System.Windows.Forms.ListBox
+            {
+                Location       = new System.Drawing.Point(5, 58),
+                Size           = new System.Drawing.Size(160, 305),
+                Font           = font,
+                TabIndex       = 1,
+                AccessibleName = "Lookup data service list",
+            };
+            lookupPanel.Controls.Add(serviceList);
+
+            var panels = new List<System.Windows.Forms.GroupBox>();
+            int tabIdx;
+
             // ── QRZ Callsign Lookup ──────────────────────────────────────────────
-            var qrzBox = MakeGroupBox("QRZ Callsign Lookup", 5, 60, pw, 230, font);
+            tabIdx = 2;
+            var qrzBox = MakeGroupBox("QRZ Callsign Lookup", 175, 58, pw, 230, font);
             lookupPanel.Controls.Add(qrzBox);
+            panels.Add(qrzBox);
+            serviceList.Items.Add("QRZ Callsign Lookup");
 
             _qrzEnabledCb = new System.Windows.Forms.CheckBox
             {
@@ -1903,69 +2214,26 @@ namespace WSJTX_Controller
             qrzBox.Controls.Add(_qrzStatusLbl);
 
             qrzBox.Controls.Add(MakeLabel(
-                "Real-time station lookup by callsign (name, address, grid). This is your normal QRZ.com login.",
+                "Real-time station lookup by callsign (name, address, grid). Uses your normal QRZ.com login --",
                 10, 194, font));
             qrzBox.Controls.Add(MakeLabel(
-                "Full results require an active QRZ subscription (the same one used by Logbook Download, below);",
+                "any QRZ account works, but without a paid XML Data subscription QRZ returns fewer data fields.",
                 10, 210, font));
             qrzBox.Controls.Add(MakeLabel(
-                "free accounts receive very limited data that QRZ intends only for testing.",
+                "The same subscription key (Logbook Sync's QRZ panel) unlocks full lookup data and log sync.",
                 10, 226, font));
 
-            // ── QRZ Logbook Download / Upload ────────────────────────────────────
-            var qrzLogbookBox = MakeGroupBox("QRZ Logbook Download / Upload", 5, 296, pw, 156, font);
-            lookupPanel.Controls.Add(qrzLogbookBox);
-
-            qrzLogbookBox.Controls.Add(MakeLabel("API key:", 10, 23, font));
-            _qrzLogbookApiKeyTb = new System.Windows.Forms.TextBox
-            {
-                Text           = ctrl.qrzLogbookApiKey ?? "",
-                Location       = new System.Drawing.Point(68, 20),
-                Size           = new System.Drawing.Size(300, 20),
-                PasswordChar   = '●',
-                TabIndex       = tabIdx++,
-                Font           = font,
-                AccessibleName = "QRZ Logbook API key",
-            };
-            qrzLogbookBox.Controls.Add(_qrzLogbookApiKeyTb);
-
-            qrzLogbookBox.Controls.Add(MakeLabel(
-                "Downloads QSOs you've already logged to your QRZ online logbook (Logbook > Sync tab). From",
-                10, 48, font));
-            qrzLogbookBox.Controls.Add(MakeLabel(
-                "qrz.com → Logbook → Settings → API Access. Requires the same subscription as Callsign Lookup,",
-                10, 64, font));
-            qrzLogbookBox.Controls.Add(MakeLabel(
-                "above -- this key only reaches your own logbook, it cannot look up other callsigns.",
-                10, 80, font));
-
-            _qrzUploadEnabledCb = new System.Windows.Forms.CheckBox
-            {
-                Text           = "Enable QRZ Logbook upload (uses the same API key above)",
-                Checked        = ctrl.qrzUploadEnabled,
-                Location       = new System.Drawing.Point(10, 104),
-                AutoSize       = true,
-                TabIndex       = tabIdx++,
-                Font           = font,
-                AccessibleName = "Enable QRZ Logbook upload",
-            };
-            qrzLogbookBox.Controls.Add(_qrzUploadEnabledCb);
-
-            _qrzUploadRealtimeCb = new System.Windows.Forms.CheckBox
-            {
-                Text           = $"Upload automatically as each QSO completes (otherwise, use {uploadLotwKeyText})",
-                Checked        = ctrl.qrzUploadRealtime,
-                Location       = new System.Drawing.Point(28, 126),
-                AutoSize       = true,
-                TabIndex       = tabIdx++,
-                Font           = font,
-                AccessibleName = "Upload to QRZ automatically in real time",
-            };
-            qrzLogbookBox.Controls.Add(_qrzUploadRealtimeCb);
-
             // ── LoTW User Activity ───────────────────────────────────────────────
-            var lotwBox = MakeGroupBox("LoTW User Activity  (public download — no account required)", 5, 458, pw, 160, font);
+            string uploadLotwKeyText = ctrl.hotkeyConfig != null
+                ? HotkeyConfig.FormatKeys(ctrl.hotkeyConfig[HotkeyAction.UploadLotw])
+                : "";
+            if (string.IsNullOrEmpty(uploadLotwKeyText)) uploadLotwKeyText = "(unassigned hotkey)";
+
+            tabIdx = 2;
+            var lotwBox = MakeGroupBox("LoTW User Activity  (public download — no account required)", 175, 58, pw, 160, font);
             lookupPanel.Controls.Add(lotwBox);
+            panels.Add(lotwBox);
+            serviceList.Items.Add("LoTW User Activity");
 
             _lotwEnabledCb = new System.Windows.Forms.CheckBox
             {
@@ -2049,49 +2317,16 @@ namespace WSJTX_Controller
             };
             lotwBox.Controls.Add(_lotwUploadEnabledCb);
 
-            // ── LoTW Logbook Download ────────────────────────────────────────────
-            var lotwLogbookBox = MakeGroupBox("LoTW Logbook Download", 5, 624, pw, 116, font);
-            lookupPanel.Controls.Add(lotwLogbookBox);
-
-            lotwLogbookBox.Controls.Add(MakeLabel("Username:", 10, 23, font));
-            _lotwLogbookUserTb = new System.Windows.Forms.TextBox
-            {
-                Text           = ctrl.lotwLogbookUser ?? "",
-                Location       = new System.Drawing.Point(90, 20),
-                Size           = new System.Drawing.Size(160, 20),
-                TabIndex       = tabIdx++,
-                Font           = font,
-                AccessibleName = "LoTW username for logbook download",
-            };
-            lotwLogbookBox.Controls.Add(_lotwLogbookUserTb);
-
-            lotwLogbookBox.Controls.Add(MakeLabel("Password:", 10, 47, font));
-            _lotwLogbookPassTb = new System.Windows.Forms.TextBox
-            {
-                Text           = ctrl.lotwLogbookPass ?? "",
-                Location       = new System.Drawing.Point(90, 44),
-                Size           = new System.Drawing.Size(160, 20),
-                PasswordChar   = '●',
-                TabIndex       = tabIdx++,
-                Font           = font,
-                AccessibleName = "LoTW password for logbook download",
-            };
-            lotwLogbookBox.Controls.Add(_lotwLogbookPassTb);
-
-            lotwLogbookBox.Controls.Add(MakeLabel(
-                "Downloads your confirmed QSOs from LoTW (Logbook > Sync tab). Separate feature from LoTW User",
-                10, 71, font));
-            lotwLogbookBox.Controls.Add(MakeLabel(
-                "Activity, above -- this is your standard LoTW.org login; no TQSL certificate is used here.",
-                10, 87, font));
-
-            // ── Club Log ─────────────────────────────────────────────────────────
+            // ── Club Log Country Data ────────────────────────────────────────────
             // Automatic Jimmy infrastructure, not a user-facing toggle -- country
             // data downloads unconditionally using Jimmy's own application key
             // (see ClubLogAppKey.cs), so Rule Definition awards (DXCC etc.) work
             // out of the box with no configuration.
-            var clBox = MakeGroupBox("Club Log Country Data (automatic — no account needed)", 5, 746, pw, 76, font);
+            tabIdx = 2;
+            var clBox = MakeGroupBox("Club Log Country Data (automatic — no account needed)", 175, 58, pw, 76, font);
             lookupPanel.Controls.Add(clBox);
+            panels.Add(clBox);
+            serviceList.Items.Add("Club Log Country Data");
 
             clBox.Controls.Add(MakeLabel("Refresh (days):", 10, 23, font));
             _clubLogRefreshDaysNum = new System.Windows.Forms.NumericUpDown
@@ -2134,91 +2369,16 @@ namespace WSJTX_Controller
             };
             clBox.Controls.Add(_clubLogStatusLbl);
 
-            // ── Club Log Logbook Upload ──────────────────────────────────────────
-            // A per-user credential (Application Password), entirely separate from
-            // the app-wide Club Log key used for country data above -- see
-            // ClubLogUploadClient.cs for why these cannot be the same credential.
-            var clUploadBox = MakeGroupBox("Club Log Logbook Upload", 5, 828, pw, 196, font);
-            lookupPanel.Controls.Add(clUploadBox);
-
-            _clubLogUploadEnabledCb = new System.Windows.Forms.CheckBox
-            {
-                Text           = "Enable Club Log Logbook upload",
-                Checked        = ctrl.clubLogUploadEnabled,
-                Location       = new System.Drawing.Point(10, 20),
-                AutoSize       = true,
-                TabIndex       = tabIdx++,
-                Font           = font,
-                AccessibleName = "Enable Club Log Logbook upload",
-            };
-            clUploadBox.Controls.Add(_clubLogUploadEnabledCb);
-
-            _clubLogUploadRealtimeCb = new System.Windows.Forms.CheckBox
-            {
-                Text           = $"Upload automatically as each QSO completes (otherwise, use {uploadLotwKeyText})",
-                Checked        = ctrl.clubLogUploadRealtime,
-                Location       = new System.Drawing.Point(28, 42),
-                AutoSize       = true,
-                TabIndex       = tabIdx++,
-                Font           = font,
-                AccessibleName = "Upload to Club Log automatically in real time",
-            };
-            clUploadBox.Controls.Add(_clubLogUploadRealtimeCb);
-
-            clUploadBox.Controls.Add(MakeLabel("Email:", 10, 68, font));
-            _clubLogUploadEmailTb = new System.Windows.Forms.TextBox
-            {
-                Text           = ctrl.clubLogUploadEmail ?? "",
-                Location       = new System.Drawing.Point(90, 65),
-                Size           = new System.Drawing.Size(220, 20),
-                TabIndex       = tabIdx++,
-                Font           = font,
-                AccessibleName = "Club Log account email for upload",
-            };
-            clUploadBox.Controls.Add(_clubLogUploadEmailTb);
-
-            clUploadBox.Controls.Add(MakeLabel("App Password:", 10, 92, font));
-            _clubLogUploadPasswordTb = new System.Windows.Forms.TextBox
-            {
-                Text           = ctrl.clubLogUploadPassword ?? "",
-                Location       = new System.Drawing.Point(90, 89),
-                Size           = new System.Drawing.Size(220, 20),
-                PasswordChar   = '●',
-                TabIndex       = tabIdx++,
-                Font           = font,
-                AccessibleName = "Club Log Application Password for upload",
-            };
-            clUploadBox.Controls.Add(_clubLogUploadPasswordTb);
-
-            clUploadBox.Controls.Add(MakeLabel("Callsign:", 10, 116, font));
-            _clubLogUploadCallsignTb = new System.Windows.Forms.TextBox
-            {
-                Text           = ctrl.clubLogUploadCallsign ?? "",
-                Location       = new System.Drawing.Point(90, 113),
-                Size           = new System.Drawing.Size(120, 20),
-                TabIndex       = tabIdx++,
-                Font           = font,
-                AccessibleName = "Callsign for Club Log upload",
-            };
-            clUploadBox.Controls.Add(_clubLogUploadCallsignTb);
-
-            clUploadBox.Controls.Add(MakeLabel(
-                "Uploads QSOs to your Club Log online logbook (Logbook > Sync tab, or automatically as you log",
-                10, 142, font));
-            clUploadBox.Controls.Add(MakeLabel(
-                "each contact). Requires a Club Log Application Password (clublog.org → Settings → App",
-                10, 158, font));
-            clUploadBox.Controls.Add(MakeLabel(
-                "Passwords) -- NOT your normal Club Log website login. Separate from the country-data key above.",
-                10, 174, font));
-
             // ── FCC ULS US State Lookup ──────────────────────────────────────────
             // Opt-in (default off) since the full download is ~170MB, unlike Club
             // Log's small country file above. When enabled, its state answer takes
             // priority over QRZ's (see LookupManager's provider order) since it's
             // the FCC's own authoritative registration data.
-            var fccBox = MakeGroupBox("FCC ULS US State Lookup (optional -- ~170MB download, no account needed)", 5, 1030, pw, 130, font);
+            tabIdx = 2;
+            var fccBox = MakeGroupBox("FCC ULS US State Lookup (optional -- ~170MB download, no account needed)", 175, 58, pw, 130, font);
             lookupPanel.Controls.Add(fccBox);
+            panels.Add(fccBox);
+            serviceList.Items.Add("FCC ULS");
 
             _fccUlsEnabledCb = new System.Windows.Forms.CheckBox
             {
@@ -2279,6 +2439,23 @@ namespace WSJTX_Controller
             fccBox.Controls.Add(MakeLabel(
                 "for a callsign, offline and without needing QRZ. Weekly full refresh only (no daily deltas).",
                 10, 116, font));
+
+            WireServiceList(serviceList, panels);
+        }
+
+        // Shows only the panel matching the current list selection, hiding the rest --
+        // same idea as the Logbook window's Awards-tab combo-driven detail view, just
+        // backed by a persistent ListBox instead of a dropdown.
+        private static void WireServiceList(System.Windows.Forms.ListBox listBox, List<System.Windows.Forms.GroupBox> panels)
+        {
+            void UpdateVisibility()
+            {
+                for (int i = 0; i < panels.Count; i++)
+                    panels[i].Visible = (i == listBox.SelectedIndex);
+            }
+            listBox.SelectedIndexChanged += (s, e) => UpdateVisibility();
+            if (listBox.Items.Count > 0) listBox.SelectedIndex = 0;
+            UpdateVisibility();
         }
 
         private static System.Windows.Forms.GroupBox MakeGroupBox(string text, int x, int y, int w, int h, System.Drawing.Font font)
@@ -2353,18 +2530,24 @@ namespace WSJTX_Controller
             ctrl.qrzLogbookApiKey        = _qrzLogbookApiKeyTb?.Text.Trim()     ?? "";
             ctrl.qrzUploadEnabled        = _qrzUploadEnabledCb?.Checked         ?? false;
             ctrl.qrzUploadRealtime       = _qrzUploadRealtimeCb?.Checked        ?? false;
+            ctrl.qrzLogbookAutoSyncEnabled = _qrzLogbookAutoSyncCb?.Checked      ?? false;
+            ctrl.qrzLogbookRefreshDays   = (int)(_qrzLogbookRefreshDaysNum?.Value ?? 7);
             ctrl.lotwEnabled             = _lotwEnabledCb?.Checked              ?? false;
             ctrl.lotwBoostEnabled        = _lotwBoostCb?.Checked                ?? false;
             ctrl.lotwUploadEnabled       = _lotwUploadEnabledCb?.Checked        ?? true;
             ctrl.lotwRefreshDays         = (int)(_lotwRefreshDaysNum?.Value      ?? 30);
             ctrl.lotwLogbookUser         = _lotwLogbookUserTb?.Text.Trim()      ?? "";
             ctrl.lotwLogbookPass         = _lotwLogbookPassTb?.Text            ?? "";
+            ctrl.lotwLogbookAutoSyncEnabled = _lotwLogbookAutoSyncCb?.Checked    ?? false;
+            ctrl.lotwLogbookRefreshDays  = (int)(_lotwLogbookRefreshDaysNum?.Value ?? 7);
             ctrl.clubLogRefreshDays      = (int)(_clubLogRefreshDaysNum?.Value   ?? 30);
             ctrl.clubLogUploadEnabled    = _clubLogUploadEnabledCb?.Checked     ?? false;
             ctrl.clubLogUploadRealtime   = _clubLogUploadRealtimeCb?.Checked    ?? false;
             ctrl.clubLogUploadEmail      = _clubLogUploadEmailTb?.Text.Trim()   ?? "";
             ctrl.clubLogUploadPassword   = _clubLogUploadPasswordTb?.Text      ?? "";
             ctrl.clubLogUploadCallsign   = _clubLogUploadCallsignTb?.Text.Trim().ToUpperInvariant() ?? "";
+            ctrl.clubLogLogbookAutoSyncEnabled = _clubLogLogbookAutoSyncCb?.Checked ?? false;
+            ctrl.clubLogLogbookRefreshDays = (int)(_clubLogLogbookRefreshDaysNum?.Value ?? 7);
             ctrl.fccUlsEnabled           = _fccUlsEnabledCb?.Checked           ?? false;
             ctrl.fccUlsRefreshDays       = (int)(_fccUlsRefreshDaysNum?.Value   ?? 7);
         }

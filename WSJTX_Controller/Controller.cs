@@ -127,6 +127,19 @@ namespace WSJTX_Controller
         public string clubLogUploadEmail     = "";
         public string clubLogUploadPassword  = "";
         public string clubLogUploadCallsign  = "";
+
+        // Automatic logbook download/sync (opt-in, default off so existing users aren't
+        // suddenly downloading full logbooks on their next update without asking). Runs
+        // once per session via LogbookAutoSync, a fixed delay after reaching ACTIVE --
+        // see logbookAutoSyncTimer / OnJimmyReachedActive.
+        public bool qrzLogbookAutoSyncEnabled      = false;
+        public int  qrzLogbookRefreshDays          = 7;
+        public bool lotwLogbookAutoSyncEnabled     = false;
+        public int  lotwLogbookRefreshDays         = 7;
+        public bool clubLogLogbookAutoSyncEnabled  = false;
+        public int  clubLogLogbookRefreshDays      = 7;
+        private System.Windows.Forms.Timer logbookAutoSyncTimer;
+
         private LogbookWindow _logbookWindow;
         private System.Windows.Forms.Button logbookButton;
         public System.Windows.Forms.Button callCqOptionsButton;
@@ -587,6 +600,12 @@ namespace WSJTX_Controller
                 if (iniFile.KeyExists("clubLogUploadEmail"))    clubLogUploadEmail    = iniFile.Read("clubLogUploadEmail")    ?? "";
                 if (iniFile.KeyExists("clubLogUploadPassword")) clubLogUploadPassword = CredentialProtector.Unprotect(iniFile.Read("clubLogUploadPassword"));
                 if (iniFile.KeyExists("clubLogUploadCallsign")) clubLogUploadCallsign = iniFile.Read("clubLogUploadCallsign") ?? "";
+                if (iniFile.KeyExists("qrzLogbookAutoSyncEnabled"))     qrzLogbookAutoSyncEnabled     = iniFile.Read("qrzLogbookAutoSyncEnabled")     == "True";
+                int qrzld; if (iniFile.KeyExists("qrzLogbookRefreshDays") && int.TryParse(iniFile.Read("qrzLogbookRefreshDays"), out qrzld) && qrzld >= 1) qrzLogbookRefreshDays = qrzld;
+                if (iniFile.KeyExists("lotwLogbookAutoSyncEnabled"))    lotwLogbookAutoSyncEnabled    = iniFile.Read("lotwLogbookAutoSyncEnabled")    == "True";
+                int lotwld; if (iniFile.KeyExists("lotwLogbookRefreshDays") && int.TryParse(iniFile.Read("lotwLogbookRefreshDays"), out lotwld) && lotwld >= 1) lotwLogbookRefreshDays = lotwld;
+                if (iniFile.KeyExists("clubLogLogbookAutoSyncEnabled")) clubLogLogbookAutoSyncEnabled = iniFile.Read("clubLogLogbookAutoSyncEnabled") == "True";
+                int clld; if (iniFile.KeyExists("clubLogLogbookRefreshDays") && int.TryParse(iniFile.Read("clubLogLogbookRefreshDays"), out clld) && clld >= 1) clubLogLogbookRefreshDays = clld;
                 if (iniFile.KeyExists("activeAwardRuleIds")) activeAwardRuleIds = ParseActiveAwardRuleIds(iniFile.Read("activeAwardRuleIds"));
                 else if (iniFile.KeyExists("stillNeedLiveTagRuleId"))
                 {
@@ -982,6 +1001,12 @@ namespace WSJTX_Controller
                 iniFile.Write("clubLogUploadEmail",      clubLogUploadEmail       ?? "");
                 iniFile.Write("clubLogUploadPassword",   CredentialProtector.Protect(clubLogUploadPassword));
                 iniFile.Write("clubLogUploadCallsign",   clubLogUploadCallsign    ?? "");
+                iniFile.Write("qrzLogbookAutoSyncEnabled",     qrzLogbookAutoSyncEnabled.ToString());
+                iniFile.Write("qrzLogbookRefreshDays",         qrzLogbookRefreshDays.ToString());
+                iniFile.Write("lotwLogbookAutoSyncEnabled",    lotwLogbookAutoSyncEnabled.ToString());
+                iniFile.Write("lotwLogbookRefreshDays",        lotwLogbookRefreshDays.ToString());
+                iniFile.Write("clubLogLogbookAutoSyncEnabled", clubLogLogbookAutoSyncEnabled.ToString());
+                iniFile.Write("clubLogLogbookRefreshDays",     clubLogLogbookRefreshDays.ToString());
                 iniFile.Write("activeAwardRuleIds",  FormatActiveAwardRuleIds(activeAwardRuleIds));
                 iniFile.DeleteKey("stillNeedLiveTagRuleId");
                 // Phase 4: remove stale keys left by older versions.
@@ -1813,6 +1838,47 @@ namespace WSJTX_Controller
             ShowMsg(text, sound);
             if (_logbookWindow != null && !_logbookWindow.IsDisposed)
                 _logbookWindow.SetStatus(text);
+        }
+
+        // Logbook window's own status bar only, no main-form announcement -- used for
+        // LogbookAutoSync's per-service detail messages, which would be too noisy for
+        // the main status bar (up to 3 services' worth of start/result messages). If
+        // the window isn't open, this is a silent no-op; the sync still runs either way.
+        public void ShowLogbookWindowStatus(string text)
+        {
+            if (_logbookWindow != null && !_logbookWindow.IsDisposed)
+                _logbookWindow.SetStatus(text);
+        }
+
+        // Fires once per session, the first time WsjtxClient.CheckActive() transitions
+        // START->ACTIVE (see the call site there). Waits a fixed delay so the auto-sync
+        // check never collides with the startup status announcement, then runs
+        // LogbookAutoSync -- which itself no-ops entirely if nothing is due.
+        public void OnJimmyReachedActive()
+        {
+            if (logbookAutoSyncTimer != null) return; // already scheduled/ran this session
+            logbookAutoSyncTimer = new System.Windows.Forms.Timer { Interval = 5000 };
+            logbookAutoSyncTimer.Tick += async (s, e) =>
+            {
+                logbookAutoSyncTimer.Stop();
+                var sync = new LogbookAutoSync(iniFile,
+                    () => qrzLogbookApiKey, () => lotwLogbookUser, () => lotwLogbookPass,
+                    () => clubLogUploadEmail, () => clubLogUploadPassword, () => clubLogUploadCallsign,
+                    call => lookupManager?.Build(call)?.State,
+                    text => ShowMsg(text, false),
+                    ShowLogbookWindowStatus)
+                {
+                    QrzAutoSyncEnabled     = qrzLogbookAutoSyncEnabled,
+                    QrzRefreshDays         = qrzLogbookRefreshDays,
+                    LotwAutoSyncEnabled    = lotwLogbookAutoSyncEnabled,
+                    LotwRefreshDays        = lotwLogbookRefreshDays,
+                    ClubLogAutoSyncEnabled = clubLogLogbookAutoSyncEnabled,
+                    ClubLogRefreshDays     = clubLogLogbookRefreshDays,
+                };
+                try { await sync.RunDueSyncsAsync(); }
+                catch (Exception ex) { ShowMsg("Logbook auto-sync error: " + ex.Message, false); }
+            };
+            logbookAutoSyncTimer.Start();
         }
 
         // IJimmyStatusView / IJimmyQueueView / IJimmyLogView (Phase 2.3/2.4 first wave) --
