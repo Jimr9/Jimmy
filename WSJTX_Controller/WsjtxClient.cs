@@ -212,6 +212,12 @@ namespace WSJTX_Controller
         public int cachedEvenOffset = 0;
         private bool analysisCompleted = false;
         private bool pendingCqAfterAnalysis = false;
+        // Set by StartSlotAnalysis (the Analyze Transmit Slot hotkey, or the "run
+        // recommended analysis now?" prompt before calling CQ) so CalcBestOffset still
+        // runs an explicitly-requested one-time analysis even when "Use best Tx
+        // frequency" is unchecked -- that checkbox governs the unprompted BACKGROUND
+        // analysis only (see CalcBestOffset), not the on-demand hotkey.
+        private bool _manualAnalysisRequested = false;
         // Transmit-slot analysis needs decodes in both the even and odd periods before it can
         // finish (see CalcBestOffset) -- on a quiet band that can take a long time, or never
         // happen at all, previously leaving the operator staring at "Analyzing transmit slot..."
@@ -2293,6 +2299,7 @@ namespace WSJTX_Controller
             DebugOutput($"{Time()} [BAND-AUDIT] StartSlotAnalysis: bandIdx:{bandIdx} pendingCq:{pendingCq}");
             ClearAudioOffsets();
             pendingCqAfterAnalysis = pendingCq;
+            _manualAnalysisRequested = true;
             StatusView.ShowMessage("Analyzing transmit slot...", false);
 
             if (pendingCq)

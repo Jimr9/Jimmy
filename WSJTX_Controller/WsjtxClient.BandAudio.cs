@@ -21,6 +21,7 @@ namespace WSJTX_Controller
             timeOffset = 0;
             analysisCompleted = false;
             pendingCqAfterAnalysis = false;
+            _manualAnalysisRequested = false;
             DebugOutput($"{Time()} [BAND-AUDIT] ClearAudioOffsets: bandIdx:{bandIdx} skipFirstDecodeSeries:{skipFirstDecodeSeries} mode:'{mode}'");
         }
 
@@ -160,6 +161,18 @@ namespace WSJTX_Controller
         {
             DebugOutput($"{Time()} CalcBestOffset, decodePeriod:{decodePeriod} clearList:{clearList} offsetList.Count:{offsetList.Count()} skipFirstDecodeSeries:{skipFirstDecodeSeries}");
 
+            // "Use best Tx frequency" governs the UNPROMPTED background version of this
+            // feature -- nothing actually enforced that until now, so this ran on every
+            // session/band regardless of the checkbox. But an explicit on-demand request
+            // (Analyze Transmit Slot hotkey, or the "run recommended analysis now?" prompt
+            // before calling CQ) must still work even with the checkbox off -- that's a
+            // one-time lookup, not the background auto-apply-to-everything mode. See
+            // StartSlotAnalysis/_manualAnalysisRequested. AudioOffsetFromMsg/
+            // AudioOffsetFromTxPeriod still gate their own *use* of oddOffset/evenOffset on
+            // the checkbox regardless, so a manually-requested result is informational only
+            // unless the checkbox is also on.
+            if (!ctrl.freqCheckBox.Checked && !_manualAnalysisRequested) return false;
+
             if (period == Periods.UNK)
             {
                 oddOffset = 0;
@@ -215,6 +228,7 @@ namespace WSJTX_Controller
             if (bothKnown && !analysisCompleted)
             {
                 analysisCompleted = true;
+                _manualAnalysisRequested = false;
                 _slotAnalysisWatchdog?.Stop();
                 StatusView.ShowMessage(
                     $"Transmit slot analysis complete. Even period: {evenOffset} Hz, odd period: {oddOffset} Hz.",

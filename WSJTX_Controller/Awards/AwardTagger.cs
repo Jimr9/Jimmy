@@ -60,12 +60,18 @@ namespace WSJTX_Controller
         // "New DXCC" during a DXCC contest must not also silence award alerts for the
         // same stations. This runs for every decode, admitted or not, and plays the
         // "Award Needed" sound (with its own cooldown) when a match is found. It does
-        // not affect ranking, Priority, Category, or Call Filters admission in any way.
+        // not affect ranking, Priority, Category, or Call Filters admission in any way --
+        // except the weak-signal SNR floor below, which the user wants honored as an
+        // absolute gate on every alert type, award or not (2026-07-13: it was previously
+        // exempt here, matching ProcessDecodeMsg's own weak-signal check/exception).
         public void CheckAwardAlert(EnqueueDecodeMessage d)
         {
             if (_wc.activeAwardTags.Count == 0) return;
             string call = d.DeCall();
             if (string.IsNullOrEmpty(call)) return;
+
+            if (_wc.ctrl.ignoreWeakSnrCheckBox.Checked && d.Snr <= (int)_wc.ctrl.minSnrNumUpDown.Value && call != _wc.callInProg)
+                return;
 
             string matchedRuleId = MatchedAwardRuleId(d);
             if (matchedRuleId == null) return;
