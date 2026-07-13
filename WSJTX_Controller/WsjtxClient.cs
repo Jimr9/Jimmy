@@ -1096,6 +1096,12 @@ namespace WSJTX_Controller
                 if (ctrl.ignoreWeakSnrCheckBox.Checked && dmsg.Snr <= (int)ctrl.minSnrNumUpDown.Value && deCall != callInProg)
                 {
                     if (debugDetail) DebugOutput($"{spacer}{deCall} ignored, weak signal snr:{dmsg.Snr} floor:{(int)ctrl.minSnrNumUpDown.Value}");
+                    // Default: just stop refreshing this station's queue entry -- it lingers
+                    // (with its last good SNR still shown) until the separate call-queue age
+                    // timeout eventually prunes it. Opt-in: pull it immediately instead, since
+                    // its already-queued entry no longer reflects a signal that meets the floor.
+                    if (ctrl.removeOnWeakSnrCheckBox.Checked && callQueue.Contains(deCall))
+                        _callQueueStore.RemoveCall(deCall);
                     return;
                 }
 

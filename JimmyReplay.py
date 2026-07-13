@@ -1420,6 +1420,68 @@ def group17_still_needed_tag_clears_on_log(sock, v):
          ) if v.available else None)
 
 
+def group18_weak_snr_removal(sock, v):
+    """T40-T41: opt-in "remove from list immediately when signal drops below floor"
+    checkbox (Controller.removeOnWeakSnrCheckBox).
+
+    Environment-dependent, same category as Group 17: requires both "Ignore SNR at
+    or below" AND "Remove from list immediately..." checked in Options > Receive /
+    Auto Reply > Block List, with the floor set above -28, for T41 to actually prove
+    anything. Without that, T41 WARNs instead of PASSing -- the default (both boxes
+    unchecked) is for the station to keep lingering in the queue until the separate
+    call-queue age timeout prunes it, which is not a defect on its own.
+
+    Regression coverage for the 2026-07-13 fix: the weak-signal SNR floor previously
+    only ever gated whether a station's queue entry got refreshed by a new decode --
+    it never removed an already-queued station whose signal had since faded below
+    the floor, so the entry lingered indefinitely with its last (better) SNR still
+    shown. WsjtxClient.ProcessDecodeMsg now calls CallQueueStore.RemoveCall for the
+    already-queued station when a subsequent decode reports it below the floor, if
+    the new checkbox is on.
+    """
+    print("  ─ Group 18: Weak-signal floor, opt-in immediate removal ─")
+
+    WEAK_CALL = "W5WEAK"
+
+    was_queued = [False]
+    frag_nsp   = WEAK_CALL.lower().replace(" ", "")
+
+    def check_queued_strong():
+        v.wait_for_queue(WEAK_CALL, timeout=3.0)
+        items = v.queue_items()
+        was_queued[0] = any(frag_nsp in i.lower().replace(" ", "") for i in items)
+        v._report(was_queued[0], f"T40: {WEAK_CALL} queued at strong SNR", f"queue={items}")
+
+    send(sock,
+         f"Strong CQ from {WEAK_CALL}",
+         "Expect: queued normally (strong signal, unaffected by any floor)",
+         build_enqueue(f"CQ {WEAK_CALL} EM63", snr=0),
+         verify_fn=check_queued_strong if v.available else None)
+
+    def check_removed_or_warn():
+        if not was_queued[0]:
+            print(f"    ⚠ WARN  T41: skipped ({WEAK_CALL} never confirmed queued in T40)")
+            return
+        items = v.queue_items()
+        still_present = any(frag_nsp in i.lower().replace(" ", "") for i in items)
+        if not still_present:
+            v._report(True, f"T41: {WEAK_CALL} removed after weak decode (remove-on-weak-SNR active)", f"queue={items}")
+        else:
+            print(f"    ⚠ WARN  T41: {WEAK_CALL} still queued after weak decode")
+            print( "           (not failed — requires: check 'Ignore SNR at or below' AND "
+                   "'Remove from list immediately...' in Options, floor above -28)")
+            print(f"           queue={items}")
+
+    send(sock,
+         f"Same station, now very weak: {WEAK_CALL}",
+         "Expect: removed immediately IF 'Ignore SNR at or below' and 'Remove from "
+         "list immediately...' are both checked in Options, with the floor above -28 "
+         "(WARN, not FAIL, otherwise)",
+         build_enqueue(f"CQ {WEAK_CALL} EM63", snr=-28),
+         delay=2.0,
+         verify_fn=check_removed_or_warn if v.available else None)
+
+
 def run_tests(sock, v):
     print("──── Test Decode Messages ────")
     print(f"  Format: [DESTINATION] [SOURCE] [payload]")
@@ -1443,6 +1505,7 @@ def run_tests(sock, v):
     group15_wait_and_reply_cooperation(sock, v)
     group16_rrr_after_logged_no_requeue(sock, v)
     group17_still_needed_tag_clears_on_log(sock, v)
+    group18_weak_snr_removal(sock, v)
 
     # ── To add a new replay test group ──────────────────────────────────────
     # 1. Define a new function, e.g.:

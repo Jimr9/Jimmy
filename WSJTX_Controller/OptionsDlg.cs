@@ -1183,6 +1183,7 @@ namespace WSJTX_Controller
             ReparentTo(ctrl.ignoreWeakSnrCheckBox, rcvBlockListGroupBox, new Point(320, 19));
             ReparentTo(ctrl.minSnrNumUpDown,        rcvBlockListGroupBox, new Point(478, 17));
             ReparentTo(ctrl.minSnrLabel,            rcvBlockListGroupBox, new Point(530, 20));
+            ReparentTo(ctrl.removeOnWeakSnrCheckBox, rcvBlockListGroupBox, new Point(10, 42));
 
             // Transmit group → Transmit tab
             ReparentTo(ctrl.freqCheckBox,       rcvTransmitGroupBox, new Point(10, 18));

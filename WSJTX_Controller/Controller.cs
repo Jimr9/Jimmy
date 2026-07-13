@@ -99,6 +99,7 @@ namespace WSJTX_Controller
         public CheckBox      ignoreWeakSnrCheckBox;
         public NumericUpDown minSnrNumUpDown;
         public Label         minSnrLabel;
+        public CheckBox      removeOnWeakSnrCheckBox;
 
         // Logbook credentials (loaded from ini; set from Options > Lookup / Data tab)
         public string qrzLogbookApiKey = "";
@@ -809,16 +810,32 @@ namespace WSJTX_Controller
                 AutoSize = true,
                 Visible  = false,
             };
+            // Off by default: the floor only gates whether a station's queue entry gets
+            // refreshed by a new (weak) decode -- it does not by itself pull an
+            // already-queued station back out once its signal fades. Checking this makes
+            // a weak decode for an already-queued station remove it immediately instead
+            // of leaving it to linger (with its last good SNR still shown) until the
+            // separate call-queue age timeout eventually prunes it.
+            removeOnWeakSnrCheckBox = new CheckBox
+            {
+                Text           = "Remove from list immediately when signal drops below floor",
+                AccessibleName = "Remove already-listed stations immediately once their signal drops below the SNR floor",
+                AutoSize       = true,
+                TabIndex       = 70,
+                Visible        = false,
+            };
             if (iniFile != null)
             {
                 ignoreWeakSnrCheckBox.Checked = iniFile.Read("ignoreWeakSnr") == "True";
                 if (int.TryParse(iniFile.Read("minSnr"), out int savedMinSnr)) minSnrNumUpDown.Value = savedMinSnr;
+                removeOnWeakSnrCheckBox.Checked = iniFile.Read("removeOnWeakSnr") == "True";
             }
             ignoreWeakSnrCheckBox.CheckedChanged += (s2, e2) => minSnrNumUpDown.Enabled = ignoreWeakSnrCheckBox.Checked;
             minSnrNumUpDown.Enabled = ignoreWeakSnrCheckBox.Checked;
             this.Controls.Add(ignoreWeakSnrCheckBox);
             this.Controls.Add(minSnrNumUpDown);
             this.Controls.Add(minSnrLabel);
+            this.Controls.Add(removeOnWeakSnrCheckBox);
 
             formLoaded = true;
             ApplyAdvancedLayout();
@@ -877,6 +894,7 @@ namespace WSJTX_Controller
                 iniFile.Write("timeout", ((int)timeoutNumUpDown.Value).ToString());
                 iniFile.Write("ignoreWeakSnr", ignoreWeakSnrCheckBox.Checked.ToString());
                 iniFile.Write("minSnr", ((int)minSnrNumUpDown.Value).ToString());
+                iniFile.Write("removeOnWeakSnr", removeOnWeakSnrCheckBox.Checked.ToString());
                 iniFile.Write("useDirected", callDirCqCheckBox.Checked.ToString());
                 iniFile.Write("directedCqLockedEntry", directedCqLockedEntry ?? "");
                 if (directedTextBox.Text == separateBySpaces) directedTextBox.Clear();

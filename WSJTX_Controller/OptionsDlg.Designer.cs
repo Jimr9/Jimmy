@@ -205,7 +205,7 @@ namespace WSJTX_Controller
             this.rcvBlockListGroupBox.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
             this.rcvBlockListGroupBox.Location = new System.Drawing.Point(5, 425);
             this.rcvBlockListGroupBox.Name = "rcvBlockListGroupBox";
-            this.rcvBlockListGroupBox.Size = new System.Drawing.Size(650, 52);
+            this.rcvBlockListGroupBox.Size = new System.Drawing.Size(650, 74);
             this.rcvBlockListGroupBox.TabStop = false;
             this.rcvBlockListGroupBox.Text = "Block List";
             //
