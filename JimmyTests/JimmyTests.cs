@@ -1507,6 +1507,18 @@ static class JimmyTests
                 var idsLeft = db.SearchQsos(null, null, null, null).Select(q => q.Id).ToList();
                 var exportOne = db.GetAdifFieldDicts(new[] { idsLeft[0] });
                 Check("GetAdifFieldDicts: scoped id list exports exactly that count", exportOne.Count == 1, true);
+
+                var exportBySource = db.GetAdifFieldDicts(null, new[] { "MANUAL" });
+                Check("GetAdifFieldDicts: source filter matching all rows (source=MANUAL) exports both",
+                      exportBySource.Count == 2, true);
+
+                var exportByOtherSource = db.GetAdifFieldDicts(null, new[] { "QRZ" });
+                Check("GetAdifFieldDicts: source filter matching no rows exports none",
+                      exportByOtherSource.Count == 0, true);
+
+                var exportIdsAndSource = db.GetAdifFieldDicts(new[] { idsLeft[0] }, new[] { "MANUAL" });
+                Check("GetAdifFieldDicts: id list and source filter combine (AND, not OR)",
+                      exportIdsAndSource.Count == 1, true);
             }
         }
         catch (Exception ex)

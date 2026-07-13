@@ -29,6 +29,11 @@ namespace WSJTX_Controller
         public string RstRcvd     { get; set; }
         public string Comment     { get; set; }
         public bool   IsConfirmed => LotwQslRcvd == "Y" || QrzQslRcvd == "Y";
+
+        // Every value the "source" column is ever written with. Single source of truth
+        // for the Edit Log source filter and the export source-filter dialog -- add a
+        // new logging service here and both pick it up automatically.
+        public static readonly string[] KnownSources = { "WSJTX", "QRZ", "LOTW", "CLUBLOG", "MANUAL" };
     }
 
     public class ImportLogEntry
@@ -1074,22 +1079,33 @@ WHERE id=@id;";
 
         // Returns full-fidelity ADIF field dictionaries (every stored column, not just
         // the Edit Log tab's display subset) for export. ids null/empty exports every QSO.
-        public List<Dictionary<string, string>> GetAdifFieldDicts(IEnumerable<int> ids)
+        // sources null/empty applies no source filter; otherwise only rows whose "source"
+        // column matches one of the given values are included.
+        public List<Dictionary<string, string>> GetAdifFieldDicts(IEnumerable<int> ids, IEnumerable<string> sources = null)
         {
             var idList = ids?.Distinct().ToList();
+            var sourceList = sources?.Distinct().ToList();
             lock (_lock)
             {
                 var result = new List<Dictionary<string, string>>();
                 using (var cmd = _conn.CreateCommand())
                 {
-                    string whereClause = "";
+                    var clauses = new List<string>();
                     if (idList != null && idList.Count > 0)
                     {
                         string placeholders = string.Join(",", idList.Select((_, i) => $"@id{i}"));
-                        whereClause = $"WHERE id IN ({placeholders})";
+                        clauses.Add($"id IN ({placeholders})");
                         for (int i = 0; i < idList.Count; i++)
                             cmd.Parameters.AddWithValue($"@id{i}", idList[i]);
                     }
+                    if (sourceList != null && sourceList.Count > 0)
+                    {
+                        string placeholders = string.Join(",", sourceList.Select((_, i) => $"@src{i}"));
+                        clauses.Add($"source IN ({placeholders})");
+                        for (int i = 0; i < sourceList.Count; i++)
+                            cmd.Parameters.AddWithValue($"@src{i}", sourceList[i]);
+                    }
+                    string whereClause = clauses.Count > 0 ? "WHERE " + string.Join(" AND ", clauses) : "";
                     cmd.CommandText = $"SELECT * FROM qso {whereClause} ORDER BY qso_date, time_on;";
                     using (var r = cmd.ExecuteReader())
                     {

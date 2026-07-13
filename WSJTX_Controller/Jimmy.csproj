@@ -94,6 +94,7 @@
     </Compile>
     <Compile Include="Logbook\EditQsoDlg.cs" />
     <Compile Include="Logbook\EditLogRowOrderDlg.cs" />
+    <Compile Include="Logbook\ExportSourceFilterDlg.cs" />
     <Compile Include="Logbook\LogbookAutoSync.cs" />
     <Compile Include="Awards\RuleFile.cs" />
     <Compile Include="Awards\RuleDefinition.cs" />

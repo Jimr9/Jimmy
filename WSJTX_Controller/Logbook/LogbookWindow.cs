@@ -753,7 +753,8 @@ namespace WSJTX_Controller
                 TabIndex       = 2,
                 AccessibleName = "Source filter",
             };
-            _editSourceCb.Items.AddRange(new object[] { "(Any)", "WSJTX", "QRZ", "LOTW", "CLUBLOG", "MANUAL" });
+            _editSourceCb.Items.Add("(Any)");
+            _editSourceCb.Items.AddRange(QsoRecord.KnownSources);
             _editSourceCb.SelectedIndex = 0;
             _editLogPanel.Controls.Add(_editSourceCb);
 
@@ -1109,6 +1110,14 @@ namespace WSJTX_Controller
         private void ExportAdif(List<int> ids)
         {
             if (_db == null) return;
+
+            List<string> sources;
+            using (var sourceDlg = new ExportSourceFilterDlg())
+            {
+                if (sourceDlg.ShowDialog(this) != DialogResult.OK) return;
+                sources = sourceDlg.SelectedSources;
+            }
+
             using (var dlg = new SaveFileDialog
             {
                 Title    = "Export ADIF File",
@@ -1119,7 +1128,7 @@ namespace WSJTX_Controller
                 if (dlg.ShowDialog(this) != DialogResult.OK) return;
                 try
                 {
-                    var fields = _db.GetAdifFieldDicts(ids);
+                    var fields = _db.GetAdifFieldDicts(ids, sources);
                     File.WriteAllText(dlg.FileName, AdifExporter.BuildFile(fields));
                     SetStatus($"Exported {fields.Count:N0} QSO(s) to {dlg.FileName}.");
                 }
