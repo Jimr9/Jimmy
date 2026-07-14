@@ -28,6 +28,15 @@ namespace WSJTX_Controller
         public static string ListsFolder =>
             Path.Combine(RulesFolder, "Lists");
 
+        // The starter library shipped next to the exe -- the source of truth for
+        // "Restore Default Awards" (RuleDefinitionManagerDlg) as well as first-run
+        // seeding below. Never written to at runtime.
+        public static string ShippedRulesFolder =>
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "RuleDefinitions");
+
+        public static string ShippedListsFolder =>
+            Path.Combine(ShippedRulesFolder, "Lists");
+
         // Scans RulesFolder for *.ini, parses and validates each one. A single bad
         // file is skipped (recorded as an error) and never blocks the others or
         // Jimmy's startup.
@@ -85,10 +94,9 @@ namespace WSJTX_Controller
         {
             if (Directory.Exists(RulesFolder)) return;
 
-            string seedSource = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "RuleDefinitions");
             Directory.CreateDirectory(RulesFolder);
             Directory.CreateDirectory(ListsFolder);
-            if (Directory.Exists(seedSource)) CopyDirectory(seedSource, RulesFolder);
+            if (Directory.Exists(ShippedRulesFolder)) CopyDirectory(ShippedRulesFolder, RulesFolder);
         }
 
         private static void CopyDirectory(string sourceDir, string destDir)
@@ -100,7 +108,10 @@ namespace WSJTX_Controller
                 CopyDirectory(dir, Path.Combine(destDir, Path.GetFileName(dir)));
         }
 
-        private static RuleDefinition ParseAndValidate(string path, out string error)
+        // Internal (not private): reused by RuleDefinitionManagerDlg's "Restore Default
+        // Awards" to parse the shipped folder's files with the exact same validation as
+        // the live loader, rather than a second hand-rolled parser.
+        internal static RuleDefinition ParseAndValidate(string path, out string error)
         {
             error = null;
             RuleFile file;

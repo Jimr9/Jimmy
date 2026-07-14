@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Drawing;
 
 namespace WSJTX_Controller
@@ -34,6 +35,48 @@ namespace WSJTX_Controller
         public Color ListForeColor { get; set; } = SystemColors.WindowText;
         public Color ListAltRowColor { get; set; } = Color.FromArgb(233, 233, 233);
 
+        // Per-alert-category row colors (Options > Appearance). A category with no
+        // entry here falls back to the normal list colors above -- so nothing changes
+        // for anyone who never opens the alert color picker. DEFAULT is excluded; it's
+        // not an alert, it's every ordinary row.
+        public static readonly WsjtxClient.CallCategory[] AlertCategories =
+        {
+            WsjtxClient.CallCategory.NEW_COUNTRY,
+            WsjtxClient.CallCategory.NEW_COUNTRY_ON_BAND,
+            WsjtxClient.CallCategory.TO_MYCALL,
+            WsjtxClient.CallCategory.MANUAL_SEL,
+            WsjtxClient.CallCategory.WANTED_CQ,
+            WsjtxClient.CallCategory.POTA,
+            WsjtxClient.CallCategory.SOTA,
+            WsjtxClient.CallCategory.ALWAYS_WANTED,
+            WsjtxClient.CallCategory.WAS_NEEDED,
+            WsjtxClient.CallCategory.DXCC_UNCONFIRMED,
+            WsjtxClient.CallCategory.ZONE_NEEDED,
+            WsjtxClient.CallCategory.STILL_NEEDED,
+        };
+
+        public static readonly Dictionary<WsjtxClient.CallCategory, string> AlertCategoryLabels =
+            new Dictionary<WsjtxClient.CallCategory, string>
+        {
+            { WsjtxClient.CallCategory.NEW_COUNTRY,         "New DXCC" },
+            { WsjtxClient.CallCategory.NEW_COUNTRY_ON_BAND, "New DXCC on band" },
+            { WsjtxClient.CallCategory.TO_MYCALL,           "Calling me" },
+            { WsjtxClient.CallCategory.MANUAL_SEL,          "Manual selection" },
+            { WsjtxClient.CallCategory.WANTED_CQ,           "Directed CQ" },
+            { WsjtxClient.CallCategory.POTA,                "POTA" },
+            { WsjtxClient.CallCategory.SOTA,                "SOTA" },
+            { WsjtxClient.CallCategory.ALWAYS_WANTED,       "Always wanted" },
+            { WsjtxClient.CallCategory.WAS_NEEDED,          "WAS needed" },
+            { WsjtxClient.CallCategory.DXCC_UNCONFIRMED,    "DXCC unconfirmed" },
+            { WsjtxClient.CallCategory.ZONE_NEEDED,         "Zone needed" },
+            { WsjtxClient.CallCategory.STILL_NEEDED,        "Award needed" },
+        };
+
+        public Dictionary<WsjtxClient.CallCategory, Color?> AlertForeColors { get; } =
+            new Dictionary<WsjtxClient.CallCategory, Color?>();
+        public Dictionary<WsjtxClient.CallCategory, Color?> AlertBackColors { get; } =
+            new Dictionary<WsjtxClient.CallCategory, Color?>();
+
         public void LoadFromIni(IniFile ini)
         {
             AdvancedCallLayout = ini.Read("advCallLayout") == "True";
@@ -47,6 +90,12 @@ namespace WSJTX_Controller
             ListBackColor = ReadColor(ini, "listBackColor", ListBackColor);
             ListForeColor = ReadColor(ini, "listForeColor", ListForeColor);
             ListAltRowColor = ReadColor(ini, "listAltRowColor", ListAltRowColor);
+
+            foreach (var cat in AlertCategories)
+            {
+                AlertForeColors[cat] = ReadOptionalColor(ini, $"alertFore_{cat}");
+                AlertBackColors[cat] = ReadOptionalColor(ini, $"alertBack_{cat}");
+            }
         }
 
         public void SaveToIni(IniFile ini)
@@ -61,12 +110,30 @@ namespace WSJTX_Controller
             ini.Write("listBackColor", ListBackColor.ToArgb().ToString());
             ini.Write("listForeColor", ListForeColor.ToArgb().ToString());
             ini.Write("listAltRowColor", ListAltRowColor.ToArgb().ToString());
+
+            foreach (var cat in AlertCategories)
+            {
+                WriteOptionalColor(ini, $"alertFore_{cat}", AlertForeColors.TryGetValue(cat, out var fc) ? fc : null);
+                WriteOptionalColor(ini, $"alertBack_{cat}", AlertBackColors.TryGetValue(cat, out var bc) ? bc : null);
+            }
         }
 
         private static Color ReadColor(IniFile ini, string key, Color fallback)
         {
             string raw = ini.Read(key);
             return int.TryParse(raw, out int argb) ? Color.FromArgb(argb) : fallback;
+        }
+
+        private static Color? ReadOptionalColor(IniFile ini, string key)
+        {
+            string raw = ini.Read(key);
+            return int.TryParse(raw, out int argb) ? (Color?)Color.FromArgb(argb) : null;
+        }
+
+        private static void WriteOptionalColor(IniFile ini, string key, Color? color)
+        {
+            if (color.HasValue) ini.Write(key, color.Value.ToArgb().ToString());
+            else ini.DeleteKey(key);
         }
     }
 }

@@ -1125,6 +1125,16 @@ namespace WSJTX_Controller
                 return true;
             }
 
+            // Same reasoning as OpenLogbook above -- manual QSO entry is for logging QSOs
+            // made independent of WSJT-X too (e.g. SSB on a separate rig), so it must not
+            // require WSJT-X to be connected.
+            if (keyData == hotkeyConfig[HotkeyAction.AddManualQso] && hotkeyConfig[HotkeyAction.AddManualQso] != Keys.None)
+            {
+                OpenLogbookWindow();
+                _logbookWindow?.OpenAddQsoDialog();
+                return true;
+            }
+
             if (!wsjtxClient.WsjtxConnecting()) return false;
 
 
@@ -1713,7 +1723,8 @@ namespace WSJTX_Controller
                 _logbookWindow = new LogbookWindow(iniFile,
                     () => qrzLogbookApiKey, () => lotwLogbookUser, () => lotwLogbookPass,
                     () => clubLogUploadEmail, () => clubLogUploadPassword, () => clubLogUploadCallsign,
-                    onImportComplete: () => BeginInvoke(new Action(() => { LoadHrcCache(); RefreshStillNeedCache(); })),
+                    onImportComplete: () => BeginInvoke(new Action(() =>
+                        { PruneStaleActiveAwardRuleIds(); LoadHrcCache(); RefreshStillNeedCache(); })),
                     initialActiveAwardRuleIds: activeAwardRuleIds,
                     onActiveAwardRuleIdsChanged: (ruleId, isTracked) =>
                     {
@@ -1728,7 +1739,12 @@ namespace WSJTX_Controller
                         string s = HotkeyConfig.FormatKeys(hotkeyConfig[HotkeyAction.UploadLotw]);
                         return string.IsNullOrEmpty(s) ? "(unassigned hotkey)" : s;
                     },
-                    resolveUsState: call => lookupManager?.Build(call)?.State);
+                    resolveUsState: call => lookupManager?.Build(call)?.State,
+                    isWsjtxConnected: () => wsjtxClient != null && wsjtxClient.ConnectedToWsjtx(),
+                    currentBand: () => wsjtxClient?.CurrentBandStr,
+                    currentMode: () => wsjtxClient?.CurrentMode,
+                    lookupCallsign: call => lookupManager?.Build(call),
+                    onQsoLogged: () => wsjtxClient?.Sounds?.PlaySoundEvent(loggedCheckBox.Checked, soundFile_Logged));
                 // Deliberately no Owner assignment -- an owned window is always kept in front
                 // of its owner at the Win32 level, which made it impossible to Alt+Tab back to
                 // Jimmy's main window while the Logbook was open (found 2026-07-11: previously
@@ -1947,10 +1963,12 @@ namespace WSJTX_Controller
         }
 
         private List<string> _callQueueKeys = new List<string>();
+        private List<WsjtxClient.CallCategory> _callQueueCategories = new List<WsjtxClient.CallCategory>();
 
-        public void RenderCallQueue(string headerText, List<string> items, List<string> keys, SelectionMode selectionMode)
+        public void RenderCallQueue(string headerText, List<string> items, List<string> keys, List<WsjtxClient.CallCategory> categories, SelectionMode selectionMode)
         {
             replyListLabel.Text = headerText;
+            _callQueueCategories = categories;
 
             bool changed = callListBox.SelectionMode != selectionMode || callListBox.Items.Count != items.Count;
             if (!changed)
@@ -1983,9 +2001,11 @@ namespace WSJTX_Controller
         }
 
         private List<string> _rawDecodeKeys = new List<string>();
+        private List<WsjtxClient.CallCategory> _rawDecodeCategories = new List<WsjtxClient.CallCategory>();
 
-        public void RenderRawDecodes(List<string> items, List<string> keys)
+        public void RenderRawDecodes(List<string> items, List<string> keys, List<WsjtxClient.CallCategory> categories)
         {
+            _rawDecodeCategories = categories;
             bool focused = advRawListBox.Focused;
             int prevIdx = focused ? advRawListBox.SelectedIndex : -1;
             bool changed = advRawListBox.Items.Count != items.Count;
@@ -2014,15 +2034,18 @@ namespace WSJTX_Controller
 
         private List<string> _tx1Keys = new List<string>();
         private List<string> _tx2Keys = new List<string>();
+        private List<WsjtxClient.CallCategory> _tx1Categories = new List<WsjtxClient.CallCategory>();
+        private List<WsjtxClient.CallCategory> _tx2Categories = new List<WsjtxClient.CallCategory>();
 
         // Note: unlike RenderCallQueue/RenderLoggedList/RenderRawDecodes, this does NOT return
         // early when nothing changed -- it mirrors WsjtxClient.ShowAdvancedQueue()'s original
         // structure exactly, which always attempts the selection restore after the list update
         // (a no-op in practice when nothing changed, but preserved verbatim rather than "cleaned up").
-        public void RenderAdvancedList(bool isTx1Side, string accessibleName, List<string> items, List<string> keys)
+        public void RenderAdvancedList(bool isTx1Side, string accessibleName, List<string> items, List<string> keys, List<WsjtxClient.CallCategory> categories)
         {
             ListBox lb = isTx1Side ? advTx1ListBox : advTx2ListBox;
             if (lb.AccessibleName != accessibleName) lb.AccessibleName = accessibleName;
+            if (isTx1Side) _tx1Categories = categories; else _tx2Categories = categories;
 
             bool focused = lb.Focused;
             int prevIdx = focused ? lb.SelectedIndex : -1;
@@ -2371,6 +2394,7 @@ namespace WSJTX_Controller
                 $"{nl}{K(HotkeyAction.AnalyzeSlot)}: Analyze transmit slot (find quietest audio frequency for CQ; requires 'Use best Tx frequency' enabled)." +
                 $"{nl}{K(HotkeyAction.LookupStation)}: Look up selected station (shows callsign, country, state, LoTW status, and more)." +
                 $"{nl}{K(HotkeyAction.OpenLogbook)}: Open the Ham Radio Center logbook." +
+                $"{nl}{K(HotkeyAction.AddManualQso)}: Add a manually-logged QSO (e.g. worked outside WSJT-X)." +
 
                 $"{nl}{nl}Radio configuration keys:" +
                 $"{nl}{K(HotkeyAction.TuneMode)}: Toggle Tune mode, to determine correct audio output level to radio ({K(HotkeyAction.AudioUp)} and {K(HotkeyAction.AudioDown)} keys to adjust, {K(HotkeyAction.Prompts)} for fast or complete updates)." +
@@ -3227,6 +3251,20 @@ namespace WSJTX_Controller
             return result;
         }
 
+        // A tracked Still Need award's Rule Definition file can be deleted out from under
+        // it (individually via the Rule Definition Manager, or in bulk via Restore Default
+        // Awards) -- RefreshStillNeedCache already no-ops safely when an Id has no matching
+        // definition, but nothing previously dropped the stale Id itself, so it would sit
+        // in the ini forever and silently resume tracking if that exact Id were ever reused
+        // by an unrelated future award. Called after every Rule Definition Manager action
+        // (see onImportComplete above), not just Restore Defaults.
+        private void PruneStaleActiveAwardRuleIds()
+        {
+            var liveIds = new HashSet<string>(RuleLibrary.Definitions.Select(d => d.Id), StringComparer.OrdinalIgnoreCase);
+            if (activeAwardRuleIds.RemoveWhere(id => !liveIds.Contains(id)) > 0)
+                iniFile?.Write("activeAwardRuleIds", FormatActiveAwardRuleIds(activeAwardRuleIds));
+        }
+
         // Serialize activeAwardRuleIds to a comma-separated list of Rule Definition Ids.
         public static string FormatActiveAwardRuleIds(HashSet<string> ids)
         {
@@ -3842,16 +3880,39 @@ namespace WSJTX_Controller
                 lb.Invalidate();
         }
 
+        // Per-category alert colors (Options > Appearance) only apply to the lists that carry
+        // a CallCategory per row -- callListBox/advRawListBox/advTx1ListBox/advTx2ListBox.
+        // logListBox has no category concept (logged calls aren't tagged), so it's absent here
+        // and always falls through to the plain alternating-row colors below.
+        private List<WsjtxClient.CallCategory> CategoriesForList(ListBox lb)
+        {
+            if (lb == callListBox) return _callQueueCategories;
+            if (lb == advRawListBox) return _rawDecodeCategories;
+            if (lb == advTx1ListBox) return _tx1Categories;
+            if (lb == advTx2ListBox) return _tx2Categories;
+            return null;
+        }
+
         private void AdvListBox_DrawItem(object sender, DrawItemEventArgs e)
         {
             if (e.Index < 0) return;
             var lb = (ListBox)sender;
             string text = lb.Items[e.Index].ToString();
 
+            var categories = CategoriesForList(lb);
+            WsjtxClient.CallCategory category = (categories != null && e.Index < categories.Count)
+                ? categories[e.Index] : WsjtxClient.CallCategory.DEFAULT;
+            Color? alertBack = null, alertFore = null;
+            if (category != WsjtxClient.CallCategory.DEFAULT)
+            {
+                Settings.AlertBackColors.TryGetValue(category, out alertBack);
+                Settings.AlertForeColors.TryGetValue(category, out alertFore);
+            }
+
             bool selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
             Color backColor = selected ? SystemColors.Highlight
-                             : (e.Index % 2 == 0) ? lb.BackColor : AdvListAltRowColor;
-            Color foreColor = selected ? SystemColors.HighlightText : lb.ForeColor;
+                             : alertBack ?? ((e.Index % 2 == 0) ? lb.BackColor : AdvListAltRowColor);
+            Color foreColor = selected ? SystemColors.HighlightText : (alertFore ?? lb.ForeColor);
 
             using (var backBrush = new SolidBrush(backColor))
                 e.Graphics.FillRectangle(backBrush, e.Bounds);

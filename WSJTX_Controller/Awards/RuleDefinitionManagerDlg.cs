@@ -165,6 +165,8 @@ namespace WSJTX_Controller
             MakeBtn("Open Lists Folder", "Open the companion Lists folder", (s, e) => OpenFolder(RuleLoader.ListsFolder));
             by += gap;
             MakeBtn("Manage Companion &Lists...", "Manage companion list files", (s, e) => OpenCompanionListEditor());
+            by += gap;
+            MakeBtn("Restore &Defaults...", "Restore built-in awards to their original shipped definitions", (s, e) => RestoreDefaults());
 
             var closeBtn = new Button
             {
@@ -679,6 +681,142 @@ namespace WSJTX_Controller
                 !universeOrLimitTo.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 return null;
             return universeOrLimitTo.Substring(prefix.Length).Trim();
+        }
+
+        // Resets every built-in award back to its shipped definition, and lets the user
+        // choose whether to keep or discard anything in the live folder that isn't part
+        // of the shipped set (custom/tester-made awards, or old ones left over from
+        // earlier Jimmy versions). Deleted files go to the Recycle Bin -- Windows' own
+        // "Empty Recycle Bin" is the actual point of no return, not this action.
+        private void RestoreDefaults()
+        {
+            string shippedFolder = RuleLoader.ShippedRulesFolder;
+            if (!Directory.Exists(shippedFolder))
+            {
+                MessageBox.Show(this, "The shipped Rule Definitions folder could not be found.",
+                    "Restore Default Awards", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            var shippedDefs = new List<RuleDefinition>();
+            foreach (var path in Directory.GetFiles(shippedFolder, "*.ini"))
+            {
+                string error;
+                var def = RuleLoader.ParseAndValidate(path, out error);
+                if (def != null) shippedDefs.Add(def);
+            }
+            if (shippedDefs.Count == 0)
+            {
+                MessageBox.Show(this, "No valid shipped award definitions were found.",
+                    "Restore Default Awards", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            var shippedIds = new HashSet<string>(shippedDefs.Select(d => d.Id), StringComparer.OrdinalIgnoreCase);
+
+            // Classify every physical file in the live folder independently of
+            // RuleLibrary's dedup (which only keeps the first file per duplicate Id) --
+            // a stray duplicate of a shipped Id must still be caught and reset, not
+            // silently left behind.
+            var liveDefaultFiles = new List<string>();
+            var customDefs = new List<RuleDefinition>();
+            if (Directory.Exists(RuleLoader.RulesFolder))
+            {
+                foreach (var path in Directory.GetFiles(RuleLoader.RulesFolder, "*.ini"))
+                {
+                    string error;
+                    var def = RuleLoader.ParseAndValidate(path, out error);
+                    if (def == null) continue;   // leave unparseable files alone entirely
+                    if (shippedIds.Contains(def.Id)) liveDefaultFiles.Add(path);
+                    else customDefs.Add(def);
+                }
+            }
+
+            List<RuleDefinition> keptCustomDefs;
+            if (customDefs.Count == 0)
+            {
+                var confirm = MessageBox.Show(this,
+                    $"This resets {shippedDefs.Count} built-in award(s) to their original shipped definitions. " +
+                    "No custom awards were found in your Rule Definitions folder. Continue?",
+                    "Restore Default Awards", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                if (confirm != DialogResult.Yes) return;
+                keptCustomDefs = new List<RuleDefinition>();
+            }
+            else
+            {
+                using (var dlg = new RestoreDefaultAwardsDlg(shippedDefs.Count, customDefs) { Owner = this })
+                {
+                    if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                    keptCustomDefs = dlg.KeptCustomDefs;
+                }
+            }
+
+            var keptIds = new HashSet<string>(keptCustomDefs.Select(d => d.Id), StringComparer.OrdinalIgnoreCase);
+            var removedCustomDefs = customDefs.Where(d => !keptIds.Contains(d.Id)).ToList();
+            int recycledLists = 0;
+
+            try
+            {
+                foreach (var path in liveDefaultFiles) RecycleFile(path);
+                foreach (var d in removedCustomDefs) RecycleFile(d.SourceFile);
+
+                Directory.CreateDirectory(RuleLoader.RulesFolder);
+                foreach (var path in Directory.GetFiles(shippedFolder, "*.ini"))
+                    File.Copy(path, Path.Combine(RuleLoader.RulesFolder, Path.GetFileName(path)), overwrite: true);
+
+                if (Directory.Exists(RuleLoader.ShippedListsFolder))
+                {
+                    Directory.CreateDirectory(RuleLoader.ListsFolder);
+                    foreach (var path in Directory.GetFiles(RuleLoader.ShippedListsFolder))
+                        File.Copy(path, Path.Combine(RuleLoader.ListsFolder, Path.GetFileName(path)), overwrite: true);
+                }
+
+                // Orphan cleanup: any live list file that isn't part of the shipped Lists
+                // set and isn't referenced by anything actually surviving (shipped + kept
+                // custom awards) is leftover junk from a removed/renamed custom award --
+                // clean it up too, same as the award files themselves.
+                RuleLibrary.Load();
+                var referencedListFiles = new HashSet<string>(
+                    RuleLibrary.Definitions.Select(GetCompanionFileName).Where(f => f != null),
+                    StringComparer.OrdinalIgnoreCase);
+                var shippedListFileNames = Directory.Exists(RuleLoader.ShippedListsFolder)
+                    ? new HashSet<string>(Directory.GetFiles(RuleLoader.ShippedListsFolder).Select(Path.GetFileName),
+                        StringComparer.OrdinalIgnoreCase)
+                    : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                if (Directory.Exists(RuleLoader.ListsFolder))
+                {
+                    foreach (var path in Directory.GetFiles(RuleLoader.ListsFolder))
+                    {
+                        string name = Path.GetFileName(path);
+                        if (shippedListFileNames.Contains(name)) continue;
+                        if (referencedListFiles.Contains(name)) continue;
+                        RecycleFile(path);
+                        recycledLists++;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Restore Defaults did not complete: " + ex.Message,
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+
+            RulesChanged = true;
+            LoadFromLibrary();
+
+            MessageBox.Show(this,
+                $"Restored {shippedDefs.Count} default award(s).\n" +
+                $"Removed {removedCustomDefs.Count} custom award(s) and {recycledLists} orphaned list file(s) (sent to Recycle Bin).\n" +
+                $"Kept {keptCustomDefs.Count} custom award(s).",
+                "Restore Default Awards", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private static void RecycleFile(string path)
+        {
+            if (!File.Exists(path)) return;
+            Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(path,
+                Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
         }
 
         private void SetEnabled(bool enabled)

@@ -89,8 +89,10 @@ namespace WSJTX_Controller
         // opposite-side decode periods.
         private List<string> _tx1SnapshotRows  = new List<string>();
         private List<string> _tx1SnapshotCalls = new List<string>();
+        private List<CallCategory> _tx1SnapshotCategories = new List<CallCategory>();
         private List<string> _tx2SnapshotRows  = new List<string>();
         private List<string> _tx2SnapshotCalls = new List<string>();
+        private List<CallCategory> _tx2SnapshotCategories = new List<CallCategory>();
         // Maps each normal-list display row index to its true callQueue position.
         // Rebuilt by ShowQueue whenever callInProg is filtered from the visible rows.
         private List<int> _callListBoxQueueIndices = new List<int>();
@@ -425,6 +427,11 @@ namespace WSJTX_Controller
         // Returns the ADIF-style band string for the current dial frequency (e.g. "20m"),
         // or null when the frequency is unknown or off-band.
         public string CurrentBandStr => FreqToBandStr(dialFrequency / 1e6);
+
+        // WSJT-X's current reported mode (e.g. "FT8", "FT4"), straight from the last
+        // StatusMessage -- just a default suggestion for manual QSO entry, not a
+        // restriction; the user can freely overtype it (e.g. with "SSB") there.
+        public string CurrentMode => mode;
 
         // Replace the entire categoryWeight table (loaded from INI or set by Phase 4 UI).
         // Validates that all entries are present and DEFAULT is 0 (delegated to Ranker).
@@ -1597,6 +1604,7 @@ namespace WSJTX_Controller
                 {
                     _tx1SnapshotRows.Clear();
                     _tx1SnapshotCalls.Clear();
+                    _tx1SnapshotCategories.Clear();
                     ctrl.advTx1ListBox.AccessibleName = "TX1 available stations, 0 calls";
                     UpdateListIfChanged(ctrl.advTx1ListBox, new List<string> { "No available stations" });
                 }
@@ -1604,6 +1612,7 @@ namespace WSJTX_Controller
                 {
                     _tx2SnapshotRows.Clear();
                     _tx2SnapshotCalls.Clear();
+                    _tx2SnapshotCategories.Clear();
                     ctrl.advTx2ListBox.AccessibleName = "TX2 available stations, 0 calls";
                     UpdateListIfChanged(ctrl.advTx2ListBox, new List<string> { "No available stations" });
                 }

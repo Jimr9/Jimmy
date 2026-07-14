@@ -64,6 +64,7 @@ namespace WSJTX_Controller
             // Enter/double-click/right-click still address the correct queue entry.
             var newItems = new List<string>();
             var newKeys = new List<string>();
+            var newCategories = new List<CallCategory>();
             var newQueueIndices = new List<int>();
             SelectionMode newMode;
 
@@ -74,6 +75,7 @@ namespace WSJTX_Controller
                     ? "[No stations calling or in progress]"
                     : "[No stations calling]");
                 newKeys.Add(null);      // keep keys parallel to items even for the placeholder row
+                newCategories.Add(CallCategory.DEFAULT);
             }
             else
             {
@@ -88,6 +90,7 @@ namespace WSJTX_Controller
                     {
                         newItems.Add(BuildCallWaitingRow(call, d));
                         newKeys.Add(call);
+                        newCategories.Add(d.Category);
                         newQueueIndices.Add(queuePos);
                     }
                     queuePos++;
@@ -99,7 +102,7 @@ namespace WSJTX_Controller
             // AddCall (and global clears). ShowQueue never touches them so that
             // RemoveCall and TrimCallQueue cannot erase the opposite side's display.
 
-            QueueView.RenderCallQueue($"Stations calling: {displayQ}", newItems, newKeys, newMode);
+            QueueView.RenderCallQueue($"Stations calling: {displayQ}", newItems, newKeys, newCategories, newMode);
         }
 
         public void RefreshCallWaitingRows()
@@ -140,6 +143,7 @@ namespace WSJTX_Controller
             {
                 _tx1SnapshotRows  = new List<string>();
                 _tx1SnapshotCalls = new List<string>();
+                _tx1SnapshotCategories = new List<CallCategory>();
                 if (!suppressTx1)
                 {
                     foreach (string call in callQueue)
@@ -150,6 +154,7 @@ namespace WSJTX_Controller
                         if (!IsEvenCall(d)) continue;
                         _tx1SnapshotCalls.Add(call);
                         _tx1SnapshotRows.Add(BuildCallWaitingRow(call, d));
+                        _tx1SnapshotCategories.Add(d.Category);
                     }
                 }
             }
@@ -158,6 +163,7 @@ namespace WSJTX_Controller
             {
                 _tx2SnapshotRows  = new List<string>();
                 _tx2SnapshotCalls = new List<string>();
+                _tx2SnapshotCategories = new List<CallCategory>();
                 if (!suppressTx2)
                 {
                     foreach (string call in callQueue)
@@ -168,6 +174,7 @@ namespace WSJTX_Controller
                         if (IsEvenCall(d)) continue;
                         _tx2SnapshotCalls.Add(call);
                         _tx2SnapshotRows.Add(BuildCallWaitingRow(call, d));
+                        _tx2SnapshotCategories.Add(d.Category);
                     }
                 }
             }
@@ -183,7 +190,10 @@ namespace WSJTX_Controller
                 var keys = tx1HasItems
                     ? _tx1SnapshotCalls
                     : new List<string> { null };
-                QueueView.RenderAdvancedList(true, tx1Name, display, keys);
+                var categories = tx1HasItems
+                    ? _tx1SnapshotCategories
+                    : new List<CallCategory> { CallCategory.DEFAULT };
+                QueueView.RenderAdvancedList(true, tx1Name, display, keys, categories);
             }
 
             if (ctrl.advShowTx2 && rebuildTx2)
@@ -197,7 +207,10 @@ namespace WSJTX_Controller
                 var keys = tx2HasItems
                     ? _tx2SnapshotCalls
                     : new List<string> { null };
-                QueueView.RenderAdvancedList(false, tx2Name, display, keys);
+                var categories = tx2HasItems
+                    ? _tx2SnapshotCategories
+                    : new List<CallCategory> { CallCategory.DEFAULT };
+                QueueView.RenderAdvancedList(false, tx2Name, display, keys, categories);
             }
         }
 
@@ -300,6 +313,7 @@ namespace WSJTX_Controller
             // (the same station can appear in several rows -- CQ, reply, report, ...), so the
             // key includes enough of the decode to disambiguate the specific row.
             var keys = new List<string>();
+            var categories = new List<CallCategory>();
             foreach (var d in _rawDecodeHistory)
             {
                 if (!PassesRawDecodeFilter(d)) continue;
@@ -365,11 +379,12 @@ namespace WSJTX_Controller
                 };
                 items.Add(RowFormatter.BuildOrderedRow(fieldMap, rawDecodeRowOrderFields, fallback));
                 keys.Add($"{d.DeCall()}|{d.Message}|{d.SinceMidnight.Ticks}");
+                categories.Add(d.Category);
             }
-            if (ctrl.rawNewestFirst) { items.Reverse(); keys.Reverse(); }
-            if (items.Count == 0) { items.Add("[No decodes this period]"); keys.Add(null); }
+            if (ctrl.rawNewestFirst) { items.Reverse(); keys.Reverse(); categories.Reverse(); }
+            if (items.Count == 0) { items.Add("[No decodes this period]"); keys.Add(null); categories.Add(CallCategory.DEFAULT); }
 
-            QueueView.RenderRawDecodes(items, keys);
+            QueueView.RenderRawDecodes(items, keys, categories);
         }
 
         private bool PassesRawDecodeFilter(EnqueueDecodeMessage d)

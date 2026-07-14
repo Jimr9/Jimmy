@@ -148,6 +148,14 @@ namespace WSJTX_Controller
         private Color _appearanceForeColor;
         private Color _appearanceAltRowColor;
 
+        // Alert category colors (Options > Appearance)
+        private System.Windows.Forms.ComboBox alertCategoryCombo;
+        private System.Windows.Forms.Button alertForeColorButton;
+        private System.Windows.Forms.Button alertBackColorButton;
+        private System.Windows.Forms.Button alertClearColorButton;
+        private Dictionary<WsjtxClient.CallCategory, Color?> _alertForeColors;
+        private Dictionary<WsjtxClient.CallCategory, Color?> _alertBackColors;
+
         private Dictionary<Control, Control> originalParents = new Dictionary<Control, Control>();
         private Dictionary<Control, Point> originalLocations = new Dictionary<Control, Point>();
         private List<Control> reparentedControls = new List<Control>();
@@ -1520,6 +1528,7 @@ namespace WSJTX_Controller
                 HotkeyAction.AnalyzeSlot,
                 HotkeyAction.LookupStation,
                 HotkeyAction.OpenLogbook,
+                HotkeyAction.AddManualQso,
                 HotkeyAction.ResetWindowSize,
             };
 
@@ -2566,6 +2575,8 @@ namespace WSJTX_Controller
             _appearanceBackColor = ctrl.Settings.ListBackColor;
             _appearanceForeColor = ctrl.Settings.ListForeColor;
             _appearanceAltRowColor = ctrl.Settings.ListAltRowColor;
+            _alertForeColors = new Dictionary<WsjtxClient.CallCategory, Color?>(ctrl.Settings.AlertForeColors);
+            _alertBackColors = new Dictionary<WsjtxClient.CallCategory, Color?>(ctrl.Settings.AlertBackColors);
 
             var themeLabel = new System.Windows.Forms.Label
             {
@@ -2672,6 +2683,75 @@ namespace WSJTX_Controller
             };
             restoreDefaultsButton.Click += AppearanceRestoreDefaultsButton_Click;
             appearancePanel.Controls.Add(restoreDefaultsButton);
+            y += 38;
+
+            var alertSectionLabel = new System.Windows.Forms.Label
+            {
+                Text = "Alert category colors:",
+                AutoSize = true,
+                Location = new System.Drawing.Point(left, y + 3),
+                Font = font,
+                TabStop = false,
+            };
+            appearancePanel.Controls.Add(alertSectionLabel);
+            y += 26;
+
+            alertCategoryCombo = new System.Windows.Forms.ComboBox
+            {
+                DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList,
+                Location = new System.Drawing.Point(left, y),
+                Size = new System.Drawing.Size(220, 22),
+                TabIndex = 6,
+                Font = font,
+                AccessibleName = "Alert category",
+                AccessibleDescription = "Choose which alert category's colors to edit below.",
+            };
+            foreach (var cat in JimmySettings.AlertCategories)
+                alertCategoryCombo.Items.Add(JimmySettings.AlertCategoryLabels[cat]);
+            alertCategoryCombo.SelectedIndex = 0;
+            alertCategoryCombo.SelectedIndexChanged += AlertCategoryCombo_SelectedIndexChanged;
+            appearancePanel.Controls.Add(alertCategoryCombo);
+            y += 34;
+
+            alertForeColorButton = new System.Windows.Forms.Button
+            {
+                Text = "Alert text color...",
+                Location = new System.Drawing.Point(left, y),
+                Size = new System.Drawing.Size(220, 24),
+                TabIndex = 7,
+                Font = font,
+                AccessibleDescription = "Choose the text color used for the selected alert category.",
+            };
+            alertForeColorButton.Click += AlertForeColorButton_Click;
+            appearancePanel.Controls.Add(alertForeColorButton);
+            y += 30;
+
+            alertBackColorButton = new System.Windows.Forms.Button
+            {
+                Text = "Alert background color...",
+                Location = new System.Drawing.Point(left, y),
+                Size = new System.Drawing.Size(220, 24),
+                TabIndex = 8,
+                Font = font,
+                AccessibleDescription = "Choose the background color used for the selected alert category.",
+            };
+            alertBackColorButton.Click += AlertBackColorButton_Click;
+            appearancePanel.Controls.Add(alertBackColorButton);
+            y += 30;
+
+            alertClearColorButton = new System.Windows.Forms.Button
+            {
+                Text = "Clear This Category's Colors",
+                Location = new System.Drawing.Point(left, y),
+                Size = new System.Drawing.Size(220, 24),
+                TabIndex = 9,
+                Font = font,
+                AccessibleDescription = "Removes the custom colors for the selected alert category, so it uses the normal list colors again.",
+            };
+            alertClearColorButton.Click += AlertClearColorButton_Click;
+            appearancePanel.Controls.Add(alertClearColorButton);
+
+            UpdateAlertColorAccessibleNames();
         }
 
         private void AppearanceThemeCombo_SelectedIndexChanged(object sender, EventArgs e)
@@ -2743,6 +2823,70 @@ namespace WSJTX_Controller
 
         private static bool ColorsEqual(Color a, Color b) => a.ToArgb() == b.ToArgb();
 
+        private WsjtxClient.CallCategory SelectedAlertCategory()
+        {
+            int idx = alertCategoryCombo.SelectedIndex;
+            if (idx < 0 || idx >= JimmySettings.AlertCategories.Length) idx = 0;
+            return JimmySettings.AlertCategories[idx];
+        }
+
+        private void AlertCategoryCombo_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            UpdateAlertColorAccessibleNames();
+        }
+
+        private void AlertForeColorButton_Click(object sender, EventArgs e)
+        {
+            var cat = SelectedAlertCategory();
+            Color current = _alertForeColors.TryGetValue(cat, out var c) && c.HasValue ? c.Value : _appearanceForeColor;
+            using (var dlg = new System.Windows.Forms.ColorDialog { Color = current, FullOpen = true })
+                if (dlg.ShowDialog(this) == System.Windows.Forms.DialogResult.OK)
+                {
+                    _alertForeColors[cat] = dlg.Color;
+                    UpdateAlertColorAccessibleNames();
+                }
+        }
+
+        private void AlertBackColorButton_Click(object sender, EventArgs e)
+        {
+            var cat = SelectedAlertCategory();
+            Color current = _alertBackColors.TryGetValue(cat, out var c) && c.HasValue ? c.Value : _appearanceBackColor;
+            using (var dlg = new System.Windows.Forms.ColorDialog { Color = current, FullOpen = true })
+                if (dlg.ShowDialog(this) == System.Windows.Forms.DialogResult.OK)
+                {
+                    _alertBackColors[cat] = dlg.Color;
+                    UpdateAlertColorAccessibleNames();
+                }
+        }
+
+        private void AlertClearColorButton_Click(object sender, EventArgs e)
+        {
+            var cat = SelectedAlertCategory();
+            _alertForeColors[cat] = null;
+            _alertBackColors[cat] = null;
+            UpdateAlertColorAccessibleNames();
+        }
+
+        // Keeps each alert color button's AccessibleName current so JAWS/NVDA announce the
+        // selected category and its color on focus -- no visual swatch needed to convey state.
+        private void UpdateAlertColorAccessibleNames()
+        {
+            if (alertCategoryCombo == null) return;
+            var cat = SelectedAlertCategory();
+            string label = JimmySettings.AlertCategoryLabels[cat];
+            _alertForeColors.TryGetValue(cat, out var fc);
+            _alertBackColors.TryGetValue(cat, out var bc);
+            alertForeColorButton.AccessibleName = $"Alert text color for {label}, currently {ColorDisplayName(fc)}";
+            alertBackColorButton.AccessibleName = $"Alert background color for {label}, currently {ColorDisplayName(bc)}";
+            alertClearColorButton.AccessibleName = $"Clear alert color for {label}";
+        }
+
+        private static string ColorDisplayName(Color? c)
+        {
+            if (!c.HasValue) return "default";
+            return c.Value.IsKnownColor ? c.Value.Name : $"RGB {c.Value.R}, {c.Value.G}, {c.Value.B}";
+        }
+
         private void SaveAppearanceTab()
         {
             if (appearanceFontSizeNumeric == null) return;
@@ -2750,6 +2894,12 @@ namespace WSJTX_Controller
             ctrl.Settings.ListForeColor = _appearanceForeColor;
             ctrl.Settings.ListAltRowColor = _appearanceAltRowColor;
             ctrl.Settings.ListFontSize = (int)appearanceFontSizeNumeric.Value;
+
+            foreach (var cat in JimmySettings.AlertCategories)
+            {
+                ctrl.Settings.AlertForeColors[cat] = _alertForeColors.TryGetValue(cat, out var fc) ? fc : null;
+                ctrl.Settings.AlertBackColors[cat] = _alertBackColors.TryGetValue(cat, out var bc) ? bc : null;
+            }
         }
 
         // Tests QRZ.com login (username/password) as before, and -- if a Logbook API key

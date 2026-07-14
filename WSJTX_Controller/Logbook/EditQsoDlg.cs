@@ -16,14 +16,40 @@ namespace WSJTX_Controller
         private readonly TextBox _callTb, _bandTb, _modeTb, _dateTb, _timeOnTb, _timeOffTb;
         private readonly TextBox _stateTb, _countryTb, _gridTb, _nameTb, _rstSentTb, _rstRcvdTb;
         private readonly TextBox _commentTb;
-        private readonly Button  _okButton, _cancelButton;
-
-        public QsoRecord Result { get; private set; }
+        private readonly TextBox _statusTb;
+        private readonly Button  _submitButton, _closeButton;
+        private readonly Func<string, LookupRecord> _lookupCallsign;
+        private readonly Func<QsoRecord, string> _onSubmit;
+        private readonly Action _onLogged;
+        private readonly bool _isNewEntry;
 
         // Also used for "Add New QSO" (LogbookWindow's AddQsoBtn_Click) with a mostly-blank
         // QsoRecord and title -- same fields either way, so one dialog covers both.
-        public EditQsoDlg(QsoRecord q, string title = "Edit QSO")
+        //
+        // lookupCallsign is Jimmy's offline-only station lookup (LookupManager.Build) -- safe
+        // to call synchronously, never throws, never returns null; fields it can't answer are
+        // just left blank, so a not-found callsign silently does nothing (see CallTb_Leave).
+        //
+        // onSubmit performs the actual database write (Upsert for a new entry, UpdateQso for
+        // an edit) and returns null on success or a user-facing error string on failure --
+        // the dialog never touches the database itself.
+        //
+        // isNewEntry switches Submit's behavior: for a brand-new contact it saves, plays
+        // onLogged, clears the per-QSO fields, refreshes Date/Time on to "now", and returns
+        // focus to Callsign so a contest/pileup operator can just keep typing -- Band/Mode
+        // are deliberately left alone since the radio setup doesn't change contact-to-contact.
+        // For an existing record (isNewEntry=false) Submit just saves and closes, same as the
+        // dialog's old OK behavior. Either way, a failed submit leaves every field exactly as
+        // typed and does not move focus, so a rejected entry (e.g. a duplicate) is never
+        // silently lost.
+        public EditQsoDlg(QsoRecord q, string title = "Edit QSO",
+            Func<string, LookupRecord> lookupCallsign = null, bool isNewEntry = false,
+            Func<QsoRecord, string> onSubmit = null, Action onLogged = null)
         {
+            _lookupCallsign = lookupCallsign;
+            _isNewEntry     = isNewEntry;
+            _onSubmit       = onSubmit;
+            _onLogged       = onLogged;
             Text            = title;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox     = false;
@@ -35,6 +61,7 @@ namespace WSJTX_Controller
 
             int yA = 12, yB = 12, tab = 1;
             _callTb    = AddField(this, "Callsign:",    12, ref yA, 90, 110, out _, ref tab, q.Callsign, upper: true);
+            _callTb.Leave += CallTb_Leave;
             _bandTb    = AddField(this, "Band:",        12, ref yA, 90, 110, out _, ref tab, q.Band);
             _modeTb    = AddField(this, "Mode:",        12, ref yA, 90, 110, out _, ref tab, q.Mode, upper: true);
             _dateTb    = AddField(this, "Date (YYYYMMDD):", 12, ref yA, 90, 110, out _, ref tab, q.QsoDate);
@@ -62,30 +89,50 @@ namespace WSJTX_Controller
             Controls.Add(_commentTb);
             yC += 30;
 
-            _okButton = new Button
+            _submitButton = new Button
             {
-                Text     = "OK",
+                Text     = "Submit",
                 Location = new Point(282, yC),
                 Size     = new Size(80, 26),
                 TabIndex = tab++,
             };
-            _okButton.Click += OkButton_Click;
+            _submitButton.Click += SubmitButton_Click;
 
-            _cancelButton = new Button
+            _closeButton = new Button
             {
-                Text         = "Cancel",
-                Location     = new Point(368, yC),
-                Size         = new Size(80, 26),
-                TabIndex     = tab++,
-                DialogResult = DialogResult.Cancel,
+                Text     = "Close",
+                Location = new Point(368, yC),
+                Size     = new Size(80, 26),
+                TabIndex = tab++,
             };
+            _closeButton.Click += (s, e) => Close();
 
-            Controls.Add(_okButton);
-            Controls.Add(_cancelButton);
-            AcceptButton = _okButton;
-            CancelButton = _cancelButton;
+            Controls.Add(_submitButton);
+            Controls.Add(_closeButton);
+            AcceptButton = _submitButton;
+            CancelButton = _closeButton;
+            yC += 34;
 
-            ClientSize = new Size(460, yC + 40);
+            // Read-only status line -- Tab-focusable/NVDA-readable on demand, same convention
+            // as LogbookWindow's own status bar. Deliberately not forced into focus on every
+            // submit (see the onSubmit success/failure feedback in SubmitButton_Click): a
+            // contest operator's focus must stay on Callsign, and the Logged sound / exclamation
+            // beep already give an audible cue without a focus jump.
+            _statusTb = new TextBox
+            {
+                Location       = new Point(12, yC),
+                Size           = new Size(436, 20),
+                ReadOnly       = true,
+                BorderStyle    = BorderStyle.None,
+                BackColor      = SystemColors.Control,
+                TabStop        = true,
+                TabIndex       = tab++,
+                AccessibleName = "Status",
+            };
+            Controls.Add(_statusTb);
+            yC += 26;
+
+            ClientSize = new Size(460, yC);
         }
 
         private static TextBox AddField(Form form, string label, int x, ref int y, int labelWidth, int boxWidth,
@@ -114,24 +161,52 @@ namespace WSJTX_Controller
             return tb;
         }
 
-        private void OkButton_Click(object sender, EventArgs e)
+        // Offline-only convenience: fills State/Country/Grid from Jimmy's cached lookup data
+        // when the callsign field loses focus, but only into fields still blank -- never
+        // overwrites anything the user already typed. Does nothing if lookupCallsign wasn't
+        // supplied, the callsign is empty, or nothing is known about it.
+        private void CallTb_Leave(object sender, EventArgs e)
+        {
+            if (_lookupCallsign == null) return;
+            string call = _callTb.Text.Trim();
+            if (call.Length == 0) return;
+
+            var rec = _lookupCallsign(call);
+            if (rec == null) return;
+
+            if (_stateTb.Text.Trim().Length == 0 && !string.IsNullOrEmpty(rec.State))
+                _stateTb.Text = rec.State;
+            if (_countryTb.Text.Trim().Length == 0 && !string.IsNullOrEmpty(rec.Country))
+                _countryTb.Text = rec.Country;
+            if (_gridTb.Text.Trim().Length == 0 && !string.IsNullOrEmpty(rec.Grid))
+                _gridTb.Text = rec.Grid;
+        }
+
+        private void SubmitButton_Click(object sender, EventArgs e)
         {
             string callsign = _callTb.Text.Trim();
             if (callsign.Length == 0)
             {
-                MessageBox.Show(this, "Callsign cannot be blank.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                _statusTb.Text = "Callsign cannot be blank.";
                 _callTb.Focus();
                 return;
             }
 
-            Result = new QsoRecord
+            // New entries only: a QSO actively being logged just ended, so "now" is a
+            // reasonable Time off default if left blank. Never applied when editing an
+            // existing (possibly historical) QSO.
+            string timeOff = _timeOffTb.Text.Trim();
+            if (_isNewEntry && timeOff.Length == 0)
+                timeOff = DateTime.UtcNow.ToString("HHmm");
+
+            var record = new QsoRecord
             {
                 Callsign = callsign,
                 Band     = _bandTb.Text.Trim(),
                 Mode     = _modeTb.Text.Trim(),
                 QsoDate  = _dateTb.Text.Trim(),
                 TimeOn   = _timeOnTb.Text.Trim(),
-                TimeOff  = _timeOffTb.Text.Trim(),
+                TimeOff  = timeOff,
                 State    = _stateTb.Text.Trim(),
                 Country  = _countryTb.Text.Trim(),
                 Grid     = _gridTb.Text.Trim(),
@@ -140,7 +215,48 @@ namespace WSJTX_Controller
                 RstRcvd  = _rstRcvdTb.Text.Trim(),
                 Comment  = _commentTb.Text.Trim(),
             };
-            DialogResult = DialogResult.OK;
+
+            string error = _onSubmit?.Invoke(record);
+            if (error != null)
+            {
+                // Leave every field exactly as typed and don't move focus -- a rejected
+                // entry (e.g. a duplicate) must stay visible and fixable, never silently lost.
+                _statusTb.Text = error;
+                System.Media.SystemSounds.Exclamation.Play();
+                return;
+            }
+
+            _statusTb.Text = (_isNewEntry ? "Added " : "Saved ") + callsign + ".";
+            _onLogged?.Invoke();
+
+            if (_isNewEntry)
+            {
+                ResetForNextEntry();
+                _callTb.Focus();
+            }
+            else
+            {
+                Close();
+            }
+        }
+
+        // New-entry loop: clears everything callsign/QSO-specific, keeps Band/Mode (the
+        // operator's radio setup doesn't change contact-to-contact), and refreshes Date/
+        // Time on to "now" for the next contact -- Time off stays blank, filled again at
+        // the next Submit.
+        private void ResetForNextEntry()
+        {
+            _callTb.Text    = "";
+            _dateTb.Text    = DateTime.UtcNow.ToString("yyyyMMdd");
+            _timeOnTb.Text  = DateTime.UtcNow.ToString("HHmm");
+            _timeOffTb.Text = "";
+            _stateTb.Text   = "";
+            _countryTb.Text = "";
+            _gridTb.Text    = "";
+            _nameTb.Text    = "";
+            _rstSentTb.Text = "";
+            _rstRcvdTb.Text = "";
+            _commentTb.Text = "";
         }
     }
 }

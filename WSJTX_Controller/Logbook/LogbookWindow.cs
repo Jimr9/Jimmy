@@ -32,6 +32,19 @@ namespace WSJTX_Controller
         // Offline-only callsign->US-state lookup, used when an imported ADIF record's own
         // STATE field is blank (see AdifImporter.Normalize). Never a live network query.
         private readonly Func<string, string> _resolveUsState;
+        // Manual QSO entry (EditQsoDlg) support -- all offline/local, never a live network
+        // query or a WSJT-X command. isWsjtxConnected/currentBand/currentMode let a brand-new
+        // entry default to what's actually on the air right now; lookupCallsign is the same
+        // offline station lookup as _resolveUsState but returning the whole record (state/
+        // country/grid) for EditQsoDlg's blank-fields-only auto-fill.
+        private readonly Func<bool> _isWsjtxConnected;
+        private readonly Func<string> _currentBand;
+        private readonly Func<string> _currentMode;
+        private readonly Func<string, LookupRecord> _lookupCallsign;
+        // Plays Jimmy's existing "Logged" sound/checkbox (same one used for auto-logged QSOs)
+        // on each successful manual Add -- audible confirmation with no focus movement, so a
+        // contest operator's focus can stay on the Callsign field between contacts.
+        private readonly Action _onQsoLogged;
 
         // ── Database ──────────────────────────────────────────────────────────────
         private LogbookDb _db;
@@ -145,7 +158,12 @@ namespace WSJTX_Controller
             Action<string, bool> onActiveAwardRuleIdsChanged = null,
             Func<DateTime?> lastLotwUploadTrigger = null,
             Func<string> uploadLotwHotkeyText = null,
-            Func<string, string> resolveUsState = null)
+            Func<string, string> resolveUsState = null,
+            Func<bool> isWsjtxConnected = null,
+            Func<string> currentBand = null,
+            Func<string> currentMode = null,
+            Func<string, LookupRecord> lookupCallsign = null,
+            Action onQsoLogged = null)
         {
             _ini              = ini;
             _qrzApiKey        = qrzApiKey        ?? (() => "");
@@ -160,6 +178,11 @@ namespace WSJTX_Controller
             _lastLotwUploadTrigger = lastLotwUploadTrigger ?? (() => (DateTime?)null);
             _uploadLotwHotkeyText  = uploadLotwHotkeyText  ?? (() => "Alt+U");
             _resolveUsState        = resolveUsState        ?? (call => null);
+            _isWsjtxConnected      = isWsjtxConnected      ?? (() => false);
+            _currentBand           = currentBand           ?? (() => null);
+            _currentMode           = currentMode            ?? (() => null);
+            _lookupCallsign        = lookupCallsign         ?? (call => null);
+            _onQsoLogged           = onQsoLogged            ?? (() => { });
 
             Text            = "Ham Radio Center — Logbook";
             MinimumSize     = new Size(720, 500);
@@ -999,28 +1022,42 @@ namespace WSJTX_Controller
         private List<int> SelectedEditIds() =>
             _editLv.SelectedItems.Cast<ListViewItem>().Select(i => (int)i.Tag).ToList();
 
+        // Invoked by Controller's "Add Manual QSO" hotkey -- jumps straight to the Edit
+        // Log tab and opens the same Add New QSO dialog as its "Add New..." button.
+        public void OpenAddQsoDialog()
+        {
+            NavigateToPage(PAGE_EDITLOG);
+            AddQsoBtn_Click(this, EventArgs.Empty);
+        }
+
         // Manually hand-logs a QSO Jimmy never heard over WSJT-X -- e.g. CW or Phone,
         // worked on a separate rig/program. Local-only, same as Edit/Delete (see
-        // LogbookDb.Upsert / project memory "Logbook Edit Log tab" for why). DXCC/CQ
-        // Zone/state/country aren't looked up automatically here -- left at 0/blank,
-        // same as a manual ADIF import with those fields absent; Edit can fill them in
-        // later once the call queue/award-lookup path (or a future enhancement) has them.
+        // LogbookDb.Upsert / project memory "Logbook Edit Log tab" for why). State/
+        // country/grid aren't looked up here directly -- EditQsoDlg does that itself
+        // (offline only) once a callsign is typed, filling only whatever's still blank.
+        // Band/Mode default to whatever WSJT-X currently has on the air, if connected --
+        // just a starting suggestion; the Mode field can be freely overtyped (e.g. "SSB")
+        // for a QSO made outside WSJT-X entirely.
         private void AddQsoBtn_Click(object sender, EventArgs e)
         {
             if (_db == null) return;
+            bool live = _isWsjtxConnected();
             var blank = new QsoRecord
             {
                 QsoDate = DateTime.UtcNow.ToString("yyyyMMdd"),
                 TimeOn  = DateTime.UtcNow.ToString("HHmm"),
+                Band    = live ? (_currentBand() ?? "") : "",
+                Mode    = live ? (_currentMode() ?? "") : "",
             };
 
-            using (var dlg = new EditQsoDlg(blank, "Add New QSO") { Owner = this })
+            // Writes one QSO per call -- EditQsoDlg calls this on every Submit, not just once
+            // at close, so a contest/pileup operator can keep the dialog open and log contact
+            // after contact. Returns null on success, or an error string (e.g. duplicate) that
+            // the dialog shows inline without clearing the operator's in-progress entry.
+            string SubmitNewQso(QsoRecord r)
             {
-                if (dlg.ShowDialog(this) != DialogResult.OK || dlg.Result == null) return;
-
                 try
                 {
-                    var r = dlg.Result;
                     string dedupKey = AdifImporter.BuildDedupKey(r.Callsign, r.Band, r.Mode, r.QsoDate, r.TimeOn);
                     _db.Upsert(r.Callsign, r.Band, r.Mode, r.QsoDate, r.TimeOn, r.TimeOff,
                         0, r.RstSent, r.RstRcvd, r.State, r.Country, 0, 0,
@@ -1032,12 +1069,19 @@ namespace WSJTX_Controller
                         "", "");
                     SetStatus($"Added {r.Callsign}.");
                     DoEditSearch();
+                    return null;
                 }
                 catch (Exception ex)
                 {
-                    SetStatus("Add failed: " + ex.Message +
-                        " (a QSO with this callsign/band/mode/date/time may already exist)");
+                    return "Add failed: " + ex.Message +
+                        " (a QSO with this callsign/band/mode/date/time may already exist)";
                 }
+            }
+
+            using (var dlg = new EditQsoDlg(blank, "Add New QSO", _lookupCallsign, isNewEntry: true,
+                onSubmit: SubmitNewQso, onLogged: _onQsoLogged) { Owner = this })
+            {
+                dlg.ShowDialog(this);
             }
         }
 
@@ -1048,23 +1092,26 @@ namespace WSJTX_Controller
             var q = _db.GetQso(id);
             if (q == null) { SetStatus("That QSO no longer exists — refreshing."); DoEditSearch(); return; }
 
-            using (var dlg = new EditQsoDlg(q) { Owner = this })
+            string SubmitEdit(QsoRecord r)
             {
-                if (dlg.ShowDialog(this) != DialogResult.OK || dlg.Result == null) return;
-
                 try
                 {
-                    var r = dlg.Result;
                     bool ok = _db.UpdateQso(id, r.Callsign, r.Band, r.Mode, r.QsoDate, r.TimeOn, r.TimeOff,
                         r.State, r.Country, r.Grid, r.Name, r.RstSent, r.RstRcvd, r.Comment);
                     SetStatus(ok ? $"Updated {r.Callsign}." : "No changes were saved.");
                     DoEditSearch();
+                    return null;
                 }
                 catch (Exception ex)
                 {
-                    SetStatus("Edit failed: " + ex.Message +
-                        " (a QSO with this callsign/band/mode/date/time may already exist)");
+                    return "Edit failed: " + ex.Message +
+                        " (a QSO with this callsign/band/mode/date/time may already exist)";
                 }
+            }
+
+            using (var dlg = new EditQsoDlg(q, lookupCallsign: _lookupCallsign, onSubmit: SubmitEdit) { Owner = this })
+            {
+                dlg.ShowDialog(this);
             }
         }
 

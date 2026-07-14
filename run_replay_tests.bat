@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-rem ── Safety: never let replay testing touch the real logbook or real online
+rem -- Safety: never let replay testing touch the real logbook or real online
 rem    services. This script is the ONLY supported way to run replay tests --
 rem    it always forces an isolated test database and always checks for a
 rem    real WSJT-X before doing anything else. Do not bypass it by starting
@@ -52,7 +52,7 @@ if not %ERRORLEVEL%==0 (
 
 python "%~dp0JimmyReplay.py"
 
-rem ── Cleanup: only close the test-mode Jimmy instance THIS run launched
+rem -- Cleanup: only close the test-mode Jimmy instance THIS run launched
 rem    (tracked by PID above) -- never touches an instance that was already
 rem    running before this script started, real or otherwise.
 if defined STARTED_BY_SCRIPT if defined JIMMY_PID (
