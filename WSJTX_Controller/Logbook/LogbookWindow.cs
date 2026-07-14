@@ -85,8 +85,7 @@ namespace WSJTX_Controller
         private bool     _suppressAwardsEvent;
 
         // ── Still Need controls ────────────────────────────────────────────────────
-        private ComboBox _neededTypeCb;
-        private CheckBox _neededActiveCb;
+        private CheckedListBox _neededAwardsClb;
         private ComboBox _neededBandCb;
         private ListView _neededLv;
         private TextBox  _neededCountLbl;
@@ -548,7 +547,7 @@ namespace WSJTX_Controller
                 if (mgr.RulesChanged)
                 {
                     PopulateAwardsCombo();
-                    PopulateNeededCombo();
+                    PopulateNeededAwardsList();
                     _onImportComplete?.Invoke();
                 }
             }
@@ -560,26 +559,45 @@ namespace WSJTX_Controller
 
             var typeLbl = new Label
             {
-                Text     = "Award:",
+                Text     = "Awards:",
                 Font     = font,
                 Location = new Point(8, 10),
                 AutoSize = true,
             };
             _stillNeedPanel.Controls.Add(typeLbl);
 
-            _neededTypeCb = new ComboBox
+            // One list serves two purposes: moving through it (arrow keys) picks which
+            // award's checklist is shown below, and checking/unchecking an item (Space)
+            // toggles that award's active live-tracking independently of which one is
+            // currently being browsed -- any number can be checked at once. Replaces the
+            // former award combo box + separate "Actively track" checkbox pair so both
+            // actions live in one control instead of needing a Tab stop each.
+            _neededAwardsClb = new CheckedListBox
             {
-                DropDownStyle  = ComboBoxStyle.DropDownList,
                 Font           = font,
                 Location       = new Point(56, 7),
-                Size           = new Size(300, 21),
+                Size           = new Size(300, 100),
                 TabIndex       = 1,
-                AccessibleName = "Still Need award selector",
+                CheckOnClick   = true,
+                AccessibleName = "Still Need awards, checked awards are actively tracked",
             };
-            // Items are populated from RuleLibrary.Definitions in PopulateNeededCombo() --
+            // Items are populated from RuleLibrary.Definitions in PopulateNeededAwardsList() --
             // dropping a new .ini file into RuleDefinitions adds it here with no code change.
-            _neededTypeCb.SelectedIndexChanged += (s, e) => { if (!_suppressNeededEvent) PopulateNeeded(); };
-            _stillNeedPanel.Controls.Add(_neededTypeCb);
+            _neededAwardsClb.SelectedIndexChanged += (s, e) => { if (!_suppressNeededEvent) PopulateNeeded(); };
+            _neededAwardsClb.ItemCheck += (s, e) =>
+            {
+                if (_suppressNeededEvent) return;
+                if (e.Index < 0 || e.Index >= _neededDefs.Count) return;
+                var def = _neededDefs[e.Index];
+                if (e.NewValue == CheckState.Checked && !RuleEngine.SupportsLiveTag(def))
+                {
+                    e.NewValue = CheckState.Unchecked;
+                    SetStatus($"{def.Name} can't be actively tracked -- no fixed checklist is available live during decoding.");
+                    return;
+                }
+                _onActiveAwardRuleIdsChanged?.Invoke(def.Id, e.NewValue == CheckState.Checked);
+            };
+            _stillNeedPanel.Controls.Add(_neededAwardsClb);
 
             var bandLbl = new Label
             {
@@ -621,31 +639,13 @@ namespace WSJTX_Controller
             };
             _stillNeedPanel.Controls.Add(_neededCountLbl);
 
-            _neededActiveCb = new CheckBox
-            {
-                Text           = "Actively track this award (alerts on decode, any number can be checked)",
-                Font           = font,
-                Location       = new Point(8, 32),
-                AutoSize       = true,
-                TabIndex       = 4,
-                AccessibleName = "Actively track this award for live alerts",
-            };
-            _neededActiveCb.CheckedChanged += (s, e) =>
-            {
-                if (_suppressNeededEvent) return;
-                int idx = _neededTypeCb.SelectedIndex;
-                if (idx < 0 || idx >= _neededDefs.Count) return;
-                _onActiveAwardRuleIdsChanged?.Invoke(_neededDefs[idx].Id, _neededActiveCb.Checked);
-            };
-            _stillNeedPanel.Controls.Add(_neededActiveCb);
-
             var neededRefreshBtn = new Button
             {
                 Text           = "Refresh",
                 Font           = font,
                 Location       = new Point(600, 6),
                 Size           = new Size(100, 23),
-                TabIndex       = 6,
+                TabIndex       = 4,
                 AccessibleName = "Refresh needed list",
                 AccessibleDescription = "Re-checks the needed list against QSOs logged since this page was last shown.",
             };
@@ -653,9 +653,9 @@ namespace WSJTX_Controller
             _stillNeedPanel.Controls.Add(neededRefreshBtn);
 
             _neededLv = MakeListView(font);
-            _neededLv.Location = new Point(8, 58);
+            _neededLv.Location = new Point(8, 115);
             _neededLv.Anchor   = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            _neededLv.Size     = new Size(700, 358);
+            _neededLv.Size     = new Size(700, 301);
             _neededLv.TabIndex = 5;
             _neededLv.AccessibleName = "Needed items list";
             _stillNeedPanel.Controls.Add(_neededLv);
@@ -1573,42 +1573,49 @@ namespace WSJTX_Controller
             }
         }
 
-        // Rebuilds the Still Need award selector from RuleLibrary.Definitions
-        // (enabled only), preserving the current selection by Id across rebuilds --
-        // mirrors PopulateAwardsCombo() so both tabs offer the same award list.
-        private void PopulateNeededCombo()
+        // Rebuilds the Still Need awards list from RuleLibrary.Definitions (enabled
+        // only), preserving the current browsing selection by Id across rebuilds --
+        // mirrors PopulateAwardsCombo() so both tabs offer the same award list. Each
+        // item's checked state is independent of the selection: it reflects whether
+        // that award's Id is in Controller.activeAwardRuleIds, restricted to awards
+        // RuleEngine.SupportsLiveTag actually allows to be tracked live at all.
+        private void PopulateNeededAwardsList()
         {
             var defs = RuleLibrary.Definitions.Where(d => d.Enabled)
                 .OrderBy(d => d.Category ?? "").ThenBy(d => d.Name).ToList();
 
-            string prevId = (_neededTypeCb.SelectedIndex >= 0 && _neededTypeCb.SelectedIndex < _neededDefs.Count)
-                ? _neededDefs[_neededTypeCb.SelectedIndex].Id : _activeAwardRuleIds.FirstOrDefault();
+            string prevId = (_neededAwardsClb.SelectedIndex >= 0 && _neededAwardsClb.SelectedIndex < _neededDefs.Count)
+                ? _neededDefs[_neededAwardsClb.SelectedIndex].Id : _activeAwardRuleIds.FirstOrDefault();
 
             _neededDefs = defs;
 
             _suppressNeededEvent = true;
-            _neededTypeCb.Items.Clear();
+            _neededAwardsClb.Items.Clear();
             if (_neededDefs.Count == 0)
             {
-                _neededTypeCb.Items.Add("(No Rule Definitions available)");
-                _neededTypeCb.Enabled = false;
-                _neededTypeCb.SelectedIndex = 0;
+                _neededAwardsClb.Items.Add("(No Rule Definitions available)");
+                _neededAwardsClb.Enabled = false;
+                _neededAwardsClb.SelectedIndex = 0;
             }
             else
             {
-                _neededTypeCb.Enabled = true;
-                foreach (var d in _neededDefs) _neededTypeCb.Items.Add(d.Name);
+                _neededAwardsClb.Enabled = true;
+                foreach (var d in _neededDefs)
+                {
+                    bool tracked = RuleEngine.SupportsLiveTag(d) && _activeAwardRuleIds.Contains(d.Id);
+                    _neededAwardsClb.Items.Add(d.Name, tracked);
+                }
                 int idx = prevId != null ? _neededDefs.FindIndex(d => d.Id == prevId) : -1;
-                _neededTypeCb.SelectedIndex = idx >= 0 ? idx : 0;
+                _neededAwardsClb.SelectedIndex = idx >= 0 ? idx : 0;
             }
             _suppressNeededEvent = false;
         }
 
         private void PopulateNeeded()
         {
-            if (_db == null || _neededTypeCb == null) return;
+            if (_db == null || _neededAwardsClb == null) return;
 
-            PopulateNeededCombo();
+            PopulateNeededAwardsList();
             _neededLv.Items.Clear();
             _neededLv.Columns.Clear();
 
@@ -1620,22 +1627,9 @@ namespace WSJTX_Controller
                 return;
             }
 
-            int idx = _neededTypeCb.SelectedIndex;
+            int idx = _neededAwardsClb.SelectedIndex;
             if (idx < 0 || idx >= _neededDefs.Count) return;
             var def = _neededDefs[idx];
-
-            // Reflect whether the currently-browsed award is one of the actively-tracked
-            // ones -- checking/unchecking here only affects this one award's membership in
-            // Controller.activeAwardRuleIds (see _onActiveAwardRuleIdsChanged), independent
-            // of which award happens to be selected for browsing/viewing below.
-            bool supportsLiveTag = RuleEngine.SupportsLiveTag(def);
-            _suppressNeededEvent = true;
-            _neededActiveCb.Enabled = supportsLiveTag;
-            _neededActiveCb.Checked = supportsLiveTag && _activeAwardRuleIds.Contains(def.Id);
-            _neededActiveCb.AccessibleDescription = supportsLiveTag
-                ? ""
-                : "This award has no fixed checklist that can be tagged live during decoding.";
-            _suppressNeededEvent = false;
 
             // Restrict the Band dropdown to bands that are actually meaningful for this
             // award -- a band-restricted award (e.g. a per-band WAS variant, or a single-band

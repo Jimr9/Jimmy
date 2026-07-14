@@ -13,10 +13,19 @@ namespace WSJTX_Controller
     // WPX prefix, etc.), which are left untouched by an edit.
     internal class EditQsoDlg : Form
     {
-        private readonly TextBox _callTb, _bandTb, _modeTb, _dateTb, _timeOnTb, _timeOffTb;
+        private readonly TextBox _callTb, _bandTb, _dateTb, _timeOnTb, _timeOffTb;
         private readonly TextBox _stateTb, _countryTb, _gridTb, _nameTb, _rstSentTb, _rstRcvdTb;
         private readonly TextBox _commentTb;
         private readonly TextBox _statusTb;
+        private readonly ComboBox _modeCb;
+
+        // Common modes offered in the Mode dropdown -- editable, so anything not listed
+        // here (a less common digital mode, a contest-specific label, etc.) can still be
+        // typed in directly.
+        private static readonly string[] CommonModes =
+        {
+            "FT8", "FT4", "SSB", "CW", "RTTY", "PSK31", "FM", "AM", "WSPR", "JT65", "JT9", "MSK144", "FST4",
+        };
         private readonly Button  _submitButton, _closeButton;
         private readonly Func<string, LookupRecord> _lookupCallsign;
         private readonly Func<QsoRecord, string> _onSubmit;
@@ -63,7 +72,7 @@ namespace WSJTX_Controller
             _callTb    = AddField(this, "Callsign:",    12, ref yA, 90, 110, out _, ref tab, q.Callsign, upper: true);
             _callTb.Leave += CallTb_Leave;
             _bandTb    = AddField(this, "Band:",        12, ref yA, 90, 110, out _, ref tab, q.Band);
-            _modeTb    = AddField(this, "Mode:",        12, ref yA, 90, 110, out _, ref tab, q.Mode, upper: true);
+            _modeCb    = AddModeField(this, 12, ref yA, 90, 110, ref tab, q.Mode);
             _dateTb    = AddField(this, "Date (YYYYMMDD):", 12, ref yA, 90, 110, out _, ref tab, q.QsoDate);
             _timeOnTb  = AddField(this, "Time on (HHMM):",  12, ref yA, 90, 110, out _, ref tab, q.TimeOn);
             _timeOffTb = AddField(this, "Time off (HHMM):", 12, ref yA, 90, 110, out _, ref tab, q.TimeOff);
@@ -161,8 +170,38 @@ namespace WSJTX_Controller
             return tb;
         }
 
-        // Offline-only convenience: fills State/Country/Grid from Jimmy's cached lookup data
-        // when the callsign field loses focus, but only into fields still blank -- never
+        // Editable combo box: DropDown (not DropDownList) so a common mode can be picked
+        // from the list, or anything else typed in freely -- ComboBox has no CharacterCasing
+        // property (unlike TextBox), so uppercasing a typed value happens at submit time
+        // instead (see SubmitButton_Click), not live as the user types.
+        private static ComboBox AddModeField(Form form, int x, ref int y, int labelWidth, int boxWidth, ref int tab, string value)
+        {
+            var lbl = new Label
+            {
+                Text     = "Mode:",
+                Location = new Point(x, y + 2),
+                Size     = new Size(labelWidth, 16),
+                AutoSize = false,
+            };
+            form.Controls.Add(lbl);
+
+            var cb = new ComboBox
+            {
+                Location       = new Point(x + labelWidth, y),
+                Size           = new Size(boxWidth, 20),
+                TabIndex       = tab++,
+                AccessibleName = "Mode",
+                DropDownStyle  = ComboBoxStyle.DropDown,
+                Text           = value ?? "",
+            };
+            cb.Items.AddRange(CommonModes);
+            form.Controls.Add(cb);
+            y += 26;
+            return cb;
+        }
+
+        // Offline-only convenience: fills State/Country/Grid/Name from Jimmy's cached lookup
+        // data when the callsign field loses focus, but only into fields still blank -- never
         // overwrites anything the user already typed. Does nothing if lookupCallsign wasn't
         // supplied, the callsign is empty, or nothing is known about it.
         private void CallTb_Leave(object sender, EventArgs e)
@@ -180,6 +219,8 @@ namespace WSJTX_Controller
                 _countryTb.Text = rec.Country;
             if (_gridTb.Text.Trim().Length == 0 && !string.IsNullOrEmpty(rec.Grid))
                 _gridTb.Text = rec.Grid;
+            if (_nameTb.Text.Trim().Length == 0 && !string.IsNullOrEmpty(rec.Name))
+                _nameTb.Text = rec.Name;
         }
 
         private void SubmitButton_Click(object sender, EventArgs e)
@@ -203,7 +244,7 @@ namespace WSJTX_Controller
             {
                 Callsign = callsign,
                 Band     = _bandTb.Text.Trim(),
-                Mode     = _modeTb.Text.Trim(),
+                Mode     = _modeCb.Text.Trim().ToUpperInvariant(),
                 QsoDate  = _dateTb.Text.Trim(),
                 TimeOn   = _timeOnTb.Text.Trim(),
                 TimeOff  = timeOff,
