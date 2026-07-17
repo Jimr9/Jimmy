@@ -425,6 +425,10 @@ namespace WSJTX_Controller
 
             // Set active-call state so status shows the target callsign, matching normal queue-reply behavior
             SetCallInProg(callsign);
+            // Mirrors the queue-reply path (NextCall) -- keeps callInProg alive through a
+            // Listen-mode timeout so Alt+E (EnableMode) can resume this same manual call
+            // after it hits the retry limit, instead of callInProg being nulled immediately.
+            StartDiscardCall(callsign);
             _manualCallInProg = true;
             cqPaused = false;
             restartQueue = false;

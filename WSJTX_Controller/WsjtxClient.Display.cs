@@ -574,6 +574,15 @@ namespace WSJTX_Controller
             StatusView.ShowMessage($"{deCall} not in call queue", false);
         }
 
+        // Like GetRawDecodeCallOrText, but returns null (rather than falling back to
+        // the raw message text) when the line has no discernible callsign -- callers
+        // that need an actual callsign (e.g. station lookup) should use this instead.
+        public string GetCallAtRawIndex(int listIdx)
+        {
+            var d = GetFilteredRawDecode(listIdx);
+            return d?.DeCall();
+        }
+
         public string GetRawDecodeCallOrText(int listIdx)
         {
             // Use filter-aware lookup so Ctrl+C copies the call the user actually sees.

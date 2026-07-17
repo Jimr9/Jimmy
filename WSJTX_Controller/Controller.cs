@@ -1814,15 +1814,46 @@ namespace WSJTX_Controller
         public void LookupFocusedCall()
         {
             string call = null;
-            if (callListBox.Visible)
+
+            // Whichever list currently has keyboard focus wins, so the lookup always
+            // matches what's actually selected -- works the same in every list.
+            if (callListBox.Visible && callListBox.Focused)
             {
+                int idx = callListBox.SelectedIndex;
+                if (idx >= 0)
+                    call = wsjtxClient.GetCallAtIndex(wsjtxClient.MapNormalListIndex(idx));
+            }
+            else if (advTx1ListBox.Visible && advTx1ListBox.Focused)
+            {
+                int idx = advTx1ListBox.SelectedIndex;
+                if (idx >= 0) call = wsjtxClient.GetCallAtTx1Index(idx);
+            }
+            else if (advTx2ListBox.Visible && advTx2ListBox.Focused)
+            {
+                int idx = advTx2ListBox.SelectedIndex;
+                if (idx >= 0) call = wsjtxClient.GetCallAtTx2Index(idx);
+            }
+            else if (advRawListBox.Visible && advRawListBox.Focused)
+            {
+                int idx = advRawListBox.SelectedIndex;
+                if (idx >= 0) call = wsjtxClient.GetCallAtRawIndex(idx);
+            }
+            else if (logListBox.Visible && logListBox.Focused)
+            {
+                int idx = logListBox.SelectedIndex;
+                if (idx >= 0 && idx < _loggedKeys.Count) call = _loggedKeys[idx];
+            }
+            else if (callListBox.Visible)
+            {
+                // Nothing focused (e.g. hotkey pressed from main status) -- fall back to
+                // the normal-layout "Stations calling" selection, as before.
                 int idx = callListBox.SelectedIndex;
                 if (idx >= 0)
                     call = wsjtxClient.GetCallAtIndex(wsjtxClient.MapNormalListIndex(idx));
             }
             else
             {
-                // Advanced layout: try TX1 then TX2 selected index
+                // Advanced layout, nothing focused: try TX1 then TX2 selected index.
                 int idx = advTx1ListBox.SelectedIndex;
                 if (idx >= 0) call = wsjtxClient.GetCallAtTx1Index(idx);
                 if (call == null)
