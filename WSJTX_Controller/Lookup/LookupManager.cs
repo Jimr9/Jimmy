@@ -68,12 +68,14 @@ namespace WSJTX_Controller
             ClubLog = new ClubLogProvider(root);
             FccUls  = new FccUlsProvider(root);
 
-            // FccUls goes first: its State (when it has one) is the authoritative
-            // FCC-registered value and should win over QRZ's, per the same
-            // QRZ-vs-grid.dat priority reasoning already applied elsewhere -- QRZ's
-            // own US records ultimately derive from this same FCC data anyway.
-            _providers.Add(FccUls);
+            // Qrz goes first so its Name (the operator's own chosen on-air display
+            // name) gets first claim on record.Name -- FccUlsProvider only fills
+            // Name as a fallback when nothing else has. State is unaffected by this
+            // ordering: FccUlsProvider always overwrites State unconditionally when
+            // it has one (the authoritative FCC-registered value, which QRZ's own US
+            // records ultimately derive from anyway), regardless of what ran first.
             _providers.Add(Qrz);
+            _providers.Add(FccUls);
             _providers.Add(ClubLog);
             _providers.Add(LoTW);
         }

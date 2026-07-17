@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace WSJTX_Controller
@@ -21,6 +22,7 @@ namespace WSJTX_Controller
 
         private readonly LookupManager _manager;
         private readonly string        _call;
+        private bool _canQrz;
 
         public bool QrzLookupOccurred { get; private set; }
 
@@ -103,6 +105,16 @@ namespace WSJTX_Controller
             AcceptButton = _closeButton;
 
             PopulateFromCache();
+
+            // Opening this dialog (via the lookup hotkey) is itself the explicit,
+            // user-initiated request that FocusedOnly/UnidentifiedQueue policies are
+            // gated on -- so if QRZ has nothing cached yet, go get it immediately
+            // instead of making the user notice the dashes and click the button.
+            Load += async (s, e) =>
+            {
+                if (_canQrz && _manager.QrzNeedsLookup(_call))
+                    await DoQrzLookupAsync();
+            };
         }
 
         private TextBox AddRow(string labelText, ref int y, int lx, int vx, int fw, int rh, ref int tabIndex)
@@ -155,11 +167,11 @@ namespace WSJTX_Controller
                                    : "—";
             _sourcesValue.Text   = info.SourcesText;
 
-            bool canQrz = _manager.Qrz.IsEnabled &&
-                          (_manager.Policy == QrzLookupPolicy.FocusedOnly ||
-                           _manager.Policy == QrzLookupPolicy.UnidentifiedQueue);
-            _qrzButton.Enabled = canQrz;
-            if (!canQrz) _qrzButton.Text = "QRZ lookup disabled";
+            _canQrz = _manager.Qrz.IsEnabled &&
+                      (_manager.Policy == QrzLookupPolicy.FocusedOnly ||
+                       _manager.Policy == QrzLookupPolicy.UnidentifiedQueue);
+            _qrzButton.Enabled = _canQrz;
+            if (!_canQrz) _qrzButton.Text = "QRZ lookup disabled";
         }
 
         private void ShowNoData()
@@ -173,7 +185,9 @@ namespace WSJTX_Controller
             _qrzButton.Enabled = false;
         }
 
-        private async void QrzButton_Click(object sender, EventArgs e)
+        private async void QrzButton_Click(object sender, EventArgs e) => await DoQrzLookupAsync();
+
+        private async Task DoQrzLookupAsync()
         {
             if (_manager == null) return;
             _qrzButton.Enabled  = false;

@@ -632,40 +632,56 @@ static class JimmyTests
     // Uses REAL sample rows copied verbatim from an actual downloaded EN.dat
     // (2026-07-08), not synthetic data -- confirms the empirically-verified field
     // positions (callsign index 4, state index 17, unique_system_identifier index
-    // 1) still parse correctly, and that dedup keeps the highest-uid row per
-    // callsign (the current holder) rather than an old/reissued one.
+    // 1, first/mi/last name indices 8/9/10) still parse correctly, and that dedup
+    // keeps the highest-uid row per callsign (the current holder) rather than an
+    // old/reissued one.
     static void FccUlsProviderParseLineTests()
     {
         Console.WriteLine("\n── FccUlsProvider.ParseLine ──");
 
         // W1AW = ARRL HQ, Newington, CT -- a stable, well-known real-world answer.
+        // Club licenses leave first/mi/last name all blank -- Name must be null,
+        // not an empty string pieced together from blanks.
         const string w1aw = "EN|780866|||W1AW|L|L00306106|ARRL HQ OPERATORS CLUB||||||||225 MAIN ST|NEWINGTON|CT|06111|| David A Minster|000|0004511143|B||||||";
-        var d1 = new Dictionary<string, (long Uid, string State)>(StringComparer.OrdinalIgnoreCase);
+        var d1 = new Dictionary<string, (long Uid, string State, string Name)>(StringComparer.OrdinalIgnoreCase);
         FccUlsProvider.ParseLine(w1aw, d1);
         Check("W1AW parses to CT", d1.TryGetValue("W1AW", out var w1awEntry) && w1awEntry.State == "CT", true);
+        Check("W1AW (club license) has no personal name", w1awEntry.Name == null, true);
 
         // AA0A: two real rows for the same callsign -- an older license (McCarthy,
-        // MO, lower uid) and the current one (Rosebrook, SD, higher uid). Confirmed
-        // duplicate pair copied verbatim from a real downloaded file.
+        // MO, lower uid, with a middle initial) and the current one (Rosebrook, SD,
+        // higher uid, no middle initial). Confirmed duplicate pair copied verbatim
+        // from a real downloaded file.
         const string aa0aOld = "EN|215000|||AA0A|L|L00209566|MC CARTHY, DENNIS J|DENNIS|J|MC CARTHY|||||6438 Bishops Pl|SAINT LOUIS|MO|631093371|||000|0002274249|I||||||";
         const string aa0aNew = "EN|4280373|||AA0A|L|L02306961|Rosebrook, John|John||Rosebrook|||||3916 N. Potsdam Ave. #4555|Sioux Falls|SD|57104|||000|0028942159|I||||||";
 
+        // The old row alone (not shadowed by the higher-uid new row) exercises the
+        // middle-initial-present combining path.
+        var dOldAlone = new Dictionary<string, (long Uid, string State, string Name)>(StringComparer.OrdinalIgnoreCase);
+        FccUlsProvider.ParseLine(aa0aOld, dOldAlone);
+        Check("AA0A old row: name combines first + MI + last",
+              dOldAlone.TryGetValue("AA0A", out var aa0aOldEntry) && aa0aOldEntry.Name == "DENNIS J MC CARTHY", true);
+
         // Order 1: old row first, then new -- higher uid must win.
-        var d2 = new Dictionary<string, (long Uid, string State)>(StringComparer.OrdinalIgnoreCase);
+        var d2 = new Dictionary<string, (long Uid, string State, string Name)>(StringComparer.OrdinalIgnoreCase);
         FccUlsProvider.ParseLine(aa0aOld, d2);
         FccUlsProvider.ParseLine(aa0aNew, d2);
         Check("AA0A (old-then-new order): higher uid (SD) wins",
               d2.TryGetValue("AA0A", out var aa0aEntry1) && aa0aEntry1.State == "SD", true);
+        Check("AA0A (old-then-new order): current holder's name (no MI)",
+              aa0aEntry1.Name == "John Rosebrook", true);
 
         // Order 2: new row first, then old -- must NOT regress back to the old one.
-        var d3 = new Dictionary<string, (long Uid, string State)>(StringComparer.OrdinalIgnoreCase);
+        var d3 = new Dictionary<string, (long Uid, string State, string Name)>(StringComparer.OrdinalIgnoreCase);
         FccUlsProvider.ParseLine(aa0aNew, d3);
         FccUlsProvider.ParseLine(aa0aOld, d3);
         Check("AA0A (new-then-old order): higher uid (SD) still wins",
               d3.TryGetValue("AA0A", out var aa0aEntry2) && aa0aEntry2.State == "SD", true);
+        Check("AA0A (new-then-old order): current holder's name (no MI)",
+              aa0aEntry2.Name == "John Rosebrook", true);
 
         // Malformed/irrelevant input must be skipped, not throw or add junk.
-        var d4 = new Dictionary<string, (long Uid, string State)>(StringComparer.OrdinalIgnoreCase);
+        var d4 = new Dictionary<string, (long Uid, string State, string Name)>(StringComparer.OrdinalIgnoreCase);
         FccUlsProvider.ParseLine("HD|780866|||W1AW|A|||||", d4);
         Check("non-EN record type is skipped", d4.Count == 0, true);
         FccUlsProvider.ParseLine("EN|123|||W9ZZZ|L|", d4);
