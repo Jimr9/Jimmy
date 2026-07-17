@@ -273,7 +273,7 @@ namespace WSJTX_Controller
                 State      = NodeText(doc, "state"),
                 Grid       = NodeText(doc, "grid"),
                 Continent  = NodeText(doc, "cont"),
-                Name       = NodeText(doc, "fname") ?? NodeText(doc, "name"),
+                Name       = CombineName(NodeText(doc, "fname"), NodeText(doc, "name")),
                 County     = NodeText(doc, "county"),
                 CqZone     = NodeText(doc, "cqzone"),
                 ItuZone    = NodeText(doc, "ituzone"),
@@ -281,6 +281,18 @@ namespace WSJTX_Controller
                 Email      = NodeText(doc, "email"),
                 CachedAt   = DateTime.UtcNow.ToString("o"),
             };
+        }
+
+        // QRZ's XML API splits the operator's name into "fname" (first name,
+        // sometimes including a middle initial) and "name" (last name) --
+        // these must be joined, not treated as a fallback pair, or the last
+        // name is silently dropped whenever a first name is present (i.e.
+        // almost always).
+        private static string CombineName(string first, string last)
+        {
+            if (string.IsNullOrEmpty(first)) return last;
+            if (string.IsNullOrEmpty(last)) return first;
+            return $"{first} {last}";
         }
 
         private static string NodeText(XmlDocument doc, string tag)
