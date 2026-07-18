@@ -11,7 +11,6 @@ namespace WSJTX_Controller
     {
         private readonly TextBox _statusValue;
         private readonly Button  _closeButton;
-        private readonly Button  _qrzButton;
 
         // Rows: (label, read-only value textbox — must be focusable so JAWS/NVDA
         // users can reach each field with Tab; a plain Label can never take focus).
@@ -81,17 +80,6 @@ namespace WSJTX_Controller
 
             y += 32;
 
-            _qrzButton = new Button
-            {
-                Text           = "Lookup Online (QRZ)",
-                Location       = new Point(lx, y),
-                Size           = new Size(160, 26),
-                TabIndex       = tabIndex++,
-                AccessibleName = "Look up this callsign online via QRZ",
-            };
-            _qrzButton.Click += QrzButton_Click;
-            Controls.Add(_qrzButton);
-
             _closeButton = new Button
             {
                 Text           = "Close",
@@ -99,7 +87,7 @@ namespace WSJTX_Controller
                 Size           = new Size(70, 26),
                 TabIndex       = tabIndex++,
                 DialogResult   = DialogResult.OK,
-                AccessibleName = "Close lookup dialog",
+                AccessibleName = "Close",
             };
             Controls.Add(_closeButton);
             AcceptButton = _closeButton;
@@ -108,12 +96,22 @@ namespace WSJTX_Controller
 
             // Opening this dialog (via the lookup hotkey) is itself the explicit,
             // user-initiated request that FocusedOnly/UnidentifiedQueue policies are
-            // gated on -- so if QRZ has nothing cached yet, go get it immediately
-            // instead of making the user notice the dashes and click the button.
+            // gated on -- so a needed QRZ lookup fires automatically; there's no
+            // separate button for it any more.
             Load += async (s, e) =>
             {
-                if (_canQrz && _manager.QrzNeedsLookup(_call))
+                if (!_canQrz)
+                {
+                    _statusValue.Text = "QRZ lookup disabled.";
+                }
+                else if (_manager.QrzNeedsLookup(_call))
+                {
                     await DoQrzLookupAsync();
+                }
+                else
+                {
+                    _statusValue.Text = "Using cached data.";
+                }
             };
         }
 
@@ -170,8 +168,6 @@ namespace WSJTX_Controller
             _canQrz = _manager.Qrz.IsEnabled &&
                       (_manager.Policy == QrzLookupPolicy.FocusedOnly ||
                        _manager.Policy == QrzLookupPolicy.UnidentifiedQueue);
-            _qrzButton.Enabled = _canQrz;
-            if (!_canQrz) _qrzButton.Text = "QRZ lookup disabled";
         }
 
         private void ShowNoData()
@@ -182,16 +178,12 @@ namespace WSJTX_Controller
                                         _adifValue, _qslManagerValue, _emailValue,
                                         _lotwValue, _activityValue, _sourcesValue })
                 lbl.Text = "—";
-            _qrzButton.Enabled = false;
         }
-
-        private async void QrzButton_Click(object sender, EventArgs e) => await DoQrzLookupAsync();
 
         private async Task DoQrzLookupAsync()
         {
             if (_manager == null) return;
-            _qrzButton.Enabled  = false;
-            _statusValue.Text   = "Looking up via QRZ…";
+            _statusValue.Text = "Looking up via QRZ…";
             var result = await _manager.LookupQrzAsync(_call);
             if (IsDisposed) return;
             if (result != null)
@@ -203,7 +195,6 @@ namespace WSJTX_Controller
             else
             {
                 _statusValue.Text = $"QRZ: {_manager.Qrz.LastError ?? "No data returned."}";
-                _qrzButton.Enabled = true;
             }
 
             // Move focus to the status field so JAWS/NVDA announce the async result —

@@ -139,6 +139,7 @@ static class JimmyTests
         AdifImporterLiveLoggedStateFallbackTests();
         DxSpotWatcherIsEvenPeriodTests();
         FccUlsProviderParseLineTests();
+        FccUlsProviderShouldPreferNameTests();
         FccUlsProviderLooksIncompleteTests();
 
         Console.WriteLine();
@@ -688,6 +689,28 @@ static class JimmyTests
         Check("too-few-fields line is skipped", d4.Count == 0, true);
         FccUlsProvider.ParseLine("", d4);
         Check("empty line is skipped, does not throw", d4.Count == 0, true);
+    }
+
+    // ── FccUlsProvider.ShouldPreferName ──────────────────────────────────────────
+    // Real-world case that motivated this: QRZ's "fname" field sometimes already
+    // jams a first name + middle initial together ("RICHARD L") with the separate
+    // last-name field left blank, so QRZ's own combined name has only 2 words even
+    // though a full name is available -- FCC's fuller 3-word record must still win.
+    static void FccUlsProviderShouldPreferNameTests()
+    {
+        Console.WriteLine("\n── FccUlsProvider.ShouldPreferName ──");
+        Check("no existing name -> FCC's name is preferred",
+              FccUlsProvider.ShouldPreferName("John Rosebrook", null), true);
+        Check("FCC name more complete (3 words) than existing (2 words) -> preferred",
+              FccUlsProvider.ShouldPreferName("RICHARD L DILLON", "RICHARD L"), true);
+        Check("FCC name same word count as existing -> not preferred (existing kept)",
+              FccUlsProvider.ShouldPreferName("John Rosebrook", "Johnny Rosebrook"), false);
+        Check("FCC name fewer words than existing -> not preferred",
+              FccUlsProvider.ShouldPreferName("John", "John Q Rosebrook"), false);
+        Check("no FCC name -> never preferred, regardless of existing",
+              FccUlsProvider.ShouldPreferName(null, "RICHARD L"), false);
+        Check("no FCC name and no existing name -> not preferred",
+              FccUlsProvider.ShouldPreferName(null, null), false);
     }
 
     // ── FccUlsProvider.LooksIncomplete ───────────────────────────────────────────

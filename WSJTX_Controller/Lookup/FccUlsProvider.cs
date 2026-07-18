@@ -12,10 +12,11 @@ namespace WSJTX_Controller
     // license database -- the authoritative source QRZ's own US records ultimately
     // derive from anyway. Free, no subscription/account, no per-call network cost
     // once downloaded. State is always taken from here when available (authoritative,
-    // overrides any other source). Name is fallback-only: an operator's QRZ profile
-    // name (their own chosen on-air display name) still wins when present -- FCC's
-    // registered legal name is only used to fill the gap for US calls with no QRZ
-    // name on file. Nothing else about a callsign (grid, QSL manager, etc.) comes
+    // overrides any other source). Name uses whichever contributor's name has more
+    // words: QRZ's own profile name generally wins, but QRZ's "fname" field sometimes
+    // already jams a first name + middle initial together while the separate
+    // last-name field is left blank -- in that case FCC's fuller first+MI+last record
+    // supplements it. Nothing else about a callsign (grid, QSL manager, etc.) comes
     // from this source.
     //
     // Downloads https://data.fcc.gov/download/pub/uls/complete/l_amat.zip -- the
@@ -373,10 +374,7 @@ namespace WSJTX_Controller
                 contributed = true;
             }
 
-            // Name is fallback-only: an operator's own QRZ profile name is generally
-            // more current/recognizable than their FCC-registered legal name, so
-            // this only fills the gap when no other source already supplied one.
-            if (string.IsNullOrEmpty(record.Name) && !string.IsNullOrEmpty(name))
+            if (ShouldPreferName(name, record.Name))
             {
                 record.Name = name;
                 contributed = true;
@@ -384,6 +382,24 @@ namespace WSJTX_Controller
 
             if (contributed) record.Sources.Add(SourceName);
         }
+
+        // Prefer whichever contributor's name has more parts to it. QRZ's own
+        // "fname" field sometimes already jams a first name + middle initial
+        // together (e.g. "RICHARD L") while its separate last-name field is left
+        // blank on many profiles -- taking QRZ's 2-word result as "already
+        // complete" would permanently hide FCC's fuller "RICHARD L DILLON" record.
+        // FCC's fields are always first+MI+last in a consistent order, so a higher
+        // word count from FCC reliably means a more complete name, not a different
+        // one. Public so this can be tested directly, same as ParseLine/LooksIncomplete.
+        public static bool ShouldPreferName(string candidateName, string existingName)
+        {
+            if (string.IsNullOrEmpty(candidateName)) return false;
+            if (string.IsNullOrEmpty(existingName)) return true;
+            return WordCount(candidateName) > WordCount(existingName);
+        }
+
+        private static int WordCount(string s) =>
+            s.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length;
 
         private DateTime ReadMeta()
         {
