@@ -252,9 +252,9 @@ namespace WSJTX_Controller
                     File.Copy(tmpDb, _dbPath, overwrite: true);
                     _conn = new SQLiteConnection($"Data Source={_dbPath};");
                     _conn.Open();
+                    _schemaCurrent = true;
                 }
 
-                _schemaCurrent = true;
                 RecordCount = best.Count;
                 LastUpdate = DateTime.UtcNow;
                 WriteMeta(LastUpdate);
@@ -327,16 +327,34 @@ namespace WSJTX_Controller
             lock (_dbLock)
             {
                 if (_conn == null) return (null, null);
-                using (var cmd = _conn.CreateCommand())
+                try
                 {
-                    cmd.CommandText = "SELECT state, name FROM fcc_amat WHERE callsign = @c;";
-                    cmd.Parameters.AddWithValue("@c", call.ToUpperInvariant());
-                    using (var r = cmd.ExecuteReader())
+                    using (var cmd = _conn.CreateCommand())
                     {
-                        if (!r.Read()) return (null, null);
-                        return (r.IsDBNull(0) ? null : r.GetString(0),
-                                r.IsDBNull(1) ? null : r.GetString(1));
+                        // An upgrading user's on-disk fcc_uls.db may still be the old
+                        // (pre-Name) 2-column schema until the background rebuild
+                        // NeedsRefresh() triggered finishes -- querying "name" against
+                        // that table would throw on every single call. _schemaCurrent
+                        // reflects what the currently-open connection actually has.
+                        cmd.CommandText = _schemaCurrent
+                            ? "SELECT state, name FROM fcc_amat WHERE callsign = @c;"
+                            : "SELECT state FROM fcc_amat WHERE callsign = @c;";
+                        cmd.Parameters.AddWithValue("@c", call.ToUpperInvariant());
+                        using (var r = cmd.ExecuteReader())
+                        {
+                            if (!r.Read()) return (null, null);
+                            string state = r.IsDBNull(0) ? null : r.GetString(0);
+                            string name  = (_schemaCurrent && !r.IsDBNull(1)) ? r.GetString(1) : null;
+                            return (state, name);
+                        }
                     }
+                }
+                catch (Exception ex)
+                {
+                    // Never let a lookup-provider hiccup crash the per-decode hot path
+                    // (WsjtxClient.Update -> AwardTagger -> Build -> Contribute).
+                    LastError = "Lookup error: " + ex.Message;
+                    return (null, null);
                 }
             }
         }
