@@ -172,6 +172,9 @@ namespace WSJTX_Controller
         public bool QrzNeedsLookup(string call) =>
             _useLookupData && Qrz.NeedsLookup(call);
 
+        public DateTime? QrzCachedAt(string call) =>
+            _useLookupData ? Qrz.GetCachedAt(call) : null;
+
         public Task<bool> TestQrzAsync() => Qrz.TestAsync();
 
         // ── Automatic QRZ queue (UnidentifiedQueue policy) ───────────────────────

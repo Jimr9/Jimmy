@@ -110,7 +110,10 @@ namespace WSJTX_Controller
                 }
                 else
                 {
-                    _statusValue.Text = "Using cached data.";
+                    var cachedAt = _manager.QrzCachedAt(_call);
+                    _statusValue.Text = cachedAt.HasValue
+                        ? $"QRZ data from {FormatAge(cachedAt.Value)}."
+                        : "Using cached data.";
                 }
             };
         }
@@ -201,6 +204,19 @@ namespace WSJTX_Controller
             // the label never regains focus on its own, so silently updating .Text
             // would otherwise go unnoticed by screen-reader users.
             _statusValue.Focus();
+        }
+
+        // Concise, screen-reader-friendly age phrase (cachedAtUtc is always UTC --
+        // see QrzCacheEntry.CachedAtDt) so the status line says something a user can
+        // actually judge trust from, instead of a content-free "cached" phrase.
+        private static string FormatAge(DateTime cachedAtUtc)
+        {
+            var age = DateTime.UtcNow - cachedAtUtc;
+            if (age.TotalMinutes < 1)  return "moments ago";
+            if (age.TotalHours < 1)    return $"{(int)age.TotalMinutes} min ago";
+            if (age.TotalHours < 24)   return $"{(int)age.TotalHours}h ago";
+            if (age.TotalDays < 2)     return "yesterday";
+            return $"{(int)age.TotalDays} days ago";
         }
     }
 }

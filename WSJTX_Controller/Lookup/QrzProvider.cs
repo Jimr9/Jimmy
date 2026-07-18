@@ -93,6 +93,22 @@ namespace WSJTX_Controller
             }
         }
 
+        // When this specific call was last actually fetched from QRZ (not just
+        // displayed) -- lets a caller show how stale a cache hit is, e.g. the
+        // Lookup dialog's status line. Null if not cached (or the cache entry has
+        // aged out, same freshness rule as GetCached).
+        public DateTime? GetCachedAt(string call)
+        {
+            if (!IsEnabled || string.IsNullOrEmpty(call)) return null;
+            lock (_cacheLock)
+            {
+                QrzCacheEntry e;
+                if (!_cache.TryGetValue(call, out e)) return null;
+                if ((DateTime.UtcNow - e.CachedAtDt).TotalDays >= _cacheDays) return null;
+                return e.CachedAtDt;
+            }
+        }
+
         // The most recent CachedAt across every cached entry -- CachedAt is only
         // ever set when a fresh network fetch actually happens (ParseResponse), not
         // on a cache-hit reuse, so this reflects "last time we actually talked to
