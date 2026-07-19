@@ -375,6 +375,23 @@ class JimmyVerifier:
             print(f"           (not failed — requires: {config_note})")
             print(f"           queue={items}")
 
+    def check_queue_not_contains_warn(self, fragment, label, config_note):
+        """Soft queue check: PASS if the call is absent; WARNING (not FAIL) if present.
+
+        Complement of check_queue_contains_warn -- for tests whose *rejection* depends
+        on a user-configurable Options setting that cannot be read remotely.
+        """
+        time.sleep(0.3)
+        items    = self.queue_items()
+        frag_nsp = fragment.lower().replace(" ", "")
+        ok       = not any(frag_nsp in i.lower().replace(" ", "") for i in items)
+        if ok:
+            self._report(True, label, f"queue={items}")
+        else:
+            print(f"    ⚠ WARN  {label}")
+            print(f"           (not failed — requires: {config_note})")
+            print(f"           queue={items}")
+
     def find_queue_row(self, fragment):
         """Return the queue row whose text contains fragment (spaces stripped from
         both sides, matching Jimmy's spaced-out callsign display), or None."""
@@ -1482,6 +1499,38 @@ def group18_weak_snr_removal(sock, v):
          verify_fn=check_removed_or_warn if v.available else None)
 
 
+def group19_weak_snr_first_decode(sock, v):
+    """T42: a station whose very first-ever decode is already weak (at or below the
+    floor) must never be admitted to the queue at all, when 'Ignore SNR at or below'
+    is checked -- regardless of 'Remove from list immediately...', since there's
+    nothing queued yet to remove.
+
+    Regression coverage for the 2026-07-18 fix: the weak-signal SNR floor was only
+    ever wired into WsjtxClient.ProcessDecodeMsg's TO_MYCALL branch. Ordinary CQ
+    traffic -- the vast majority of what fills the calling queue, including
+    everything Group 18 above sends -- is handled entirely by AddSelectedCall, which
+    had zero weak-signal awareness. A brand-new CQ station decoded below the floor
+    was still admitted to the queue on its very first appearance (the exact bug
+    report that prompted this fix: a -22 floor with -23/-25 stations still showing
+    up in TX1). AddSelectedCall now rejects it outright, with the same
+    never-suppress-callInProg and manual-selection-bypass carve-outs already used by
+    the ProcessDecodeMsg check.
+    """
+    print("  ─ Group 19: Weak-signal floor, first-decode admission ─")
+
+    NEW_WEAK_CALL = "W6FIRST"
+
+    send(sock,
+         f"Brand-new station, weak from the very first decode: {NEW_WEAK_CALL}",
+         "Expect: never queued IF 'Ignore SNR at or below' is checked in Options, "
+         "with the floor at or above -23 (WARN, not FAIL, otherwise)",
+         build_enqueue(f"CQ {NEW_WEAK_CALL} EM63", snr=-23),
+         verify_fn=(lambda: v.check_queue_not_contains_warn(
+             NEW_WEAK_CALL, f"T42: {NEW_WEAK_CALL} never queued (weak on first decode)",
+             "'Ignore SNR at or below' checked in Options, floor at or above -23"
+         )) if v.available else None)
+
+
 def run_tests(sock, v):
     print("──── Test Decode Messages ────")
     print(f"  Format: [DESTINATION] [SOURCE] [payload]")
@@ -1506,6 +1555,7 @@ def run_tests(sock, v):
     group16_rrr_after_logged_no_requeue(sock, v)
     group17_still_needed_tag_clears_on_log(sock, v)
     group18_weak_snr_removal(sock, v)
+    group19_weak_snr_first_decode(sock, v)
 
     # ── To add a new replay test group ──────────────────────────────────────
     # 1. Define a new function, e.g.:
