@@ -1646,12 +1646,14 @@ namespace WSJTX_Controller
                 using (var db = new LogbookDb())
                 {
                     HashSet<string> neededStates;
+                    HashSet<string> unconfirmedStates;
                     HashSet<int>    unconfirmedDxcc;
                     HashSet<int>    neededZones;
-                    db.LoadHrcCache(out neededStates, out unconfirmedDxcc, out neededZones);
-                    wsjtxClient.hrcNeededStates    = neededStates;
-                    wsjtxClient.hrcUnconfirmedDxcc = unconfirmedDxcc;
-                    wsjtxClient.hrcNeededZones     = neededZones;
+                    db.LoadHrcCache(out neededStates, out unconfirmedStates, out unconfirmedDxcc, out neededZones);
+                    wsjtxClient.hrcNeededStates      = neededStates;
+                    wsjtxClient.hrcUnconfirmedStates = unconfirmedStates;
+                    wsjtxClient.hrcUnconfirmedDxcc   = unconfirmedDxcc;
+                    wsjtxClient.hrcNeededZones       = neededZones;
                 }
             }
             catch { }
@@ -3254,6 +3256,7 @@ namespace WSJTX_Controller
             WsjtxClient.CallCategory.WANTED_CQ,
             WsjtxClient.CallCategory.ALWAYS_WANTED,
             WsjtxClient.CallCategory.WAS_NEEDED,
+            WsjtxClient.CallCategory.WAS_UNCONFIRMED,
             WsjtxClient.CallCategory.DXCC_UNCONFIRMED,
             WsjtxClient.CallCategory.ZONE_NEEDED,
             WsjtxClient.CallCategory.STILL_NEEDED,

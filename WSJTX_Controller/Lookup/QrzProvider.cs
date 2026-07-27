@@ -27,6 +27,7 @@ namespace WSJTX_Controller
         [XmlAttribute] public string Grid       { get; set; }
         [XmlAttribute] public string Continent  { get; set; }
         [XmlAttribute] public string Name       { get; set; }
+        [XmlAttribute] public string LicenseClass { get; set; }
         [XmlAttribute] public string County     { get; set; }
         [XmlAttribute] public string CqZone      { get; set; }
         [XmlAttribute] public string ItuZone     { get; set; }
@@ -138,7 +139,8 @@ namespace WSJTX_Controller
             var cached = GetCached(call);
             if (cached == null) return;
 
-            if (string.IsNullOrEmpty(record.Name))       record.Name       = cached.Name;
+            if (string.IsNullOrEmpty(record.Name))         record.Name         = cached.Name;
+            if (string.IsNullOrEmpty(record.LicenseClass))  record.LicenseClass = cached.LicenseClass;
             if (string.IsNullOrEmpty(record.Grid))       record.Grid       = cached.Grid;
             if (string.IsNullOrEmpty(record.State))      record.State      = cached.State;
             if (string.IsNullOrEmpty(record.Country))    record.Country    = cached.Country;
@@ -290,6 +292,7 @@ namespace WSJTX_Controller
                 Grid       = NodeText(doc, "grid"),
                 Continent  = NodeText(doc, "cont"),
                 Name       = CombineName(NodeText(doc, "fname"), NodeText(doc, "name")),
+                LicenseClass = NodeText(doc, "class"),
                 County     = NodeText(doc, "county"),
                 CqZone     = NodeText(doc, "cqzone"),
                 ItuZone    = NodeText(doc, "ituzone"),
@@ -326,6 +329,7 @@ namespace WSJTX_Controller
             Grid       = e.Grid,
             Continent  = e.Continent,
             Name       = e.Name,
+            LicenseClass = e.LicenseClass,
             County     = e.County,
             CqZone     = ParseZone(e.CqZone),
             ItuZone    = ParseZone(e.ItuZone),

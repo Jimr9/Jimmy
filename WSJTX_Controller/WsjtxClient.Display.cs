@@ -302,6 +302,7 @@ namespace WSJTX_Controller
             { CallCategory.POTA,                "POTA" },
             { CallCategory.SOTA,                "SOTA" },
             { CallCategory.WAS_NEEDED,          "WAS Needed" },
+            { CallCategory.WAS_UNCONFIRMED,     "WAS Unconf" },
             { CallCategory.DXCC_UNCONFIRMED,    "DXCC Unconf" },
             { CallCategory.ZONE_NEEDED,         "Zone Needed" },
         };

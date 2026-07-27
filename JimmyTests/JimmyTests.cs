@@ -347,7 +347,7 @@ static class JimmyTests
     }
 
     // ── HRC filter enum values ────────────────────────────────────────────────
-    // Verify the three new CallCategory values have the expected integer assignments.
+    // Verify the four new CallCategory values have the expected integer assignments.
     // If any of these fail, DeriveCategory / AddSelectedCall routing is broken.
     static void HrcEnumTests()
     {
@@ -357,8 +357,9 @@ static class JimmyTests
         Check("ALWAYS_WANTED == 8",       (int)WsjtxClient.CallCategory.ALWAYS_WANTED       == 8,  true);
         // New HRC values
         Check("WAS_NEEDED == 9",          (int)WsjtxClient.CallCategory.WAS_NEEDED          == 9,  true);
-        Check("DXCC_UNCONFIRMED == 10",   (int)WsjtxClient.CallCategory.DXCC_UNCONFIRMED    == 10, true);
-        Check("ZONE_NEEDED == 11",        (int)WsjtxClient.CallCategory.ZONE_NEEDED         == 11, true);
+        Check("WAS_UNCONFIRMED == 10",    (int)WsjtxClient.CallCategory.WAS_UNCONFIRMED     == 10, true);
+        Check("DXCC_UNCONFIRMED == 11",   (int)WsjtxClient.CallCategory.DXCC_UNCONFIRMED    == 11, true);
+        Check("ZONE_NEEDED == 12",        (int)WsjtxClient.CallCategory.ZONE_NEEDED         == 12, true);
     }
 
     // ── HRC cache SQL logic ───────────────────────────────────────────────────
@@ -374,9 +375,10 @@ static class JimmyTests
         {
             using (var db = new LogbookDb(tmpDb))
             {
-                // TX confirmed via LoTW → TX must NOT be in neededStates
+                // TX confirmed via LoTW → TX must NOT be in neededStates or unconfirmedStates
                 InsertQso(db, "W5TX",   "TX", dxcc: 100, zone: 4, lotwRcvd: "Y");
-                // CA worked but unconfirmed → CA MUST be in neededStates
+                // CA worked but unconfirmed → CA MUST be in unconfirmedStates, NOT neededStates
+                // (never-worked and worked-unconfirmed are now a WAS/DXCC-parity split, not one bucket)
                 InsertQso(db, "W6CA",   "CA", dxcc: 100, zone: 3);
                 // WY: never worked at all → WY MUST be in neededStates (no QSO inserted)
 
@@ -393,19 +395,33 @@ static class JimmyTests
                 // Zone 20: never worked → zone 20 MUST be in neededZones
 
                 HashSet<string> neededStates;
+                HashSet<string> unconfirmedStates;
                 HashSet<int>    unconfirmedDxcc;
                 HashSet<int>    neededZones;
-                db.LoadHrcCache(out neededStates, out unconfirmedDxcc, out neededZones);
+                db.LoadHrcCache(out neededStates, out unconfirmedStates, out unconfirmedDxcc, out neededZones);
 
                 // ── States ──────────────────────────────────────────────────
-                Check("neededStates: TX confirmed → NOT in set",   neededStates.Contains("TX"), false);
-                Check("neededStates: CA unconfirmed → in set",     neededStates.Contains("CA"), true);
-                Check("neededStates: WY (no QSO) → in set",        neededStates.Contains("WY"), true);
-                Check("neededStates: count ≤ 50",                  neededStates.Count <= 50,    true);
-                // Only TX was confirmed, so 49 states should be needed
-                Check("neededStates: count == 49",                 neededStates.Count == 49,    true);
+                // Worked states in this fixture: TX (confirmed), CA (unconfirmed),
+                // and CO (unconfirmed, via the W0TST zone-5 QSO below) — all three
+                // move out of neededStates now that it means "never worked".
+                Check("neededStates: TX confirmed → NOT in set",     neededStates.Contains("TX"), false);
+                Check("neededStates: CA worked/unconfirmed → NOT in set (moved to unconfirmedStates)",
+                      neededStates.Contains("CA"), false);
+                Check("neededStates: CO worked/unconfirmed → NOT in set (moved to unconfirmedStates)",
+                      neededStates.Contains("CO"), false);
+                Check("neededStates: WY (no QSO) → in set",          neededStates.Contains("WY"), true);
+                Check("neededStates: count ≤ 50",                    neededStates.Count <= 50,    true);
+                // TX, CA, and CO are all no longer "never worked", so 47 states remain needed
+                Check("neededStates: count == 47",                   neededStates.Count == 47,    true);
                 // DC must never appear — it is not a state
-                Check("neededStates: DC never present",            neededStates.Contains("DC"), false);
+                Check("neededStates: DC never present",              neededStates.Contains("DC"), false);
+
+                // ── States unconfirmed ────────────────────────────────────────
+                Check("unconfirmedStates: TX confirmed → NOT in set", unconfirmedStates.Contains("TX"), false);
+                Check("unconfirmedStates: CA worked/unconfirmed → in set", unconfirmedStates.Contains("CA"), true);
+                Check("unconfirmedStates: CO worked/unconfirmed → in set", unconfirmedStates.Contains("CO"), true);
+                Check("unconfirmedStates: WY never worked → NOT in set",   unconfirmedStates.Contains("WY"), false);
+                Check("unconfirmedStates: count == 2",                     unconfirmedStates.Count == 2,     true);
 
                 // ── DXCC unconfirmed ─────────────────────────────────────────
                 // DXCC 100 has a confirmed QSO → NOT unconfirmed
@@ -1169,8 +1185,8 @@ static class JimmyTests
                 InsertQso(db, "W5TX", "TX", dxcc: 291, zone: 5, band: "20m", lotwRcvd: "Y");
 
                 HashSet<string> neededNoBand, neededWithBand;
-                db.LoadHrcCache(out neededNoBand, out _, out _, band: null);
-                db.LoadHrcCache(out neededWithBand, out _, out _, band: "10m");
+                db.LoadHrcCache(out neededNoBand, out _, out _, out _, band: null);
+                db.LoadHrcCache(out neededWithBand, out _, out _, out _, band: "10m");
 
                 Check("LoadHrcCache(band:null): TX confirmed on 20m -> not needed (all-time view)",
                       !neededNoBand.Contains("TX"), true);

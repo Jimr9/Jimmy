@@ -233,6 +233,7 @@ namespace WSJTX_Controller
                         isAdmitted = IsCallingEnabled(CallCategory.WANTED_CQ) && isWantedDirected;
                         break;
                     case CallCategory.WAS_NEEDED:
+                    case CallCategory.WAS_UNCONFIRMED:
                     case CallCategory.DXCC_UNCONFIRMED:
                     case CallCategory.ZONE_NEEDED:
                     case CallCategory.STILL_NEEDED:
@@ -288,6 +289,7 @@ namespace WSJTX_Controller
                         emsg.Category == CallCategory.NEW_COUNTRY ||
                         emsg.Category == CallCategory.NEW_COUNTRY_ON_BAND ||
                         emsg.Category == CallCategory.WAS_NEEDED ||
+                        emsg.Category == CallCategory.WAS_UNCONFIRMED ||
                         emsg.Category == CallCategory.DXCC_UNCONFIRMED ||
                         emsg.Category == CallCategory.ZONE_NEEDED ||
                         emsg.Category == CallCategory.STILL_NEEDED ||

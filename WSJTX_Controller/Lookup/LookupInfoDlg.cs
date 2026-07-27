@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -14,7 +15,7 @@ namespace WSJTX_Controller
 
         // Rows: (label, read-only value textbox — must be focusable so JAWS/NVDA
         // users can reach each field with Tab; a plain Label can never take focus).
-        private readonly TextBox _callValue, _nameValue, _gridValue, _stateValue,
+        private readonly TextBox _callValue, _nameValue, _licClassValue, _gridValue, _stateValue,
                                  _countryValue, _continentValue, _countyValue, _cqzoneValue,
                                  _ituzoneValue, _adifValue, _qslManagerValue, _emailValue,
                                  _lotwValue, _activityValue, _sourcesValue;
@@ -36,7 +37,7 @@ namespace WSJTX_Controller
             MinimizeBox     = false;
             ShowInTaskbar   = false;
             StartPosition   = FormStartPosition.CenterParent;
-            Size            = new Size(480, 486);
+            Size            = new Size(480, 510);
             Font            = new Font("Microsoft Sans Serif", 9F);
             KeyPreview      = true;
             KeyDown        += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); };
@@ -45,6 +46,7 @@ namespace WSJTX_Controller
 
             _callValue      = AddRow("Callsign:",        ref y, lx, vx, fw, rh, ref tabIndex);
             _nameValue      = AddRow("Name:",            ref y, lx, vx, fw, rh, ref tabIndex);
+            _licClassValue  = AddRow("License Class:",   ref y, lx, vx, fw, rh, ref tabIndex);
             _gridValue      = AddRow("Grid:",            ref y, lx, vx, fw, rh, ref tabIndex);
             _stateValue     = AddRow("State/Province:",  ref y, lx, vx, fw, rh, ref tabIndex);
             _countryValue   = AddRow("Country:",         ref y, lx, vx, fw, rh, ref tabIndex);
@@ -152,6 +154,7 @@ namespace WSJTX_Controller
 
             _callValue.Text      = info.Callsign  ?? _call;
             _nameValue.Text      = info.Name       ?? "—";
+            _licClassValue.Text  = FormatLicenseClass(info.LicenseClass);
             _gridValue.Text      = info.Grid       ?? "—";
             _stateValue.Text     = info.State      ?? "—";
             _countryValue.Text   = info.Country    ?? "—";
@@ -176,7 +179,7 @@ namespace WSJTX_Controller
         private void ShowNoData()
         {
             _callValue.Text    = _call;
-            foreach (var lbl in new[] { _nameValue, _gridValue, _stateValue, _countryValue,
+            foreach (var lbl in new[] { _nameValue, _licClassValue, _gridValue, _stateValue, _countryValue,
                                         _continentValue, _countyValue, _cqzoneValue, _ituzoneValue,
                                         _adifValue, _qslManagerValue, _emailValue,
                                         _lotwValue, _activityValue, _sourcesValue })
@@ -217,6 +220,26 @@ namespace WSJTX_Controller
             if (age.TotalHours < 24)   return $"{(int)age.TotalHours}h ago";
             if (age.TotalDays < 2)     return "yesterday";
             return $"{(int)age.TotalDays} days ago";
+        }
+
+        // QRZ returns the bare US operator-class letter (N/T/G/A/E) -- spell it out for
+        // JAWS/NVDA users rather than making them parse a single letter. Anything else
+        // (a foreign license class string, or a code not in this set) is shown as-is.
+        private static readonly Dictionary<string, string> UsLicenseClassNames =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "N", "Novice" },
+            { "T", "Technician" },
+            { "G", "General" },
+            { "A", "Advanced" },
+            { "E", "Extra" },
+        };
+
+        private static string FormatLicenseClass(string raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return "—";
+            string name;
+            return UsLicenseClassNames.TryGetValue(raw, out name) ? name : raw;
         }
     }
 }
