@@ -125,6 +125,7 @@
       <DependentUpon>HelpDlg.cs</DependentUpon>
     </Compile>
     <Compile Include="HotkeyConfig.cs" />
+    <Compile Include="UpdateChecker.cs" />
     <Compile Include="DxSpotWatcher.cs" />
     <Compile Include="CallQueueRanker.cs" />
     <Compile Include="JimmySettings.cs" />
