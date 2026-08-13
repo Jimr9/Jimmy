@@ -285,6 +285,13 @@ namespace WSJTX_Controller
             wsjtxClient.cmdPrompts = cmdPrompts;
             wsjtxClient.usePskReporter = usePskReporter;
 
+            dxSpotWatcher = new DxSpotWatcher();
+            dxSpotWatcher.Updated += () => BeginInvoke(new Action(RenderSpotWatchList));
+            dxSpotWatcher.UpdateWatchList(wsjtxClient.spotWatchCalls);
+            spotWatchAgeTimer.Tick += (s, e) => RenderSpotWatchList();
+            spotWatchAgeTimer.Start();
+
+            lookupManager.RegisterProvider(dxSpotWatcher);
             lookupManager.Initialize(
                 useLookupData,
                 qrzEnabled, qrzUsername, qrzPassword, qrzCacheDays,
@@ -920,10 +927,118 @@ namespace WSJTX_Controller
         // callers (none currently) compile unchanged if they ever call it directly.
         private void RestoreFocus() { }
 
-        // Spot Watch main-window pane is not yet built in this WPF pass (see migration report)
-        // -- the row-order/sort-key settings still round-trip correctly via spotWatchRowOrderFields/
-        // spotWatchSortKey above, there is just nothing visible to refresh yet.
-        public void RenderSpotWatchList() { }
+        public DxSpotWatcher dxSpotWatcher;
+        public System.Windows.Forms.Timer spotWatchAgeTimer = new System.Windows.Forms.Timer { Interval = 30000 };
+        private List<string> _spotWatchKeys = new List<string>();
+
+        public void RenderSpotWatchList()
+        {
+            if (dxSpotWatcher == null) return;
+            var snapshot = dxSpotWatcher.Snapshot();
+
+            IEnumerable<KeyValuePair<string, SpotInfo>> ordered = snapshot;
+            switch ((spotWatchSortKey ?? "callsign").ToLowerInvariant())
+            {
+                case "evenodd":
+                    ordered = snapshot.OrderBy(kv => kv.Value == null
+                        ? 2 : (DxSpotWatcher.IsEvenPeriod(kv.Value.UtcTime, kv.Value.Mode) ? 0 : 1));
+                    break;
+                case "snr":
+                    ordered = snapshot.OrderByDescending(kv => kv.Value?.Snr ?? int.MinValue);
+                    break;
+            }
+
+            var items = new List<string>(snapshot.Count);
+            var keys = new List<string>(snapshot.Count);
+            foreach (var kv in ordered)
+            {
+                keys.Add(kv.Key);
+                items.Add(FormatSpotWatchRow(kv.Key, kv.Value));
+            }
+
+            _spotWatchKeys = keys;
+            ListSink?.RenderSpotWatchList(items, keys);
+        }
+
+        private string FormatSpotWatchRow(string call, SpotInfo spot)
+        {
+            if (spot == null) return $"{call} -- not yet spotted";
+
+            string fallback = $"{call} -- last spotted {FormatSpotAge(spot.UtcTime)}, {spot.Band} {spot.Mode}, by {spot.SpotterCall}" +
+                (string.IsNullOrEmpty(spot.SpotterGrid) ? "" : $" ({spot.SpotterGrid})");
+
+            string country = "";
+            if (wsjtxClient?.lookupManager != null && wsjtxClient.lookupManager.Enabled)
+            {
+                var rec = wsjtxClient.lookupManager.Build(call);
+                bool isUsa = string.Equals(rec.Country, "United States", StringComparison.OrdinalIgnoreCase) || rec.Dxcc == 291;
+                if (isUsa && showUsStateCheckBox.Checked)
+                {
+                    string gridState = string.IsNullOrEmpty(spot.SenderGrid) ? null : WsjtxClient.GridToUsState(spot.SenderGrid);
+                    string state = WsjtxClient.ResolveUsState(rec.State, gridState);
+                    country = state != null ? $", {state}" : ", United States";
+                }
+                else if (!string.IsNullOrEmpty(rec.Country))
+                {
+                    country = $", {rec.Country}";
+                }
+            }
+
+            string spotterCountry = "";
+            if (spot.SpotterDxccEntity.HasValue && wsjtxClient?.lookupManager?.ClubLog != null)
+            {
+                var entity = wsjtxClient.lookupManager.ClubLog.AllEntities.FirstOrDefault(e => e.Adif == spot.SpotterDxccEntity.Value);
+                if (entity != null && !string.IsNullOrEmpty(entity.Name))
+                {
+                    const int UsaAdif = 291;
+                    if (entity.Adif == UsaAdif && showUsStateCheckBox.Checked)
+                    {
+                        string fccState = wsjtxClient.lookupManager.FccUls.IsEnabled ? wsjtxClient.lookupManager.FccUls.Lookup(spot.SpotterCall) : null;
+                        string gridState = string.IsNullOrEmpty(spot.SpotterGrid) ? null : WsjtxClient.GridToUsState(spot.SpotterGrid);
+                        string state = !string.IsNullOrEmpty(fccState) ? fccState : gridState;
+                        spotterCountry = state != null ? $", {state}" : $", {entity.Name}";
+                    }
+                    else
+                    {
+                        spotterCountry = $", {entity.Name}";
+                    }
+                }
+            }
+
+            string frequency = "";
+            if (spot.Frequency.HasValue)
+            {
+                double kHz = spot.Frequency.Value / 1000.0;
+                frequency = $", {kHz:0.0} kHz";
+            }
+
+            var fieldMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "callsign", call },
+                { "age", $", last spotted {FormatSpotAge(spot.UtcTime)}" },
+                { "band", string.IsNullOrEmpty(spot.Band) ? "" : $", {spot.Band}" },
+                { "frequency", frequency },
+                { "mode", string.IsNullOrEmpty(spot.Mode) ? "" : $", {spot.Mode}" },
+                { "evenOdd", string.IsNullOrEmpty(spot.Mode) ? "" : $", {(DxSpotWatcher.IsEvenPeriod(spot.UtcTime, spot.Mode) ? "Even" : "Odd")}" },
+                { "snr", spot.Snr.HasValue ? $", {spot.Snr.Value:+#;-#;0}dB" : "" },
+                { "senderGrid", string.IsNullOrEmpty(spot.SenderGrid) ? "" : $", grid {spot.SenderGrid}" },
+                { "country", country },
+                { "spottercall", string.IsNullOrEmpty(spot.SpotterCall) ? "" : $", by {spot.SpotterCall}" },
+                { "spottercountry", spotterCountry },
+                { "spottergrid", string.IsNullOrEmpty(spot.SpotterGrid) ? "" : $" ({spot.SpotterGrid})" },
+            };
+
+            return RowFormatter.BuildOrderedRow(fieldMap, spotWatchRowOrderFields, fallback);
+        }
+
+        private static string FormatSpotAge(DateTime utcTime)
+        {
+            var age = DateTime.UtcNow - utcTime;
+            if (age.TotalSeconds < 90) return "just now";
+            if (age.TotalMinutes < 90) return $"{(int)age.TotalMinutes} min ago";
+            if (age.TotalHours < 36) return $"{(int)age.TotalHours} hr ago";
+            return $"{(int)age.TotalDays} days ago";
+        }
 
         public void SaveHotkeyConfig()
         {
@@ -943,6 +1058,7 @@ namespace WSJTX_Controller
             mainLoopTimer.Stop();
             statusMsgTimer.Stop();
             radioPollTimer.Stop();
+            spotWatchAgeTimer.Stop();
             rigctldClient?.Dispose();
             nativeEngineClient?.Dispose();
             nativeEngineClient = null;

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Drawing;
 using System.Linq;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
@@ -48,19 +49,12 @@ namespace WSJTX_Controller
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            StationText.Text = string.IsNullOrWhiteSpace(ctrl.NativeEngine.MyCall)
-                ? "No callsign set -- open Options to configure your station."
-                : $"{ctrl.NativeEngine.MyCall}  {ctrl.NativeEngine.MyGrid}";
-
             // Deferred, same as the WinForms Form_Load's own deferred BeginInvoke: lets the
             // window paint once before the (potentially slow) engine/lookup startup work runs.
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 ctrl.LoadSettingsAndStart();
                 SyncAllControlsFromController();
-                StationText.Text = string.IsNullOrWhiteSpace(ctrl.NativeEngine.MyCall)
-                    ? "No callsign set -- open Options (Alt+O) to configure your station."
-                    : $"{ctrl.NativeEngine.MyCall}  {ctrl.NativeEngine.MyGrid}";
                 RestoreWindowBounds();
             }));
         }
@@ -141,34 +135,12 @@ namespace WSJTX_Controller
             {
                 ListenRadio.IsChecked = ctrl.listenModeButton.Checked;
                 CqRadio.IsChecked = !ctrl.listenModeButton.Checked;
-                HoldCheck.IsChecked = ctrl.holdCheckBox.Checked;
-                FreqCheck.IsChecked = ctrl.freqCheckBox.Checked;
-                BandCombo.SelectedIndex = Math.Max(0, ctrl.bandComboBox.SelectedIndex);
-                PeriodCombo.SelectedIndex = Math.Max(0, ctrl.periodComboBox.SelectedIndex);
-                TimeoutBox.Text = ((int)ctrl.timeoutNumUpDown.Value).ToString();
-                RepeatLabel.Text = ctrl.repeatLabel.Text;
-
-                ReplyDxCheck.IsChecked = ctrl.replyDxCheckBox.Checked;
-                ReplyLocalCheck.IsChecked = ctrl.replyLocalCheckBox.Checked;
-                ReplyDirCqCheck.IsChecked = ctrl.replyDirCqCheckBox.Checked;
-                AlertBox.Text = ctrl.alertTextBox.Text;
-                AlertBox.IsEnabled = ctrl.alertTextBox.Enabled;
-                ReplyRR73Check.IsChecked = ctrl.replyRR73CheckBox.Checked;
-                UseRR73Check.IsChecked = ctrl.useRR73CheckBox.Checked;
-                IgnoreNonDxCheck.IsChecked = ctrl.ignoreNonDxCheckBox.Checked;
-                LogEarlyCheck.IsChecked = ctrl.logEarlyCheckBox.Checked;
-                OptimizeCheck.IsChecked = ctrl.optimizeCheckBox.Checked;
-                ShowUsStateCheck.IsChecked = ctrl.showUsStateCheckBox.Checked;
-                MyCallCheck.IsChecked = ctrl.mycallCheckBox.Checked;
-                LoggedCheck.IsChecked = ctrl.loggedCheckBox.Checked;
-                CallAddedCheck.IsChecked = ctrl.callAddedCheckBox.Checked;
-
-                ExceptBox.Text = ctrl.exceptTextBox.Text;
+                VerLabel.Text = ctrl.verLabel.Text;
             }
             finally { suppressEvents = false; }
 
             // Keep the UI in sync with changes business logic itself makes to these fields
-            // (e.g. ignoreNonDxCheckBox getting force-unchecked by the coupling rules).
+            // (e.g. mode flipping between Listen/CQ from a hotkey or from WsjtxSettingChanged).
             ctrl.listenModeButton.PropertyChanged += (s, e) => Dispatcher.BeginInvoke(new Action(() =>
             {
                 suppressEvents = true;
@@ -176,31 +148,34 @@ namespace WSJTX_Controller
                 CqRadio.IsChecked = !ctrl.listenModeButton.Checked;
                 suppressEvents = false;
             }));
-            SyncOneWay(ctrl.ignoreNonDxCheckBox, v => IgnoreNonDxCheck.IsChecked = v);
-            SyncOneWay(ctrl.replyDirCqCheckBox, v => ReplyDirCqCheck.IsChecked = v);
-            SyncOneWayText(ctrl.alertTextBox, t => { if (AlertBox.Text != t) AlertBox.Text = t; AlertBox.IsEnabled = ctrl.alertTextBox.Enabled; });
-            ctrl.timeoutNumUpDown.PropertyChanged += (s, e) => Dispatcher.BeginInvoke(new Action(() =>
-            {
-                suppressEvents = true;
-                TimeoutBox.Text = ((int)ctrl.timeoutNumUpDown.Value).ToString();
-                RepeatLabel.Text = ctrl.repeatLabel.Text;
-                suppressEvents = false;
-            }));
+            ctrl.verLabel.PropertyChanged += (s, e) => Dispatcher.BeginInvoke(new Action(() => VerLabel.Text = ctrl.verLabel.Text));
+
+            ApplyLayoutMode();
         }
 
-        private void SyncOneWay(CheckState cs, Action<bool> apply) =>
-            cs.PropertyChanged += (s, e) =>
-            {
-                if (e.PropertyName != nameof(CheckState.Checked)) return;
-                Dispatcher.BeginInvoke(new Action(() => { suppressEvents = true; apply(cs.Checked); suppressEvents = false; }));
-            };
+        // Simple vs advanced main-window layout, matching the WinForms Controller's own
+        // ApplyAdvancedLayout(): Settings.AdvancedCallLayout picks between the single call
+        // queue list and the Tx1/Tx2/Raw (+ Spot Watch, its own independent toggle) panes.
+        // Defaults to true (advanced) -- same default JimmySettings itself uses, so a fresh
+        // install shows the advanced layout, not the simple one.
+        public void RefreshLayout() => ApplyLayoutMode();
 
-        private void SyncOneWayText(TextState ts, Action<string> apply) =>
-            ts.PropertyChanged += (s, e) =>
-            {
-                if (e.PropertyName != nameof(TextState.Text)) return;
-                Dispatcher.BeginInvoke(new Action(() => { suppressEvents = true; apply(ts.Text); suppressEvents = false; }));
-            };
+        private void ApplyLayoutMode()
+        {
+            bool advanced = ctrl.Settings.AdvancedCallLayout;
+            bool showTx1 = advanced && ctrl.Settings.AdvShowTx1;
+            bool showTx2 = advanced && ctrl.Settings.AdvShowTx2;
+            bool showRaw = advanced && ctrl.Settings.AdvShowRaw;
+            bool showSpot = advanced && ctrl.Settings.ShowSpotWatch;
+            bool anyAdv = showTx1 || showTx2 || showRaw || showSpot;
+
+            SimpleCallPanel.Visibility = anyAdv ? Visibility.Collapsed : Visibility.Visible;
+            AdvancedCallPanel.Visibility = anyAdv ? Visibility.Visible : Visibility.Collapsed;
+            Tx1Panel.Visibility = showTx1 ? Visibility.Visible : Visibility.Collapsed;
+            Tx2Panel.Visibility = showTx2 ? Visibility.Visible : Visibility.Collapsed;
+            RawPanel.Visibility = showRaw ? Visibility.Visible : Visibility.Collapsed;
+            SpotWatchPanel.Visibility = showSpot ? Visibility.Visible : Visibility.Collapsed;
+        }
 
         // ── Control event handlers: write operator input back into ctrl's shim fields ──
 
@@ -329,50 +304,27 @@ namespace WSJTX_Controller
             _callCqWindow.Show();
         }
 
-        private void HoldCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.holdCheckBox.Checked = HoldCheck.IsChecked == true; }
-        private void FreqCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.freqCheckBox.Checked = FreqCheck.IsChecked == true; }
+        private void RowOrderButton_Click(object sender, RoutedEventArgs e) => OpenRowDisplayOrderEditor();
+        private void SortOrderButton_Click(object sender, RoutedEventArgs e) => OpenSortOrderEditor();
 
-        private void BandCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-        { if (!suppressEvents) ctrl.bandComboBox.SelectedIndex = BandCombo.SelectedIndex; }
-        private void PeriodCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-        { if (!suppressEvents) ctrl.periodComboBox.SelectedIndex = PeriodCombo.SelectedIndex; }
-        private void TimeoutBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        // verLabel double-click: hidden debug-mode toggle, ported verbatim from
+        // verLabel_DoubleClick.
+        private void VerLabel_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (suppressEvents) return;
-            if (int.TryParse(TimeoutBox.Text, out int v)) ctrl.timeoutNumUpDown.Value = v;
+            if (e.ClickCount != 2 || !ctrl.FormLoaded) return;
+            ctrl.wsjtxClient.debug = !ctrl.wsjtxClient.debug;
+            ctrl.wsjtxClient.DebugChanged();
         }
 
-        private void ReplyDxCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.replyDxCheckBox.Checked = ReplyDxCheck.IsChecked == true; }
-        private void ReplyLocalCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.replyLocalCheckBox.Checked = ReplyLocalCheck.IsChecked == true; }
-        private void ReplyDirCqCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.replyDirCqCheckBox.Checked = ReplyDirCqCheck.IsChecked == true; }
-        private void AlertBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-        { if (!suppressEvents) ctrl.alertTextBox.Text = AlertBox.Text; }
-        private void ReplyRR73Check_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.replyRR73CheckBox.Checked = ReplyRR73Check.IsChecked == true; }
-        private void UseRR73Check_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.useRR73CheckBox.Checked = UseRR73Check.IsChecked == true; }
-        private void IgnoreNonDxCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.ignoreNonDxCheckBox.Checked = IgnoreNonDxCheck.IsChecked == true; }
-        private void LogEarlyCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.logEarlyCheckBox.Checked = LogEarlyCheck.IsChecked == true; }
-        private void OptimizeCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.optimizeCheckBox.Checked = OptimizeCheck.IsChecked == true; }
-        private void ShowUsStateCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.showUsStateCheckBox.Checked = ShowUsStateCheck.IsChecked == true; }
-        private void MyCallCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.mycallCheckBox.Checked = MyCallCheck.IsChecked == true; }
-        private void LoggedCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.loggedCheckBox.Checked = LoggedCheck.IsChecked == true; }
-        private void CallAddedCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.callAddedCheckBox.Checked = CallAddedCheck.IsChecked == true; }
-
-        private void ExceptBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-        { if (!suppressEvents) ctrl.exceptTextBox.Text = ExceptBox.Text; }
+        // verLabel2 click: opens the update-check page, ported verbatim from verLabel2_Click.
+        private void VerLabel2_Click(object sender, MouseButtonEventArgs e)
+        {
+            string ver = System.Reflection.Assembly.GetExecutingAssembly()
+                .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion ?? string.Empty;
+            string url = "https://blindsea.com/jimmy?v=" + Uri.EscapeDataString(ver);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+        }
 
         // ── Call queue interaction: Enter/Space replies, Ctrl+C copies the callsign ──
 
@@ -423,13 +375,49 @@ namespace WSJTX_Controller
             }
             if (keyData == ctrl.hotkeyConfig[HotkeyAction.NavCallList])
             {
-                CallQueueList.Focus();
+                if (CallQueueList.Visibility == Visibility.Visible) CallQueueList.Focus();
                 e.Handled = true;
                 return;
             }
             if (keyData == ctrl.hotkeyConfig[HotkeyAction.NavLoggedList])
             {
                 LoggedList.Focus();
+                e.Handled = true;
+                return;
+            }
+            if (keyData == ctrl.hotkeyConfig[HotkeyAction.NavLoggedCount])
+            {
+                LoggedHeader.Focus();
+                e.Handled = true;
+                return;
+            }
+            if (keyData == ctrl.hotkeyConfig[HotkeyAction.NavPendingCount])
+            {
+                CallQueueHeader.Focus();
+                e.Handled = true;
+                return;
+            }
+            if (ctrl.hotkeyConfig[HotkeyAction.NavAdvTx1] != WinKeys.None && keyData == ctrl.hotkeyConfig[HotkeyAction.NavAdvTx1])
+            {
+                if (Tx1Panel.Visibility == Visibility.Visible) Tx1List.Focus();
+                e.Handled = true;
+                return;
+            }
+            if (ctrl.hotkeyConfig[HotkeyAction.NavAdvTx2] != WinKeys.None && keyData == ctrl.hotkeyConfig[HotkeyAction.NavAdvTx2])
+            {
+                if (Tx2Panel.Visibility == Visibility.Visible) Tx2List.Focus();
+                e.Handled = true;
+                return;
+            }
+            if (ctrl.hotkeyConfig[HotkeyAction.NavAdvRaw] != WinKeys.None && keyData == ctrl.hotkeyConfig[HotkeyAction.NavAdvRaw])
+            {
+                if (RawPanel.Visibility == Visibility.Visible) RawList.Focus();
+                e.Handled = true;
+                return;
+            }
+            if (ctrl.hotkeyConfig[HotkeyAction.NavSpotWatch] != WinKeys.None && keyData == ctrl.hotkeyConfig[HotkeyAction.NavSpotWatch])
+            {
+                if (SpotWatchPanel.Visibility == Visibility.Visible) SpotWatchList.Focus();
                 e.Handled = true;
                 return;
             }
@@ -604,21 +592,67 @@ namespace WSJTX_Controller
         {
             Dispatcher.BeginInvoke(new Action(() =>
             {
-                CallQueueHeader.Text = string.IsNullOrEmpty(headerText) ? $"Available stations ({items.Count})" : headerText;
+                CallQueueHeader.Text = string.IsNullOrEmpty(headerText) ? "Stations calling:" : headerText;
                 callQueueItems.Clear();
                 foreach (var it in items) callQueueItems.Add(it);
                 if (preservedIndex >= 0 && preservedIndex < callQueueItems.Count) CallQueueList.SelectedIndex = preservedIndex;
             }));
         }
 
+        private readonly ObservableCollection<string> rawItems = new ObservableCollection<string>();
         public void RenderRawDecodes(List<string> items, List<string> keys, List<WsjtxClient.CallCategory> categories)
         {
-            // Advanced Tx1/Tx2/Raw panes are deferred in this pass -- see migration report.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (RawList.ItemsSource == null) RawList.ItemsSource = rawItems;
+                rawItems.Clear();
+                foreach (var it in items) rawItems.Add(it);
+            }));
         }
 
+        private readonly ObservableCollection<string> tx1Items = new ObservableCollection<string>();
+        private readonly ObservableCollection<string> tx2Items = new ObservableCollection<string>();
         public void RenderAdvancedList(bool isTx1Side, string accessibleName, List<string> items, List<string> keys, List<WsjtxClient.CallCategory> categories)
         {
-            // Advanced Tx1/Tx2/Raw panes are deferred in this pass -- see migration report.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                var list = isTx1Side ? Tx1List : Tx2List;
+                var backing = isTx1Side ? tx1Items : tx2Items;
+                if (list.ItemsSource == null) list.ItemsSource = backing;
+                backing.Clear();
+                foreach (var it in items) backing.Add(it);
+                if (!string.IsNullOrEmpty(accessibleName)) AutomationProperties.SetName(list, accessibleName);
+            }));
+        }
+
+        // Enter/Space replies (via NextCallFromTx1/Tx2/NextCallFromRawDecode), Ctrl+C copies --
+        // ported from AdvTx1ListBox_KeyDown/AdvTx2ListBox_KeyDown/AdvRawListBox_KeyDown. The
+        // Delete-to-edit-queue-entry behavior those three also have is not yet ported (see
+        // migration report).
+        private void AdvancedList_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (!ctrl.FormLoaded) return;
+            var list = (System.Windows.Controls.ListBox)sender;
+            int idx = list.SelectedIndex;
+
+            if (e.Key == Key.C && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                if (idx < 0) return;
+                string call = list == Tx1List ? ctrl.wsjtxClient.GetCallAtTx1Index(idx)
+                    : list == Tx2List ? ctrl.wsjtxClient.GetCallAtTx2Index(idx)
+                    : ctrl.wsjtxClient.GetRawDecodeCallOrText(idx);
+                if (call != null) Clipboard.SetText(call);
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Enter || e.Key == Key.Space)
+            {
+                e.Handled = true;
+                if (list == Tx1List) { if (idx < 0) idx = 0; ctrl.wsjtxClient.NextCallFromTx1(idx); }
+                else if (list == Tx2List) { if (idx < 0) idx = 0; ctrl.wsjtxClient.NextCallFromTx2(idx); }
+                else { if (idx < 0) return; ctrl.wsjtxClient.NextCallFromRawDecode(idx); }
+            }
         }
 
         private List<string> _loggedKeys = new List<string>();
@@ -626,10 +660,21 @@ namespace WSJTX_Controller
         {
             Dispatcher.BeginInvoke(new Action(() =>
             {
-                LoggedHeader.Text = string.IsNullOrEmpty(headerText) ? $"Logged ({items.Count})" : headerText;
+                LoggedHeader.Text = string.IsNullOrEmpty(headerText) ? "Auto-logged:" : headerText;
                 loggedItems.Clear();
                 foreach (var it in items) loggedItems.Add(it);
                 _loggedKeys = keys;
+            }));
+        }
+
+        private readonly ObservableCollection<string> spotWatchItems = new ObservableCollection<string>();
+        public void RenderSpotWatchList(List<string> items, List<string> keys)
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (SpotWatchList.ItemsSource == null) SpotWatchList.ItemsSource = spotWatchItems;
+                spotWatchItems.Clear();
+                foreach (var it in items) spotWatchItems.Add(it);
             }));
         }
 
@@ -645,10 +690,35 @@ namespace WSJTX_Controller
                 int idx = LoggedList.SelectedIndex;
                 if (idx >= 0 && idx < _loggedKeys.Count) call = _loggedKeys[idx];
             }
-            else
+            else if (Tx1List.IsFocused)
+            {
+                int idx = Tx1List.SelectedIndex;
+                if (idx >= 0) call = ctrl.wsjtxClient.GetCallAtTx1Index(idx);
+            }
+            else if (Tx2List.IsFocused)
+            {
+                int idx = Tx2List.SelectedIndex;
+                if (idx >= 0) call = ctrl.wsjtxClient.GetCallAtTx2Index(idx);
+            }
+            else if (RawList.IsFocused)
+            {
+                int idx = RawList.SelectedIndex;
+                if (idx >= 0) call = ctrl.wsjtxClient.GetRawDecodeCallOrText(idx);
+            }
+            else if (CallQueueList.Visibility == Visibility.Visible)
             {
                 int idx = CallQueueList.SelectedIndex;
                 if (idx >= 0) call = ctrl.wsjtxClient.GetCallAtIndex(ctrl.wsjtxClient.MapNormalListIndex(idx));
+            }
+            else
+            {
+                int idx = Tx1List.SelectedIndex;
+                if (idx >= 0) call = ctrl.wsjtxClient.GetCallAtTx1Index(idx);
+                if (call == null)
+                {
+                    idx = Tx2List.SelectedIndex;
+                    if (idx >= 0) call = ctrl.wsjtxClient.GetCallAtTx2Index(idx);
+                }
             }
             if (string.IsNullOrEmpty(call)) return;
 

@@ -21,13 +21,23 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
+            <!-- Order matches the baseline's own _categoryListBox: Basic, General, Receive /
+                 Auto Reply, Transmit, Hotkeys, Advanced UI, Wanted Calls, Spot Watch, Sounds,
+                 Radio, Decode Engine, Decode, Frequencies, Notifications, Logbook Sync, Lookup
+                 Data, Appearance. Categories not yet built (Basic, Wanted Calls, Spot Watch,
+                 Frequencies, Notifications, Logbook Sync, Lookup Data, Appearance) are omitted
+                 from this list rather than shown broken; see the migration report. -->
             <ListBox x:Name="CategoryList" Grid.Column="0" AutomationProperties.Name="Options categories"
                      SelectionChanged="CategoryList_SelectionChanged">
                 <ListBoxItem Content="General"/>
-                <ListBoxItem Content="Station"/>
-                <ListBoxItem Content="Radio"/>
-                <ListBoxItem Content="Decode"/>
+                <ListBoxItem Content="Receive / Auto Reply"/>
+                <ListBoxItem Content="Transmit"/>
                 <ListBoxItem Content="Hotkeys"/>
+                <ListBoxItem Content="Advanced UI"/>
+                <ListBoxItem Content="Sounds"/>
+                <ListBoxItem Content="Radio"/>
+                <ListBoxItem Content="Decode Engine"/>
+                <ListBoxItem Content="Decode"/>
             </ListBox>
 
             <Border x:Name="CategoryHost" Grid.Column="2" BorderThickness="0"/>

@@ -2,115 +2,122 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="WSJTX_Controller.MainWindow"
         Title="Jimmy Test"
-        Width="760" Height="820" MinWidth="620" MinHeight="600">
+        Width="560" Height="520" MinWidth="480" MinHeight="440">
+    <!-- Structure mirrors the WinForms baseline main window top-to-bottom: lists, then the
+         operating-mode row, then status, then the Options/Row Order/Sort Order/Logbook button
+         stack, then the version line. Most of the WinForms Controller's OTHER declared fields
+         (reply/filter checkboxes, except list, hold/freq/period/timeout, band combo, the CQ-type
+         checkboxes) are never actually shown on the main window in baseline: they're
+         reparented into Options (or, for Call CQ, a separate dialog) at runtime and are
+         permanently invisible here. See OptionsWindow.xaml / CallCqWindow.xaml for their real
+         home. -->
     <Grid Margin="10">
         <Grid.RowDefinitions>
+            <RowDefinition Height="*" MinHeight="90"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Row 0: station / options -->
-        <DockPanel Grid.Row="0" Margin="0,0,0,8">
-            <Button x:Name="OptionsButton" Content="_Options" Width="90" Height="26" DockPanel.Dock="Right"
-                    AutomationProperties.Name="Options" Click="OptionsButton_Click"/>
-            <Button x:Name="LogbookButton" Content="_Logbook" Width="90" Height="26" DockPanel.Dock="Right" Margin="0,0,8,0"
-                    AutomationProperties.Name="Logbook" Click="LogbookButton_Click"/>
-            <Button x:Name="HelpButton" Content="Help" Width="70" Height="26" DockPanel.Dock="Right" Margin="0,0,8,0"
-                    AutomationProperties.Name="Help" Click="HelpButton_Click"/>
-            <TextBlock x:Name="StationText" VerticalAlignment="Center" FontWeight="Bold"
-                       AutomationProperties.Name="Station"/>
-        </DockPanel>
-
-        <!-- Row 1: operating mode -->
-        <GroupBox Grid.Row="1" Header="Operating mode" Margin="0,0,0,8">
-            <StackPanel Margin="6">
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                    <RadioButton x:Name="ListenRadio" Content="_Listen for calls" GroupName="Mode" Margin="0,0,16,0"
-                                 AutomationProperties.Name="Listen for calls" Checked="ListenRadio_Checked"/>
-                    <RadioButton x:Name="CqRadio" Content="Call C_Q" GroupName="Mode"
-                                 AutomationProperties.Name="Call CQ" Checked="CqRadio_Checked"/>
-                </StackPanel>
-                <Button x:Name="CallCqOptionsButton" Content="Call CQ _options..." HorizontalAlignment="Left"
-                        Margin="20,0,0,6" Padding="8,4" AutomationProperties.Name="Call CQ options"
-                        Click="CallCqOptionsButton_Click"/>
-                <StackPanel Orientation="Horizontal">
-                    <CheckBox x:Name="HoldCheck" Content="_Hold" Margin="0,0,16,0" AutomationProperties.Name="Hold" Checked="HoldCheck_Changed" Unchecked="HoldCheck_Changed"/>
-                    <CheckBox x:Name="FreqCheck" Content="Use best Tx fre_quency" Margin="0,0,16,0" AutomationProperties.Name="Use best Tx frequency" Checked="FreqCheck_Changed" Unchecked="FreqCheck_Changed"/>
-                    <TextBlock Text="Band:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                    <ComboBox x:Name="BandCombo" Width="90" AutomationProperties.Name="Band" SelectionChanged="BandCombo_SelectionChanged">
-                        <ComboBoxItem Content="Current"/>
-                        <ComboBoxItem Content="New on band"/>
-                    </ComboBox>
-                    <TextBlock Text="Period:" VerticalAlignment="Center" Margin="12,0,4,0"/>
-                    <ComboBox x:Name="PeriodCombo" Width="90" AutomationProperties.Name="Transmit period" SelectionChanged="PeriodCombo_SelectionChanged">
-                        <ComboBoxItem Content="Even"/>
-                        <ComboBoxItem Content="Odd"/>
-                        <ComboBoxItem Content="Any"/>
-                    </ComboBox>
-                    <TextBlock x:Name="RepeatLabel" Text="repeated Tx" VerticalAlignment="Center" Margin="12,0,4,0"/>
-                    <TextBox x:Name="TimeoutBox" Width="40" AutomationProperties.Name="Extended timeout, periods" TextChanged="TimeoutBox_TextChanged"/>
-                </StackPanel>
-            </StackPanel>
-        </GroupBox>
-
-        <!-- Row 2: auto-reply filters -->
-        <GroupBox Grid.Row="2" Header="Auto-reply filters and announcements" Margin="0,0,0,8">
-            <WrapPanel Margin="6">
-                <CheckBox x:Name="ReplyDxCheck" Content="Reply DX" Margin="0,2,16,2" AutomationProperties.Name="Reply to DX stations" Checked="ReplyDxCheck_Changed" Unchecked="ReplyDxCheck_Changed"/>
-                <CheckBox x:Name="ReplyLocalCheck" Content="Reply local" Margin="0,2,16,2" AutomationProperties.Name="Reply to local-continent stations" Checked="ReplyLocalCheck_Changed" Unchecked="ReplyLocalCheck_Changed"/>
-                <StackPanel Orientation="Horizontal" Margin="0,2,16,2">
-                    <CheckBox x:Name="ReplyDirCqCheck" Content="Reply to directed CQ:" VerticalAlignment="Center" Margin="0,0,6,0"
-                              AutomationProperties.Name="Reply to directed CQ" Checked="ReplyDirCqCheck_Changed" Unchecked="ReplyDirCqCheck_Changed"/>
-                    <TextBox x:Name="AlertBox" Width="120" AutomationProperties.Name="Directed CQ codes to reply to, separated by spaces" TextChanged="AlertBox_TextChanged"/>
-                </StackPanel>
-                <CheckBox x:Name="ReplyRR73Check" Content="Reply to RR73" Margin="0,2,16,2" AutomationProperties.Name="Reply to RR73" Checked="ReplyRR73Check_Changed" Unchecked="ReplyRR73Check_Changed"/>
-                <CheckBox x:Name="UseRR73Check" Content="Use RR73" Margin="0,2,16,2" AutomationProperties.Name="Use RR73" Checked="UseRR73Check_Changed" Unchecked="UseRR73Check_Changed"/>
-                <CheckBox x:Name="IgnoreNonDxCheck" Content="Ignore non-DX" Margin="0,2,16,2" AutomationProperties.Name="Ignore non-DX stations" Checked="IgnoreNonDxCheck_Changed" Unchecked="IgnoreNonDxCheck_Changed"/>
-                <CheckBox x:Name="LogEarlyCheck" Content="Log early" Margin="0,2,16,2" AutomationProperties.Name="Log early" Checked="LogEarlyCheck_Changed" Unchecked="LogEarlyCheck_Changed"/>
-                <CheckBox x:Name="OptimizeCheck" Content="Optimize Tx repeats" Margin="0,2,16,2" AutomationProperties.Name="Optimize transmit repeats" Checked="OptimizeCheck_Changed" Unchecked="OptimizeCheck_Changed"/>
-                <CheckBox x:Name="ShowUsStateCheck" Content="Show US state" Margin="0,2,16,2" AutomationProperties.Name="Show US state" Checked="ShowUsStateCheck_Changed" Unchecked="ShowUsStateCheck_Changed"/>
-                <CheckBox x:Name="MyCallCheck" Content="Announce: called by my call" Margin="0,2,16,2" AutomationProperties.Name="Announce when called by my call" Checked="MyCallCheck_Changed" Unchecked="MyCallCheck_Changed"/>
-                <CheckBox x:Name="LoggedCheck" Content="Announce: logged" Margin="0,2,16,2" AutomationProperties.Name="Announce when a QSO is logged" Checked="LoggedCheck_Changed" Unchecked="LoggedCheck_Changed"/>
-                <CheckBox x:Name="CallAddedCheck" Content="Announce: call added" Margin="0,2,16,2" AutomationProperties.Name="Announce when a station is added to the list" Checked="CallAddedCheck_Changed" Unchecked="CallAddedCheck_Changed"/>
-            </WrapPanel>
-        </GroupBox>
-
-        <!-- Row 3: except list -->
-        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,8">
-            <TextBlock Text="Never call/reply to:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-            <TextBox x:Name="ExceptBox" Width="300" AutomationProperties.Name="Callsigns to never call or reply to, separated by spaces"
-                     TextChanged="ExceptBox_TextChanged"/>
-        </StackPanel>
-
-        <!-- Row 4: lists -->
-        <Grid Grid.Row="4">
+        <!-- Row 0: lists: call queue (or advanced Tx1/Tx2/Raw/Spot Watch) left/wide, logged right/narrow -->
+        <Grid Grid.Row="0" Margin="0,0,0,8">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="70*"/>
                 <ColumnDefinition Width="8"/>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="30*"/>
             </Grid.ColumnDefinitions>
-            <DockPanel Grid.Column="0">
-                <TextBlock x:Name="CallQueueHeader" Text="Available stations (0)" DockPanel.Dock="Top" FontWeight="Bold" Margin="0,0,0,4"/>
-                <ListBox x:Name="CallQueueList" AutomationProperties.Name="Available stations"
+
+            <!-- Simple layout: one call queue list. Advanced layout swaps this region for
+                 Tx1/Tx2/Raw (and Spot Watch, which also needs Advanced Call Layout on): see
+                 MainWindow.xaml.cs ApplyLayoutMode(). -->
+            <DockPanel x:Name="SimpleCallPanel" Grid.Column="0">
+                <TextBox x:Name="CallQueueHeader" Text="Stations calling:" DockPanel.Dock="Top" Margin="0,0,0,4"
+                         IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                         AutomationProperties.Name="Pending calls count"/>
+                <ListBox x:Name="CallQueueList" AutomationProperties.Name="Stations calling"
                          PreviewKeyDown="CallQueueList_PreviewKeyDown"/>
             </DockPanel>
+
+            <Grid x:Name="AdvancedCallPanel" Grid.Column="0" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <DockPanel x:Name="Tx1Panel" Grid.Row="0" Margin="0,0,0,4">
+                    <TextBlock x:Name="Tx1Header" Text="TX1 available stations:" DockPanel.Dock="Top" Margin="0,0,0,2"/>
+                    <ListBox x:Name="Tx1List" AutomationProperties.Name="TX1 available stations"
+                             PreviewKeyDown="AdvancedList_PreviewKeyDown"/>
+                </DockPanel>
+                <DockPanel x:Name="Tx2Panel" Grid.Row="1" Margin="0,0,0,4">
+                    <TextBlock x:Name="Tx2Header" Text="TX2 available stations:" DockPanel.Dock="Top" Margin="0,0,0,2"/>
+                    <ListBox x:Name="Tx2List" AutomationProperties.Name="TX2 available stations"
+                             PreviewKeyDown="AdvancedList_PreviewKeyDown"/>
+                </DockPanel>
+                <DockPanel x:Name="RawPanel" Grid.Row="2" Margin="0,0,0,4">
+                    <TextBlock x:Name="RawHeader" Text="Raw decodes:" DockPanel.Dock="Top" Margin="0,0,0,2"/>
+                    <ListBox x:Name="RawList" AutomationProperties.Name="Raw decodes"
+                             PreviewKeyDown="AdvancedList_PreviewKeyDown"/>
+                </DockPanel>
+                <DockPanel x:Name="SpotWatchPanel" Grid.Row="3">
+                    <TextBlock x:Name="SpotWatchHeader" Text="Spot Watch:" DockPanel.Dock="Top" Margin="0,0,0,2"/>
+                    <ListBox x:Name="SpotWatchList" AutomationProperties.Name="Spot Watch"/>
+                </DockPanel>
+            </Grid>
+
             <DockPanel Grid.Column="2">
-                <TextBlock x:Name="LoggedHeader" Text="Logged (0)" DockPanel.Dock="Top" FontWeight="Bold" Margin="0,0,0,4"/>
-                <ListBox x:Name="LoggedList" AutomationProperties.Name="Auto-logged QSOs"/>
+                <TextBox x:Name="LoggedHeader" Text="Auto-logged:" DockPanel.Dock="Top" Margin="0,0,0,4"
+                         IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                         AutomationProperties.Name="Auto-logged count"/>
+                <ListBox x:Name="LoggedList" AutomationProperties.Name="Auto-logged calls"/>
             </DockPanel>
         </Grid>
 
-        <!-- Row 5: status -->
-        <StackPanel Grid.Row="5" Margin="0,8,0,0">
+        <!-- Row 1: operating mode -->
+        <DockPanel Grid.Row="1" Margin="0,0,0,10">
+            <Button x:Name="HelpButton" Content="Help" Width="70" Height="26" DockPanel.Dock="Right"
+                    AutomationProperties.Name="Help" Click="HelpButton_Click"/>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <RadioButton x:Name="ListenRadio" Content="'_Listen for calls' mode" GroupName="Mode" Margin="0,0,16,0"
+                             AutomationProperties.Name="Listen for calls mode" Checked="ListenRadio_Checked"/>
+                <RadioButton x:Name="CqRadio" Content="'Call C_Q' mode" GroupName="Mode" Margin="0,0,16,0"
+                             AutomationProperties.Name="Call CQ mode" Checked="CqRadio_Checked"/>
+                <Button x:Name="CallCqOptionsButton" Content="Call CQ _options..." Padding="8,4"
+                        AutomationProperties.Name="Call CQ options" Click="CallCqOptionsButton_Click"/>
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Row 2: status -->
+        <StackPanel Grid.Row="2" Margin="0,0,0,10">
+            <TextBlock Text="Status:" FontWeight="Bold" Margin="0,0,0,2"/>
             <TextBlock x:Name="StatusAnnounceText" Text="Ready." FontWeight="Bold" TextWrapping="Wrap"
+                       Background="DarkRed" Foreground="White" Padding="4"
                        AutomationProperties.Name="Ready."
                        AutomationProperties.LiveSetting="Assertive"/>
             <TextBox x:Name="StatusReviewBox" Margin="0,4,0,0" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="60"
                      VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Status detail"/>
+        </StackPanel>
+
+        <!-- Row 3: main button stack, matching the baseline's vertical Options/Row Order/
+             Sort Order/Logbook button column -->
+        <StackPanel Grid.Row="3" Margin="0,0,0,10">
+            <Button x:Name="OptionsButton" Content="Options..." Height="26" Margin="0,0,0,4"
+                    AutomationProperties.Name="Options" Click="OptionsButton_Click"/>
+            <Button x:Name="RowOrderButton" Content="Row Display Order..." Height="26" Margin="0,0,0,4"
+                    AutomationProperties.Name="Row Display Order" Click="RowOrderButton_Click"/>
+            <Button x:Name="SortOrderButton" Content="Stations Available Sort Order..." Height="26" Margin="0,0,0,4"
+                    AutomationProperties.Name="Stations Available Sort Order" Click="SortOrderButton_Click"/>
+            <Button x:Name="LogbookButton" Content="Logbook" Height="26"
+                    AutomationProperties.Name="Logbook" Click="LogbookButton_Click"/>
+        </StackPanel>
+
+        <!-- Row 4: version / update-check line -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal">
+            <TextBlock x:Name="VerLabel" MouseDown="VerLabel_MouseDown" Margin="0,0,16,0"/>
+            <TextBlock x:Name="VerLabel2" Text="Check for update" Foreground="DarkBlue" TextDecorations="Underline"
+                       Cursor="Hand" MouseLeftButtonUp="VerLabel2_Click"/>
         </StackPanel>
     </Grid>
 </Window>

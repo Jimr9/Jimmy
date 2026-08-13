@@ -36,7 +36,30 @@ namespace WSJTX_Controller
         private TextBox DecodeFLowBox, DecodeFHighBox;
         private CheckBox DecodeApDecodeCheck, DecodeApCqOnlyCheck, DecodeSingleDecodeCheck;
 
-        private FrameworkElement generalPanel, stationPanel, radioPanel, decodePanel, hotkeysPanel;
+        // Receive / Auto Reply
+        private CheckBox IgnoreNonDxCheck, ReplyDxCheck, ReplyLocalCheck,
+            ReplyDirCqCheck, ReplyRR73Check, IgnoreWeakSnrCheck, RemoveOnWeakSnrCheck;
+        private RadioButton CqOnlyRadio, CqGridRadio, AnyMsgRadio;
+        private ComboBox NewOnBandCombo;
+        private TextBox AlertBox, ExceptBox;
+        private TextBox MinSnrBox;
+
+        // Transmit
+        private CheckBox FreqCheck, SkipGridCheck, UseRR73Check, LogEarlyCheck, OptimizeCheck, HoldCheck;
+        private TextBox TimeoutBox;
+        private ComboBox PeriodCombo;
+
+        // Advanced UI
+        private CheckBox AdvancedLayoutCheck, AdvShowTx1Check, AdvShowTx2Check, AdvShowRawCheck, ShowSpotWatchCheck;
+
+        // Sounds -- one row per event: enable checkbox + file textbox (Browse deferred; the
+        // path can still be edited directly).
+        private CheckBox SoundsEnabledCheck;
+        private CheckBox SndCallAddedCheck, SndCallingMeCheck, SndLoggedCheck;
+        private TextBox SndCallAddedFile, SndCallingMeFile, SndLoggedFile;
+
+        private FrameworkElement generalPanel, receiveReplyPanel, transmitPanel, hotkeysPanel, advUiPanel, soundsPanel,
+            radioPanel, decodeEnginePanel, decodePanel;
 
         public OptionsWindow(Controller controller)
         {
@@ -44,10 +67,14 @@ namespace WSJTX_Controller
             InitializeComponent();
 
             generalPanel = BuildGeneralPanel();
-            stationPanel = BuildStationPanel();
-            radioPanel = BuildRadioPanel();
-            decodePanel = BuildDecodePanel();
+            receiveReplyPanel = BuildReceiveReplyPanel();
+            transmitPanel = BuildTransmitPanel();
             hotkeysPanel = BuildHotkeysPanel();
+            advUiPanel = BuildAdvancedUiPanel();
+            soundsPanel = BuildSoundsPanel();
+            radioPanel = BuildRadioPanel();
+            decodeEnginePanel = BuildDecodeEnginePanel();
+            decodePanel = BuildDecodePanel();
 
             CategoryList.SelectedIndex = 0;
         }
@@ -57,10 +84,14 @@ namespace WSJTX_Controller
             var panel = CategoryList.SelectedIndex switch
             {
                 0 => generalPanel,
-                1 => stationPanel,
-                2 => radioPanel,
-                3 => decodePanel,
-                4 => hotkeysPanel,
+                1 => receiveReplyPanel,
+                2 => transmitPanel,
+                3 => hotkeysPanel,
+                4 => advUiPanel,
+                5 => soundsPanel,
+                6 => radioPanel,
+                7 => decodeEnginePanel,
+                8 => decodePanel,
                 _ => generalPanel,
             };
             CategoryHost.Child = panel;
@@ -98,6 +129,184 @@ namespace WSJTX_Controller
             MaxCallQueueAgeBox = new TextBox { Text = ctrl.maxCallQueueAgePeriods.ToString(), Width = 80, HorizontalAlignment = HorizontalAlignment.Left };
             AutomationProperties.SetName(MaxCallQueueAgeBox, "Max call-queue age in periods");
             panel.Children.Add(MaxCallQueueAgeBox);
+
+            return panel;
+        }
+
+        // Group headers/layout mirror the baseline's 5 reparented GroupBoxes (Calling,
+        // Replying, Directed CQ Alert, Reply Behavior, Block List) inside receiveReplyPanel --
+        // these controls are never shown on the main window in baseline, only here.
+        private FrameworkElement BuildReceiveReplyPanel()
+        {
+            var panel = new StackPanel { Margin = new Thickness(10) };
+            AutomationProperties.SetName(panel, "Receive / Auto Reply");
+            var scroll = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+
+            GroupBox Group(string header)
+            {
+                var gb = new GroupBox { Header = header, Margin = new Thickness(0, 0, 0, 10) };
+                var stack = new StackPanel { Margin = new Thickness(6) };
+                gb.Content = stack;
+                panel.Children.Add(gb);
+                return gb;
+            }
+            StackPanel Inner(GroupBox gb) => (StackPanel)gb.Content;
+
+            var callingGroup = Group("Calling");
+            IgnoreNonDxCheck = new CheckBox { Content = "Ignore non-DX reply", IsChecked = ctrl.ignoreNonDxCheckBox.Checked };
+            Inner(callingGroup).Children.Add(IgnoreNonDxCheck);
+
+            var replyingGroup = Group("Replying");
+            var replyingStack = Inner(replyingGroup);
+            replyingStack.Children.Add(new TextBlock { Text = "Reply to new calls:" });
+            var replyRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 4) };
+            ReplyDxCheck = new CheckBox { Content = "DX stations", IsChecked = ctrl.replyDxCheckBox.Checked, Margin = new Thickness(0, 0, 16, 0) };
+            ReplyLocalCheck = new CheckBox { Content = ctrl.replyLocalCheckBox.Text is { Length: > 0 } lc ? lc : "local continent", IsChecked = ctrl.replyLocalCheckBox.Checked };
+            replyRow.Children.Add(ReplyDxCheck);
+            replyRow.Children.Add(ReplyLocalCheck);
+            replyingStack.Children.Add(replyRow);
+            var bandRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+            bandRow.Children.Add(new TextBlock { Text = "Band scope:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
+            NewOnBandCombo = new ComboBox { Width = 140 };
+            NewOnBandCombo.Items.Add(new ComboBoxItem { Content = "Current band" });
+            NewOnBandCombo.Items.Add(new ComboBoxItem { Content = "New on band" });
+            NewOnBandCombo.SelectedIndex = ctrl.bandComboBox.SelectedIndex == 1 ? 1 : 0;
+            bandRow.Children.Add(NewOnBandCombo);
+            replyingStack.Children.Add(bandRow);
+            replyingStack.Children.Add(new TextBlock { Text = "Include from messages:", Margin = new Thickness(0, 0, 0, 4) });
+            var msgRow = new StackPanel { Orientation = Orientation.Horizontal };
+            CqOnlyRadio = new RadioButton { Content = "CQ/73", GroupName = "MsgScope", IsChecked = ctrl.cqOnlyRadioButton.Checked, Margin = new Thickness(0, 0, 12, 0) };
+            CqGridRadio = new RadioButton { Content = "CQ/grid", GroupName = "MsgScope", IsChecked = ctrl.cqGridRadioButton.Checked, Margin = new Thickness(0, 0, 12, 0) };
+            AnyMsgRadio = new RadioButton { Content = "any", GroupName = "MsgScope", IsChecked = ctrl.anyMsgRadioButton.Checked };
+            msgRow.Children.Add(CqOnlyRadio); msgRow.Children.Add(CqGridRadio); msgRow.Children.Add(AnyMsgRadio);
+            replyingStack.Children.Add(msgRow);
+
+            var directedGroup = Group("Directed CQ Alert");
+            var directedStack = Inner(directedGroup);
+            var directedRow = new StackPanel { Orientation = Orientation.Horizontal };
+            ReplyDirCqCheck = new CheckBox { Content = "Queue directed CQ calls for:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+            ReplyDirCqCheck.IsChecked = ctrl.replyDirCqCheckBox.Checked;
+            AlertBox = new TextBox { Width = 150 };
+            AutomationProperties.SetName(AlertBox, "Directed CQ codes to reply to, separated by spaces");
+            AlertBox.Text = ctrl.alertTextBox.Text;
+            directedRow.Children.Add(ReplyDirCqCheck);
+            directedRow.Children.Add(AlertBox);
+            directedStack.Children.Add(directedRow);
+
+            var replyBehaviorGroup = Group("Reply Behavior");
+            ReplyRR73Check = new CheckBox { Content = "Reply to RR73 msg", IsChecked = ctrl.replyRR73CheckBox.Checked };
+            Inner(replyBehaviorGroup).Children.Add(ReplyRR73Check);
+
+            var blockGroup = Group("Block List");
+            var blockStack = Inner(blockGroup);
+            var blockRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+            blockRow.Children.Add(new TextBlock { Text = "Block any reply to:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
+            ExceptBox = new TextBox { Width = 200 };
+            AutomationProperties.SetName(ExceptBox, "Callsigns to never call or reply to, separated by spaces");
+            ExceptBox.Text = ctrl.exceptTextBox.Text;
+            blockRow.Children.Add(ExceptBox);
+            blockStack.Children.Add(blockRow);
+            var snrRow = new StackPanel { Orientation = Orientation.Horizontal };
+            IgnoreWeakSnrCheck = new CheckBox { Content = "Ignore SNR at or below", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+            IgnoreWeakSnrCheck.IsChecked = ctrl.ignoreWeakSnrCheckBox.Checked;
+            MinSnrBox = new TextBox { Width = 50, Text = ((int)ctrl.minSnrNumUpDown.Value).ToString() };
+            AutomationProperties.SetName(MinSnrBox, "Weak signal SNR floor");
+            snrRow.Children.Add(IgnoreWeakSnrCheck);
+            snrRow.Children.Add(MinSnrBox);
+            blockStack.Children.Add(snrRow);
+            RemoveOnWeakSnrCheck = new CheckBox { Content = "Remove from list immediately when signal drops below floor", Margin = new Thickness(0, 6, 0, 0) };
+            RemoveOnWeakSnrCheck.IsChecked = ctrl.removeOnWeakSnrCheckBox.Checked;
+            blockStack.Children.Add(RemoveOnWeakSnrCheck);
+
+            return scroll;
+        }
+
+        private FrameworkElement BuildTransmitPanel()
+        {
+            var panel = new StackPanel { Margin = new Thickness(10) };
+            AutomationProperties.SetName(panel, "Transmit");
+
+            FreqCheck = new CheckBox { Content = "Use best Tx frequency", Margin = new Thickness(0, 0, 0, 8), IsChecked = ctrl.freqCheckBox.Checked };
+            panel.Children.Add(FreqCheck);
+            SkipGridCheck = new CheckBox { Content = "Skip grid msg", Margin = new Thickness(0, 0, 0, 8), IsChecked = ctrl.skipGridCheckBox.Checked };
+            panel.Children.Add(SkipGridCheck);
+            UseRR73Check = new CheckBox { Content = "Use RR73 msg", Margin = new Thickness(0, 0, 0, 8), IsChecked = ctrl.useRR73CheckBox.Checked };
+            panel.Children.Add(UseRR73Check);
+            LogEarlyCheck = new CheckBox { Content = "Log early, after RRR", Margin = new Thickness(0, 0, 0, 8), IsChecked = ctrl.logEarlyCheckBox.Checked };
+            panel.Children.Add(LogEarlyCheck);
+            OptimizeCheck = new CheckBox { Content = "Optimize throughput", Margin = new Thickness(0, 0, 0, 8), IsChecked = ctrl.optimizeCheckBox.Checked };
+            panel.Children.Add(OptimizeCheck);
+            HoldCheck = new CheckBox { Content = "Hold", Margin = new Thickness(0, 0, 0, 8), IsChecked = ctrl.holdCheckBox.Checked };
+            panel.Children.Add(HoldCheck);
+
+            var limitRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            limitRow.Children.Add(new TextBlock { Text = "Limit to", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
+            TimeoutBox = new TextBox { Width = 40, Text = ((int)ctrl.timeoutNumUpDown.Value).ToString() };
+            AutomationProperties.SetName(TimeoutBox, "Repeat limit");
+            limitRow.Children.Add(TimeoutBox);
+            limitRow.Children.Add(new TextBlock { Text = "repeated Tx", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) });
+            panel.Children.Add(limitRow);
+
+            var periodRow = new StackPanel { Orientation = Orientation.Horizontal };
+            periodRow.Children.Add(new TextBlock { Text = "Tx period:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
+            PeriodCombo = new ComboBox { Width = 100 };
+            foreach (var s in new[] { "Even", "Odd", "Any" }) PeriodCombo.Items.Add(new ComboBoxItem { Content = s });
+            PeriodCombo.SelectedIndex = Math.Max(0, ctrl.periodComboBox.SelectedIndex);
+            periodRow.Children.Add(PeriodCombo);
+            panel.Children.Add(periodRow);
+
+            return panel;
+        }
+
+        private FrameworkElement BuildAdvancedUiPanel()
+        {
+            var panel = new StackPanel { Margin = new Thickness(10) };
+            AutomationProperties.SetName(panel, "Advanced UI");
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Advanced layout replaces the single 'Stations calling' list with separate TX1/TX2/Raw decode lists (plus Spot Watch, its own independent toggle).",
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10)
+            });
+
+            AdvancedLayoutCheck = new CheckBox { Content = "Use advanced call layout", Margin = new Thickness(0, 0, 0, 8), IsChecked = ctrl.advancedCallLayout };
+            panel.Children.Add(AdvancedLayoutCheck);
+            AdvShowTx1Check = new CheckBox { Content = "Show TX1 available stations", Margin = new Thickness(20, 0, 0, 8), IsChecked = ctrl.advShowTx1 };
+            panel.Children.Add(AdvShowTx1Check);
+            AdvShowTx2Check = new CheckBox { Content = "Show TX2 available stations", Margin = new Thickness(20, 0, 0, 8), IsChecked = ctrl.advShowTx2 };
+            panel.Children.Add(AdvShowTx2Check);
+            AdvShowRawCheck = new CheckBox { Content = "Show raw decodes", Margin = new Thickness(20, 0, 0, 8), IsChecked = ctrl.advShowRaw };
+            panel.Children.Add(AdvShowRawCheck);
+            ShowSpotWatchCheck = new CheckBox { Content = "Show Spot Watch (requires advanced layout)", Margin = new Thickness(20, 0, 0, 8), IsChecked = ctrl.Settings.ShowSpotWatch };
+            panel.Children.Add(ShowSpotWatchCheck);
+
+            return panel;
+        }
+
+        private FrameworkElement BuildSoundsPanel()
+        {
+            var panel = new StackPanel { Margin = new Thickness(10) };
+            AutomationProperties.SetName(panel, "Sounds");
+
+            SoundsEnabledCheck = new CheckBox { Content = "Sounds enabled", Margin = new Thickness(0, 0, 0, 10), IsChecked = ctrl.soundsEnabled };
+            panel.Children.Add(SoundsEnabledCheck);
+
+            (CheckBox, TextBox) SoundRow(string label, bool enabled, string file)
+            {
+                panel.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 6, 0, 2), FontWeight = FontWeights.Bold });
+                var row = new StackPanel { Orientation = Orientation.Horizontal };
+                var chk = new CheckBox { Content = "Enabled", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0), IsChecked = enabled };
+                var box = new TextBox { Width = 200, Text = file };
+                AutomationProperties.SetName(box, label + " sound file");
+                row.Children.Add(chk);
+                row.Children.Add(box);
+                panel.Children.Add(row);
+                return (chk, box);
+            }
+
+            (SndCallAddedCheck, SndCallAddedFile) = SoundRow("Call added", ctrl.callAddedCheckBox.Checked, ctrl.soundFile_CallAdded);
+            (SndCallingMeCheck, SndCallingMeFile) = SoundRow("Calling me", ctrl.mycallCheckBox.Checked, ctrl.soundFile_CallingMe);
+            (SndLoggedCheck, SndLoggedFile) = SoundRow("Logged", ctrl.loggedCheckBox.Checked, ctrl.soundFile_Logged);
 
             return panel;
         }
@@ -144,10 +353,10 @@ namespace WSJTX_Controller
             return panel;
         }
 
-        private FrameworkElement BuildStationPanel()
+        private FrameworkElement BuildDecodeEnginePanel()
         {
             var panel = new StackPanel { Margin = new Thickness(10) };
-            AutomationProperties.SetName(panel, "Station");
+            AutomationProperties.SetName(panel, "Decode Engine");
 
             panel.Children.Add(new TextBlock { Text = "Your callsign:", Margin = new Thickness(0, 4, 0, 4) });
             MyCallBox = new TextBox();
@@ -372,6 +581,57 @@ namespace WSJTX_Controller
             ctrl.Radio.PttEnabled = PttEnabledCheck.IsChecked == true;
             ctrl.Radio.PttMethod = (PttMethod)PttMethodCombo.SelectedIndex;
             ctrl.Radio.PollEnabled = PollEnabledCheck.IsChecked == true;
+
+            // Receive / Auto Reply -- setting .Checked directly (not through a WPF binding)
+            // fires the SAME PropertyChanged-driven coupling rules the WinForms CheckedChanged
+            // handlers used to (WireCheckboxCoupling in Controller.Startup.cs), so e.g. "at
+            // least one CQ type must stay selected" still holds here exactly as in baseline.
+            ctrl.ignoreNonDxCheckBox.Checked = IgnoreNonDxCheck.IsChecked == true;
+            ctrl.replyDxCheckBox.Checked = ReplyDxCheck.IsChecked == true;
+            ctrl.replyLocalCheckBox.Checked = ReplyLocalCheck.IsChecked == true;
+            ctrl.bandComboBox.SelectedIndex = NewOnBandCombo.SelectedIndex;
+            ctrl.cqOnlyRadioButton.Checked = CqOnlyRadio.IsChecked == true;
+            ctrl.cqGridRadioButton.Checked = CqGridRadio.IsChecked == true;
+            ctrl.anyMsgRadioButton.Checked = AnyMsgRadio.IsChecked == true;
+            ctrl.alertTextBox.Text = AlertBox.Text;
+            ctrl.replyDirCqCheckBox.Checked = ReplyDirCqCheck.IsChecked == true;
+            ctrl.replyRR73CheckBox.Checked = ReplyRR73Check.IsChecked == true;
+            ctrl.exceptTextBox.Text = ExceptBox.Text;
+            ctrl.ignoreWeakSnrCheckBox.Checked = IgnoreWeakSnrCheck.IsChecked == true;
+            if (int.TryParse(MinSnrBox.Text, out int minSnr)) ctrl.minSnrNumUpDown.Value = Math.Max(-30, Math.Min(20, minSnr));
+            ctrl.removeOnWeakSnrCheckBox.Checked = RemoveOnWeakSnrCheck.IsChecked == true;
+            ctrl.SaveSetting("ignoreWeakSnr", ctrl.ignoreWeakSnrCheckBox.Checked.ToString());
+            ctrl.SaveSetting("minSnr", ((int)ctrl.minSnrNumUpDown.Value).ToString());
+            ctrl.SaveSetting("removeOnWeakSnr", ctrl.removeOnWeakSnrCheckBox.Checked.ToString());
+
+            // Transmit
+            ctrl.freqCheckBox.Checked = FreqCheck.IsChecked == true;
+            ctrl.skipGridCheckBox.Checked = SkipGridCheck.IsChecked == true;
+            ctrl.SaveSetting("skipGrid", ctrl.skipGridCheckBox.Checked.ToString());
+            ctrl.useRR73CheckBox.Checked = UseRR73Check.IsChecked == true;
+            ctrl.logEarlyCheckBox.Checked = LogEarlyCheck.IsChecked == true;
+            ctrl.optimizeCheckBox.Checked = OptimizeCheck.IsChecked == true;
+            ctrl.holdCheckBox.Checked = HoldCheck.IsChecked == true;
+            if (int.TryParse(TimeoutBox.Text, out int timeout)) ctrl.timeoutNumUpDown.Value = timeout;
+            ctrl.periodComboBox.SelectedIndex = PeriodCombo.SelectedIndex;
+
+            // Advanced UI -- main-window layout toggles; MainWindow re-applies immediately,
+            // matching the WinForms original's ctrl.ApplyAdvancedLayout() call here.
+            ctrl.advancedCallLayout = AdvancedLayoutCheck.IsChecked == true;
+            ctrl.advShowTx1 = AdvShowTx1Check.IsChecked == true;
+            ctrl.advShowTx2 = AdvShowTx2Check.IsChecked == true;
+            ctrl.advShowRaw = AdvShowRawCheck.IsChecked == true;
+            ctrl.Settings.ShowSpotWatch = ShowSpotWatchCheck.IsChecked == true;
+            (Owner as MainWindow)?.RefreshLayout();
+
+            // Sounds
+            ctrl.soundsEnabled = SoundsEnabledCheck.IsChecked == true;
+            ctrl.callAddedCheckBox.Checked = SndCallAddedCheck.IsChecked == true;
+            ctrl.soundFile_CallAdded = SndCallAddedFile.Text.Trim();
+            ctrl.mycallCheckBox.Checked = SndCallingMeCheck.IsChecked == true;
+            ctrl.soundFile_CallingMe = SndCallingMeFile.Text.Trim();
+            ctrl.loggedCheckBox.Checked = SndLoggedCheck.IsChecked == true;
+            ctrl.soundFile_Logged = SndLoggedFile.Text.Trim();
 
             ctrl.SaveHotkeyConfig();
 

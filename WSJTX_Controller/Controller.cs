@@ -124,6 +124,9 @@ namespace WSJTX_Controller
 
         // ── Shim-typed fields standing in for WinForms controls (see ViewState.cs) ──
         public CheckState holdCheckBox = new CheckState();
+        // Not read by any WsjtxClient*.cs call site (confirmed unused business-logic-wise in
+        // the WinForms baseline too -- purely a persisted Options checkbox with no live effect).
+        public CheckState skipGridCheckBox = new CheckState();
         public CheckState freqCheckBox = new CheckState();
         public CheckState callCqDxCheckBox = new CheckState();
         public CheckState callDirCqCheckBox = new CheckState();
@@ -489,5 +492,6 @@ namespace WSJTX_Controller
         void RenderRawDecodes(List<string> items, List<string> keys, List<WsjtxClient.CallCategory> categories);
         void RenderAdvancedList(bool isTx1Side, string accessibleName, List<string> items, List<string> keys, List<WsjtxClient.CallCategory> categories);
         void RenderLoggedList(string headerText, List<string> items, List<string> keys);
+        void RenderSpotWatchList(List<string> items, List<string> keys);
     }
 }
