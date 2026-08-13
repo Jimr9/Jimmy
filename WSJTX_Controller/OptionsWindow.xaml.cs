@@ -29,15 +29,24 @@ namespace WSJTX_Controller
         private CheckBox PttEnabledCheck, PollEnabledCheck;
         private ListBox HotkeyList;
 
-        private FrameworkElement stationPanel, radioPanel, hotkeysPanel;
+        private CheckBox PskReporterCheck, MoveFocusToStatusCheck, CheckForUpdatesCheck, AlwaysOnTopCheck, DiagLogCheck;
+        private TextBox MaxCallQueueAgeBox;
+
+        private ComboBox DecodeDepthCombo;
+        private TextBox DecodeFLowBox, DecodeFHighBox;
+        private CheckBox DecodeApDecodeCheck, DecodeApCqOnlyCheck, DecodeSingleDecodeCheck;
+
+        private FrameworkElement generalPanel, stationPanel, radioPanel, decodePanel, hotkeysPanel;
 
         public OptionsWindow(Controller controller)
         {
             ctrl = controller;
             InitializeComponent();
 
+            generalPanel = BuildGeneralPanel();
             stationPanel = BuildStationPanel();
             radioPanel = BuildRadioPanel();
+            decodePanel = BuildDecodePanel();
             hotkeysPanel = BuildHotkeysPanel();
 
             CategoryList.SelectedIndex = 0;
@@ -47,10 +56,12 @@ namespace WSJTX_Controller
         {
             var panel = CategoryList.SelectedIndex switch
             {
-                0 => stationPanel,
-                1 => radioPanel,
-                2 => hotkeysPanel,
-                _ => stationPanel,
+                0 => generalPanel,
+                1 => stationPanel,
+                2 => radioPanel,
+                3 => decodePanel,
+                4 => hotkeysPanel,
+                _ => generalPanel,
             };
             CategoryHost.Child = panel;
 
@@ -60,6 +71,77 @@ namespace WSJTX_Controller
             var peer = System.Windows.Automation.Peers.UIElementAutomationPeer.FromElement(CategoryHost)
                 ?? System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(CategoryHost);
             peer?.RaiseAutomationEvent(System.Windows.Automation.Peers.AutomationEvents.LiveRegionChanged);
+        }
+
+        private FrameworkElement BuildGeneralPanel()
+        {
+            var panel = new StackPanel { Margin = new Thickness(10) };
+            AutomationProperties.SetName(panel, "General");
+
+            PskReporterCheck = new CheckBox { Content = "PSK Reporter Enabled", Margin = new Thickness(0, 4, 0, 8), IsChecked = ctrl.wsjtxClient?.usePskReporter ?? true };
+            AutomationProperties.SetName(PskReporterCheck, "PSK Reporter enabled");
+            panel.Children.Add(PskReporterCheck);
+
+            MoveFocusToStatusCheck = new CheckBox { Content = "Move focus to status after selecting a call", Margin = new Thickness(0, 0, 0, 8), IsChecked = ctrl.moveFocusToStatusOnCallSelect };
+            panel.Children.Add(MoveFocusToStatusCheck);
+
+            CheckForUpdatesCheck = new CheckBox { Content = "Check for updates on startup", Margin = new Thickness(0, 0, 0, 8), IsChecked = ctrl.checkForUpdatesOnStartup };
+            panel.Children.Add(CheckForUpdatesCheck);
+
+            AlwaysOnTopCheck = new CheckBox { Content = "Always on top", Margin = new Thickness(0, 0, 0, 8), IsChecked = ctrl.alwaysOnTop };
+            panel.Children.Add(AlwaysOnTopCheck);
+
+            DiagLogCheck = new CheckBox { Content = "Diagnostic logging", Margin = new Thickness(0, 0, 0, 8), IsChecked = ctrl.wsjtxClient?.diagLog ?? false };
+            panel.Children.Add(DiagLogCheck);
+
+            panel.Children.Add(new TextBlock { Text = "Max call-queue age (periods):", Margin = new Thickness(0, 8, 0, 4) });
+            MaxCallQueueAgeBox = new TextBox { Text = ctrl.maxCallQueueAgePeriods.ToString(), Width = 80, HorizontalAlignment = HorizontalAlignment.Left };
+            AutomationProperties.SetName(MaxCallQueueAgeBox, "Max call-queue age in periods");
+            panel.Children.Add(MaxCallQueueAgeBox);
+
+            return panel;
+        }
+
+        private FrameworkElement BuildDecodePanel()
+        {
+            var panel = new StackPanel { Margin = new Thickness(10) };
+            AutomationProperties.SetName(panel, "Decode");
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = "WSJT-X's own decode settings, for Jimmy Native. Decode depth takes effect immediately; the rest take effect the next time the engine restarts.",
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10)
+            });
+
+            panel.Children.Add(new TextBlock { Text = "Decode depth:", Margin = new Thickness(0, 0, 0, 4) });
+            DecodeDepthCombo = new ComboBox { HorizontalAlignment = HorizontalAlignment.Left, Width = 120 };
+            AutomationProperties.SetName(DecodeDepthCombo, "Decode depth");
+            foreach (var s in new[] { "Fast", "Normal", "Deep" }) DecodeDepthCombo.Items.Add(new ComboBoxItem { Content = s });
+            DecodeDepthCombo.SelectedIndex = Math.Max(0, Math.Min(2, ctrl.Decode.DecodeDepth - 1));
+            panel.Children.Add(DecodeDepthCombo);
+
+            panel.Children.Add(new TextBlock { Text = "F Low (Hz):", Margin = new Thickness(0, 10, 0, 4) });
+            DecodeFLowBox = new TextBox { Text = ctrl.Decode.DecodeFLowHz.ToString(), Width = 80, HorizontalAlignment = HorizontalAlignment.Left };
+            AutomationProperties.SetName(DecodeFLowBox, "Decode F Low Hz");
+            panel.Children.Add(DecodeFLowBox);
+
+            panel.Children.Add(new TextBlock { Text = "F High (Hz):", Margin = new Thickness(0, 10, 0, 4) });
+            DecodeFHighBox = new TextBox { Text = ctrl.Decode.DecodeFHighHz.ToString(), Width = 80, HorizontalAlignment = HorizontalAlignment.Left };
+            AutomationProperties.SetName(DecodeFHighBox, "Decode F High Hz");
+            panel.Children.Add(DecodeFHighBox);
+
+            DecodeApDecodeCheck = new CheckBox { Content = "Enable AP", Margin = new Thickness(0, 12, 0, 8), IsChecked = ctrl.Decode.ApDecode };
+            DecodeApDecodeCheck.Checked += (s, e) => DecodeApCqOnlyCheck.IsEnabled = true;
+            DecodeApDecodeCheck.Unchecked += (s, e) => DecodeApCqOnlyCheck.IsEnabled = false;
+            panel.Children.Add(DecodeApDecodeCheck);
+
+            DecodeApCqOnlyCheck = new CheckBox { Content = "AP for CQ only (expert)", Margin = new Thickness(0, 0, 0, 8), IsChecked = ctrl.Decode.ApCqOnly, IsEnabled = ctrl.Decode.ApDecode };
+            panel.Children.Add(DecodeApCqOnlyCheck);
+
+            DecodeSingleDecodeCheck = new CheckBox { Content = "Single decode (+/- 25 Hz of RX offset)", Margin = new Thickness(0, 0, 0, 8), IsChecked = ctrl.Decode.SingleDecode };
+            panel.Children.Add(DecodeSingleDecodeCheck);
+
+            return panel;
         }
 
         private FrameworkElement BuildStationPanel()
@@ -246,6 +328,26 @@ namespace WSJTX_Controller
 
         private void OkButton_Click(object sender, RoutedEventArgs e)
         {
+            if (PskReporterCheck.IsChecked != ctrl.wsjtxClient?.usePskReporter) ctrl.wsjtxClient?.TogglePskReporter();
+            ctrl.moveFocusToStatusOnCallSelect = MoveFocusToStatusCheck.IsChecked == true;
+            ctrl.checkForUpdatesOnStartup = CheckForUpdatesCheck.IsChecked == true;
+            ctrl.alwaysOnTop = AlwaysOnTopCheck.IsChecked == true;
+            Owner.Topmost = ctrl.alwaysOnTop;
+            ctrl.wsjtxClient?.LogModeChanged(DiagLogCheck.IsChecked == true);
+            if (int.TryParse(MaxCallQueueAgeBox.Text, out int maxAge))
+                ctrl.maxCallQueueAgePeriods = Math.Max(4, Math.Min(200, maxAge));
+
+            bool decodeChanged = ctrl.Decode.DecodeDepth != DecodeDepthCombo.SelectedIndex + 1;
+            ctrl.Decode.DecodeDepth = DecodeDepthCombo.SelectedIndex + 1;
+            if (int.TryParse(DecodeFLowBox.Text, out int fLow)) { decodeChanged |= ctrl.Decode.DecodeFLowHz != fLow; ctrl.Decode.DecodeFLowHz = Math.Max(200, Math.Min(3900, fLow)); }
+            if (int.TryParse(DecodeFHighBox.Text, out int fHigh)) { decodeChanged |= ctrl.Decode.DecodeFHighHz != fHigh; ctrl.Decode.DecodeFHighHz = Math.Max(200, Math.Min(3900, fHigh)); }
+            decodeChanged |= ctrl.Decode.ApDecode != (DecodeApDecodeCheck.IsChecked == true);
+            ctrl.Decode.ApDecode = DecodeApDecodeCheck.IsChecked == true;
+            decodeChanged |= ctrl.Decode.ApCqOnly != (DecodeApCqOnlyCheck.IsChecked == true);
+            ctrl.Decode.ApCqOnly = DecodeApCqOnlyCheck.IsChecked == true;
+            decodeChanged |= ctrl.Decode.SingleDecode != (DecodeSingleDecodeCheck.IsChecked == true);
+            ctrl.Decode.SingleDecode = DecodeSingleDecodeCheck.IsChecked == true;
+
             bool stationChanged = ctrl.NativeEngine.MyCall != MyCallBox.Text.Trim()
                 || ctrl.NativeEngine.MyGrid != MyGridBox.Text.Trim()
                 || ctrl.NativeEngine.AudioInputDevice != AudioInCombo.Text.Trim()
@@ -274,7 +376,7 @@ namespace WSJTX_Controller
             ctrl.SaveHotkeyConfig();
 
             if (radioChanged) ctrl.ApplyRadioSettings();
-            if (stationChanged) ctrl.ApplyEngineMode();
+            if (stationChanged || decodeChanged) ctrl.ApplyEngineMode();
 
             DialogResult = true;
             Close();

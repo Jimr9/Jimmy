@@ -17,6 +17,10 @@
         <DockPanel Grid.Row="0" Margin="0,0,0,8">
             <Button x:Name="OptionsButton" Content="_Options" Width="90" Height="26" DockPanel.Dock="Right"
                     AutomationProperties.Name="Options" Click="OptionsButton_Click"/>
+            <Button x:Name="LogbookButton" Content="_Logbook" Width="90" Height="26" DockPanel.Dock="Right" Margin="0,0,8,0"
+                    AutomationProperties.Name="Logbook" Click="LogbookButton_Click"/>
+            <Button x:Name="HelpButton" Content="Help" Width="70" Height="26" DockPanel.Dock="Right" Margin="0,0,8,0"
+                    AutomationProperties.Name="Help" Click="HelpButton_Click"/>
             <TextBlock x:Name="StationText" VerticalAlignment="Center" FontWeight="Bold"
                        AutomationProperties.Name="Station"/>
         </DockPanel>
@@ -30,18 +34,9 @@
                     <RadioButton x:Name="CqRadio" Content="Call C_Q" GroupName="Mode"
                                  AutomationProperties.Name="Call CQ" Checked="CqRadio_Checked"/>
                 </StackPanel>
-                <StackPanel x:Name="CqOptionsPanel" Margin="20,0,0,6">
-                    <CheckBox x:Name="NonDirCqCheck" Content="Call 'CQ' (non-directed)" Margin="0,2"
-                              AutomationProperties.Name="Call CQ non-directed" Checked="NonDirCqCheck_Changed" Unchecked="NonDirCqCheck_Changed"/>
-                    <CheckBox x:Name="CqDxCheck" Content="Call 'CQ DX'" Margin="0,2"
-                              AutomationProperties.Name="Call CQ DX" Checked="CqDxCheck_Changed" Unchecked="CqDxCheck_Changed"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,2">
-                        <CheckBox x:Name="DirCqCheck" Content="Call CQ directed to:" VerticalAlignment="Center" Margin="0,0,8,0"
-                                  AutomationProperties.Name="Call CQ directed to" Checked="DirCqCheck_Changed" Unchecked="DirCqCheck_Changed"/>
-                        <TextBox x:Name="DirectedBox" Width="160" AutomationProperties.Name="Directed CQ codes, separated by spaces"
-                                 TextChanged="DirectedBox_TextChanged"/>
-                    </StackPanel>
-                </StackPanel>
+                <Button x:Name="CallCqOptionsButton" Content="Call CQ _options..." HorizontalAlignment="Left"
+                        Margin="20,0,0,6" Padding="8,4" AutomationProperties.Name="Call CQ options"
+                        Click="CallCqOptionsButton_Click"/>
                 <StackPanel Orientation="Horizontal">
                     <CheckBox x:Name="HoldCheck" Content="_Hold" Margin="0,0,16,0" AutomationProperties.Name="Hold" Checked="HoldCheck_Changed" Unchecked="HoldCheck_Changed"/>
                     <CheckBox x:Name="FreqCheck" Content="Use best Tx fre_quency" Margin="0,0,16,0" AutomationProperties.Name="Use best Tx frequency" Checked="FreqCheck_Changed" Unchecked="FreqCheck_Changed"/>

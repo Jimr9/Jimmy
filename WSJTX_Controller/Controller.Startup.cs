@@ -18,6 +18,8 @@ namespace WSJTX_Controller
         private IniFile iniFile;
         private bool formLoaded;
         public bool FormLoaded => formLoaded;
+        public List<string> spotWatchRowOrderFields = new List<string>(RowDisplayOrderDefaults.SpotWatch);
+        public string spotWatchSortKey = "callsign";
 
         public System.Windows.Forms.Timer mainLoopTimer = new System.Windows.Forms.Timer();
         public System.Windows.Forms.Timer statusMsgTimer = new System.Windows.Forms.Timer();
@@ -837,6 +839,92 @@ namespace WSJTX_Controller
 
         public static string FormatSpotWatchCalls(HashSet<string> calls) => FormatWantedCalls(calls);
 
+        private string SpacifyMyCall()
+        {
+            if (!formLoaded || !wsjtxClient.ConnectedToWsjtx()) return "me";
+            return wsjtxClient.SpacifyMyCall();
+        }
+
+        public string BuildHelpText()
+        {
+            string nl = Environment.NewLine;
+            string K(HotkeyAction a) => HotkeyConfig.FormatKeysForHelp(hotkeyConfig[a]);
+            string ver = Assembly.GetExecutingAssembly()
+                .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion ?? string.Empty;
+
+            return
+                $"{friendlyName} {ver}" +
+                $"{nl}{nl}{friendlyName} processes 'QSO's by selecting one of two modes:" +
+                $"{nl}'Call CQ' mode, and 'Listen for calls' mode." +
+                $"{nl}Stations you haven't worked yet are added to the 'Stations calling' list." +
+                $"{nl}Stations calling you directly have priority on this list, and are moved to the top." +
+                $"{nl}{nl}You can leave this window open, for reference, as you run {friendlyName}." +
+
+                $"{nl}{nl}Command keys:" +
+                $"{nl}{K(HotkeyAction.RowOrder)}: Open stations available row order editor." +
+                $"{nl}{K(HotkeyAction.Options)}: Review or set options for processing 'QSO's." +
+                $"{nl}{K(HotkeyAction.CallCqMode)}: Start selected CQ mode (CQ only / CQ DX only / CQ and CQ DX). Does nothing in Listen mode." +
+                $"{nl}{K(HotkeyAction.ListenMode)}: Select 'Listen for calls' mode." +
+                $"{nl}{K(HotkeyAction.EnableTx)}: Enable transmit, or re-enable timed out 'QSO'." +
+                $"{nl}{K(HotkeyAction.HaltTx)}: Halt transmit immediately." +
+                $"{nl}{K(HotkeyAction.NextCall)}: Skip to the next available station, very useful!" +
+                $"{nl}{K(HotkeyAction.ManualCall)}: Enter a callsign manually to call." +
+
+                $"{nl}{K(HotkeyAction.AnalyzeSlot)}: Analyze transmit slot (find quietest audio frequency for CQ; requires 'Use best Tx frequency' enabled)." +
+                $"{nl}{K(HotkeyAction.LookupStation)}: Look up selected station (shows callsign, country, state, LoTW status, and more)." +
+                $"{nl}{K(HotkeyAction.OpenLogbook)}: Open the Ham Radio Center logbook." +
+                $"{nl}{K(HotkeyAction.AddManualQso)}: Add a manually-logged QSO (e.g. worked outside WSJT-X)." +
+
+                $"{nl}{nl}Radio configuration keys:" +
+                $"{nl}{K(HotkeyAction.TuneMode)}: Toggle Tune mode, to determine correct audio output level to radio ({K(HotkeyAction.AudioUp)} and {K(HotkeyAction.AudioDown)} keys to adjust, {K(HotkeyAction.Prompts)} for fast or complete updates)." +
+                $"{nl}{K(HotkeyAction.AudioUp)} key: Increase audio output level to radio (during tune or transmit)." +
+                $"{nl}{K(HotkeyAction.AudioDown)} key: Decrease audio output level to radio (during tune or transmit)." +
+                $"{nl}{K(HotkeyAction.PowerSwr)}: Quick check of output power and SWR (during transmit) or audio input (during receive)." +
+                $"{nl}{K(HotkeyAction.BandUp)}: Select next higher band." +
+                $"{nl}{K(HotkeyAction.BandDown)}: Select next lower band." +
+
+                $"{nl}{nl}Optional command keys:" +
+                $"{nl}{K(HotkeyAction.DeleteAllCalls)}: Delete all 'Stations calling'." +
+                $"{nl}Delete key: Delete selected call in 'Stations calling'." +
+                $"{nl}{K(HotkeyAction.TxPeriod)}: Toggle transmit period." +
+                $"{nl}{K(HotkeyAction.HoldTimeout)}: Toggle extended timeout." +
+                $"{nl}{K(HotkeyAction.UploadLotw)}: Upload to Logbook of the World." +
+                $"{nl}{K(HotkeyAction.ToggleMode)}: Select operating mode (FT8 or FT4)." +
+                $"{nl}{K(HotkeyAction.Prompts)}: Toggle command prompts in {friendlyName} status." +
+                $"{nl}Escape key: Halt transmit, cancel current 'QSO', switch to Listen mode." +
+                $"{nl}{K(HotkeyAction.UpdateCheck)}: Check for update to {friendlyName}." +
+                $"{nl}{K(HotkeyAction.PSKReporter)}: Toggle sending spots to PSKReporter (leave 'Enabled' to help other hams)" +
+                $"{nl}{K(HotkeyAction.SortOrder)}: Open stations available sort order editor." +
+                $"{nl}{K(HotkeyAction.ResetWindowSize)}: Reset window size and position to default." +
+                $"{nl}{K(HotkeyAction.Help)}: Read the list of shortcut keys." +
+
+                $"{nl}{nl}Main navigation keys:" +
+                $"{nl}{K(HotkeyAction.NavStatus)}: Read QSO and radio status (Note that {K(HotkeyAction.NavStatus)} is the 'home' location!)." +
+                $"{nl}{K(HotkeyAction.NavCallList)}: Read and select from 'Stations calling' list." +
+
+                $"{nl}{nl}Optional navigation keys:" +
+                $"{nl}{K(HotkeyAction.NavLoggedList)}: Read 'Auto-logged calls' list." +
+                $"{nl}{K(HotkeyAction.NavLoggedCount)}: Read total number of 'Auto-logged calls'." +
+                $"{nl}{K(HotkeyAction.NavPendingCount)}: Read number of pending 'Stations calling'." +
+                $"{nl}Ctrl, Y: Play the 'New call', 'Call directed to {SpacifyMyCall()}', and 'Logged' alert sounds.";
+        }
+
+        public void HelpClosed()
+        {
+            RestoreFocus();
+        }
+
+        // WPF migration: focus restoration after a non-modal helper window closes is handled by
+        // MainWindow itself (real WPF focus APIs) -- this is a no-op seam kept so business logic
+        // callers (none currently) compile unchanged if they ever call it directly.
+        private void RestoreFocus() { }
+
+        // Spot Watch main-window pane is not yet built in this WPF pass (see migration report)
+        // -- the row-order/sort-key settings still round-trip correctly via spotWatchRowOrderFields/
+        // spotWatchSortKey above, there is just nothing visible to refresh yet.
+        public void RenderSpotWatchList() { }
+
         public void SaveHotkeyConfig()
         {
             if (iniFile != null) hotkeyConfig.SaveToIni(iniFile);
@@ -846,6 +934,9 @@ namespace WSJTX_Controller
         {
             iniFile?.Write(key, value);
         }
+
+        public string ReadSetting(string key) => iniFile?.Read(key) ?? "";
+        public bool SettingExists(string key) => iniFile != null && iniFile.KeyExists(key);
 
         public void CloseComm()
         {
@@ -945,6 +1036,39 @@ namespace WSJTX_Controller
             return parts.ToString();
         }
 
+        public static string MethodToRankId(WsjtxClient.RankMethods method)
+        {
+            switch (method)
+            {
+                case WsjtxClient.RankMethods.CALL_ORDER: return "call_order";
+                case WsjtxClient.RankMethods.MOST_RECENT: return "most_recent";
+                case WsjtxClient.RankMethods.DIST_INCR: return "dist_near";
+                case WsjtxClient.RankMethods.DIST_DECR: return "dist_far";
+                case WsjtxClient.RankMethods.SNR_INCR: return "snr_weak";
+                case WsjtxClient.RankMethods.SNR_DECR: return "snr_strong";
+                default: return "most_recent";
+            }
+        }
+
+        public static string MethodToBeamId(WsjtxClient.RankMethods method)
+        {
+            switch (method)
+            {
+                case WsjtxClient.RankMethods.AZ_NQUAD: return "az_n";
+                case WsjtxClient.RankMethods.AZ_NEQUAD: return "az_ne";
+                case WsjtxClient.RankMethods.AZ_EQUAD: return "az_e";
+                case WsjtxClient.RankMethods.AZ_SEQUAD: return "az_se";
+                case WsjtxClient.RankMethods.AZ_SQUAD: return "az_s";
+                case WsjtxClient.RankMethods.AZ_SWQUAD: return "az_sw";
+                case WsjtxClient.RankMethods.AZ_WQUAD: return "az_w";
+                case WsjtxClient.RankMethods.AZ_NWQUAD: return "az_nw";
+                default: return "none";
+            }
+        }
+
+        public static string FormatCategoryWeightsPublic(Dictionary<WsjtxClient.CallCategory, int> weights) => FormatCategoryWeights(weights);
+        public static string FormatCallingPrioritiesPublic(List<WsjtxClient.CallCategory> enabled) => FormatCallingPriorities(enabled);
+
         private static Dictionary<WsjtxClient.CallCategory, int> ParseCategoryWeights(string s)
         {
             if (string.IsNullOrWhiteSpace(s)) return null;
@@ -1039,8 +1163,11 @@ namespace WSJTX_Controller
     internal static class RowDisplayOrderDefaults
     {
         public static readonly List<string> CallWaiting = new List<string>
-        { "Call", "Category", "Snr", "Grid", "Distance", "Country" };
+        { "callp", "pri", "tag", "grid", "snr", "country", "distAz", "oe", "descr", "rankStr" };
         public static readonly List<string> RawDecode = new List<string>
-        { "Time", "Snr", "Freq", "Message" };
+        { "callsign", "side", "tag", "message", "snr", "grid", "country", "distAz" };
+        public static readonly List<string> SpotWatch = new List<string>
+        { "callsign", "age", "band", "frequency", "mode", "evenOdd", "snr", "senderGrid", "country",
+          "spottercall", "spottercountry", "spottergrid" };
     }
 }

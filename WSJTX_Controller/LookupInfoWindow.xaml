@@ -1,0 +1,12 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="WSJTX_Controller.LookupInfoWindow"
+        Title="Station Lookup"
+        Width="480" SizeToContent="Height" WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False" ResizeMode="NoResize">
+    <StackPanel Margin="16" x:Name="RootPanel">
+        <TextBox x:Name="StatusValue" Margin="0,0,0,10" IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                 Foreground="Gray" AutomationProperties.Name="Lookup status"/>
+        <Button x:Name="CloseButton" Content="Close" Width="70" HorizontalAlignment="Right" Click="CloseButton_Click"/>
+    </StackPanel>
+</Window>

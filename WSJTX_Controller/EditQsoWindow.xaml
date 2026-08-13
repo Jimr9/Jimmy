@@ -1,0 +1,55 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="WSJTX_Controller.EditQsoWindow"
+        Title="Edit QSO"
+        Width="500" SizeToContent="Height" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="16"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <StackPanel Grid.Column="0">
+            <TextBlock Text="Callsign:"/>
+            <TextBox x:Name="CallBox" CharacterCasing="Upper" Margin="0,2,0,8" AutomationProperties.Name="Callsign"/>
+            <TextBlock Text="Band:"/>
+            <TextBox x:Name="BandBox" Margin="0,2,0,8" AutomationProperties.Name="Band"/>
+            <TextBlock Text="Mode:"/>
+            <ComboBox x:Name="ModeCombo" IsEditable="True" Margin="0,2,0,8" AutomationProperties.Name="Mode"/>
+            <TextBlock Text="Date (YYYYMMDD):"/>
+            <TextBox x:Name="DateBox" Margin="0,2,0,8" AutomationProperties.Name="Date"/>
+            <TextBlock Text="Time on (HHMM):"/>
+            <TextBox x:Name="TimeOnBox" Margin="0,2,0,8" AutomationProperties.Name="Time on"/>
+            <TextBlock Text="Time off (HHMM):"/>
+            <TextBox x:Name="TimeOffBox" Margin="0,2,0,8" AutomationProperties.Name="Time off"/>
+        </StackPanel>
+        <StackPanel Grid.Column="2">
+            <TextBlock Text="State:"/>
+            <TextBox x:Name="StateBox" CharacterCasing="Upper" Margin="0,2,0,8" AutomationProperties.Name="State"/>
+            <TextBlock Text="Country:"/>
+            <TextBox x:Name="CountryBox" Margin="0,2,0,8" AutomationProperties.Name="Country"/>
+            <TextBlock Text="Grid:"/>
+            <TextBox x:Name="GridBox" CharacterCasing="Upper" Margin="0,2,0,8" AutomationProperties.Name="Grid"/>
+            <TextBlock Text="Name:"/>
+            <TextBox x:Name="NameBox" Margin="0,2,0,8" AutomationProperties.Name="Name"/>
+            <TextBlock Text="RST sent:"/>
+            <TextBox x:Name="RstSentBox" Margin="0,2,0,8" AutomationProperties.Name="RST sent"/>
+            <TextBlock Text="RST rcvd:"/>
+            <TextBox x:Name="RstRcvdBox" Margin="0,2,0,8" AutomationProperties.Name="RST received"/>
+        </StackPanel>
+        <StackPanel Grid.Column="0" Grid.ColumnSpan="3" Grid.Row="1" Margin="0,8,0,0">
+            <TextBlock Text="Comment:"/>
+            <TextBox x:Name="CommentBox" Margin="0,2,0,10" AutomationProperties.Name="Comment"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="SubmitButton" Content="Submit" Width="80" Margin="0,0,8,0" IsDefault="True" Click="SubmitButton_Click"/>
+                <Button x:Name="CloseButton" Content="Close" Width="80" IsCancel="True"/>
+            </StackPanel>
+            <TextBox x:Name="StatusBox" Margin="0,10,0,0" IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                     Foreground="Gray" AutomationProperties.Name="Status"/>
+        </StackPanel>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+    </Grid>
+</Window>

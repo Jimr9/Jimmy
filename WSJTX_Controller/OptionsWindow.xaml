@@ -23,8 +23,10 @@
 
             <ListBox x:Name="CategoryList" Grid.Column="0" AutomationProperties.Name="Options categories"
                      SelectionChanged="CategoryList_SelectionChanged">
+                <ListBoxItem Content="General"/>
                 <ListBoxItem Content="Station"/>
                 <ListBoxItem Content="Radio"/>
+                <ListBoxItem Content="Decode"/>
                 <ListBoxItem Content="Hotkeys"/>
             </ListBox>
 

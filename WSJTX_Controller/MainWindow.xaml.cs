@@ -23,6 +23,13 @@ namespace WSJTX_Controller
         private readonly ObservableCollection<string> loggedItems = new ObservableCollection<string>();
         private bool suppressEvents;
 
+        private ManualCallWindow _manualCallWindow;
+        private HelpWindow _helpWindow;
+        private LogbookWindow _logbookWindow;
+        private string _lastManualCall = "";
+
+        private static readonly System.Windows.Size DefaultWindowSize = new System.Windows.Size(760, 820);
+
         public MainWindow(Controller controller)
         {
             ctrl = controller;
@@ -54,13 +61,73 @@ namespace WSJTX_Controller
                 StationText.Text = string.IsNullOrWhiteSpace(ctrl.NativeEngine.MyCall)
                     ? "No callsign set -- open Options (Alt+O) to configure your station."
                     : $"{ctrl.NativeEngine.MyCall}  {ctrl.NativeEngine.MyGrid}";
+                RestoreWindowBounds();
             }));
+        }
+
+        // Window position/size persistence, ported from the WinForms Controller_FormClosing/
+        // Form_Load pair -- WPF has no direct equivalent of WinForms' multi-Screen bounds-
+        // matching, so this uses SystemParameters.WorkArea instead: still clamps a saved size/
+        // position from a monitor that's no longer present back onto the primary work area.
+        private void RestoreWindowBounds()
+        {
+            if (!ctrl.SettingExists("windowWd")) return;
+            if (double.TryParse(ctrl.ReadSetting("windowPosX"), out double x) &&
+                double.TryParse(ctrl.ReadSetting("windowPosY"), out double y))
+            {
+                Left = x;
+                Top = y;
+            }
+            if (double.TryParse(ctrl.ReadSetting("windowWd"), out double w) && w > 0)
+                Width = Math.Max(MinWidth, Math.Min(w, SystemParameters.WorkArea.Width));
+            if (double.TryParse(ctrl.ReadSetting("windowHt"), out double h) && h > 0)
+                Height = Math.Max(MinHeight, Math.Min(h, SystemParameters.WorkArea.Height));
+            if (ctrl.ReadSetting("windowState") == "Maximized")
+                WindowState = WindowState.Maximized;
+
+            // Off-screen guard: a saved position from a monitor that's since been unplugged
+            // would otherwise leave the window permanently unreachable.
+            var wa = SystemParameters.WorkArea;
+            if (Left + Width < wa.Left || Left > wa.Right || Top + Height < wa.Top || Top > wa.Bottom)
+            {
+                Left = wa.Left;
+                Top = wa.Top;
+            }
+        }
+
+        private void SaveWindowBounds()
+        {
+            var bounds = WindowState == WindowState.Normal
+                ? new Rect(Left, Top, Width, Height)
+                : RestoreBounds;
+            ctrl.SaveSetting("windowPosX", ((int)bounds.X).ToString());
+            ctrl.SaveSetting("windowPosY", ((int)bounds.Y).ToString());
+            ctrl.SaveSetting("windowWd", ((int)bounds.Width).ToString());
+            ctrl.SaveSetting("windowHt", ((int)bounds.Height).ToString());
+            ctrl.SaveSetting("windowState", WindowState.ToString());
+        }
+
+        // HotkeyAction.ResetWindowSize (Ctrl+Shift+R)
+        private void ResetWindowSize()
+        {
+            WindowState = WindowState.Normal;
+            Width = DefaultWindowSize.Width;
+            Height = DefaultWindowSize.Height;
+            var wa = SystemParameters.WorkArea;
+            Left = wa.Left + (wa.Width - Width) / 2;
+            Top = wa.Top + (wa.Height - Height) / 2;
+            ctrl.ShowMsg("Window size and position reset to default", false);
         }
 
         private void MainWindow_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
+            SaveWindowBounds();
             ctrl.SaveAllSettings();
             ctrl.CloseComm();
+            _callCqWindow?.Close();
+            _manualCallWindow?.Close();
+            _helpWindow?.Close();
+            _logbookWindow?.Close();
         }
 
         // Pulls every shim control's current value into the real WPF controls once, after
@@ -74,12 +141,6 @@ namespace WSJTX_Controller
             {
                 ListenRadio.IsChecked = ctrl.listenModeButton.Checked;
                 CqRadio.IsChecked = !ctrl.listenModeButton.Checked;
-                CqOptionsPanel.IsEnabled = !ctrl.listenModeButton.Checked;
-                NonDirCqCheck.IsChecked = ctrl.callNonDirCqCheckBox.Checked;
-                CqDxCheck.IsChecked = ctrl.callCqDxCheckBox.Checked;
-                DirCqCheck.IsChecked = ctrl.callDirCqCheckBox.Checked;
-                DirectedBox.Text = ctrl.directedTextBox.Text;
-                DirectedBox.IsEnabled = ctrl.directedTextBox.Enabled;
                 HoldCheck.IsChecked = ctrl.holdCheckBox.Checked;
                 FreqCheck.IsChecked = ctrl.freqCheckBox.Checked;
                 BandCombo.SelectedIndex = Math.Max(0, ctrl.bandComboBox.SelectedIndex);
@@ -113,15 +174,10 @@ namespace WSJTX_Controller
                 suppressEvents = true;
                 ListenRadio.IsChecked = ctrl.listenModeButton.Checked;
                 CqRadio.IsChecked = !ctrl.listenModeButton.Checked;
-                CqOptionsPanel.IsEnabled = !ctrl.listenModeButton.Checked;
                 suppressEvents = false;
             }));
-            SyncOneWay(ctrl.callNonDirCqCheckBox, v => NonDirCqCheck.IsChecked = v);
-            SyncOneWay(ctrl.callCqDxCheckBox, v => CqDxCheck.IsChecked = v);
-            SyncOneWay(ctrl.callDirCqCheckBox, v => DirCqCheck.IsChecked = v);
             SyncOneWay(ctrl.ignoreNonDxCheckBox, v => IgnoreNonDxCheck.IsChecked = v);
             SyncOneWay(ctrl.replyDirCqCheckBox, v => ReplyDirCqCheck.IsChecked = v);
-            SyncOneWayText(ctrl.directedTextBox, t => { if (DirectedBox.Text != t) DirectedBox.Text = t; DirectedBox.IsEnabled = ctrl.directedTextBox.Enabled; });
             SyncOneWayText(ctrl.alertTextBox, t => { if (AlertBox.Text != t) AlertBox.Text = t; AlertBox.IsEnabled = ctrl.alertTextBox.Enabled; });
             ctrl.timeoutNumUpDown.PropertyChanged += (s, e) => Dispatcher.BeginInvoke(new Action(() =>
             {
@@ -149,6 +205,8 @@ namespace WSJTX_Controller
         // ── Control event handlers: write operator input back into ctrl's shim fields ──
 
         private void OptionsButton_Click(object sender, RoutedEventArgs e) => OpenOptions();
+        private void LogbookButton_Click(object sender, RoutedEventArgs e) => OpenLogbookWindow();
+        private void HelpButton_Click(object sender, RoutedEventArgs e) => OpenHelp();
 
         private void OpenOptions()
         {
@@ -156,28 +214,120 @@ namespace WSJTX_Controller
             win.ShowDialog();
         }
 
+        private void OpenManualCallDialog()
+        {
+            if (ctrl.wsjtxClient == null || !ctrl.wsjtxClient.ConnectedToWsjtx())
+            {
+                MessageBox.Show("WSJT-X is not connected.", ctrl.friendlyName, MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            var dlg = new ManualCallWindow(_lastManualCall, ctrl.wsjtxClient.lookupManager) { Owner = this };
+            _manualCallWindow = dlg;
+            if (dlg.ShowDialog() != true) { _manualCallWindow = null; return; }
+            _manualCallWindow = null;
+
+            string callsign = dlg.Callsign;
+            if (ctrl.wsjtxClient.IsBlockedCall(callsign))
+            {
+                MessageBox.Show($"{callsign} is blocked.", ctrl.friendlyName, MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            _lastManualCall = callsign;
+            bool started = ctrl.wsjtxClient.ManualEnqueueCall(callsign);
+            if (started)
+                ctrl.ShowMsg($"Manual call started for {callsign}", false);
+            else
+                ctrl.ShowMsg($"Manual call to {callsign} could not be started -- no connection to the radio engine.", true);
+        }
+
+        private void OpenHelp()
+        {
+            if (ctrl.wsjtxClient != null && ctrl.wsjtxClient.ConnectedToWsjtx()) ctrl.wsjtxClient.HaltTuning();
+            _helpWindow?.Close();
+            _helpWindow = new HelpWindow(ctrl, $"{ctrl.wsjtxClient?.pgmName} Help", ctrl.BuildHelpText());
+            _helpWindow.Closed += (s, e) => _helpWindow = null;
+            _helpWindow.Show();
+            _helpWindow.Activate();
+        }
+
+        private void OpenLogbookWindow()
+        {
+            if (_logbookWindow != null)
+            {
+                _logbookWindow.Activate();
+                return;
+            }
+            _logbookWindow = new LogbookWindow(ctrl);
+            _logbookWindow.Closed += (s, e) => _logbookWindow = null;
+            _logbookWindow.Show();
+        }
+
+        private void OpenSortOrderEditor()
+        {
+            if (ctrl.wsjtxClient == null) return;
+            var dlg = new SortOrderWindow(ctrl.wsjtxClient.Ranker.rankOrderList, ctrl.wsjtxClient.Ranker.rankBeamMethod,
+                ctrl.wsjtxClient.Ranker.callingEnabled)
+            { Owner = this };
+            if (dlg.ShowDialog() != true) return;
+
+            ctrl.wsjtxClient.ApplySortOrder(dlg.SelectedOrder, dlg.SelectedBeam);
+            ctrl.wsjtxClient.ApplyCategoryWeights(dlg.SelectedCategoryWeights);
+            ctrl.wsjtxClient.ApplyCallingPriorities(dlg.SelectedCallingPriorities);
+            ctrl.wsjtxClient.SortCallsPublic();
+
+            ctrl.SaveSetting("rankOrder", string.Join(",", dlg.SelectedOrder.Select(Controller.MethodToRankId)));
+            ctrl.SaveSetting("rankBeam", dlg.SelectedBeam.HasValue ? Controller.MethodToBeamId(dlg.SelectedBeam.Value) : "none");
+            ctrl.SaveSetting("rankMethod", ctrl.wsjtxClient.Ranker.rankMethodIdx.ToString());
+            ctrl.SaveSetting("categoryWeights", Controller.FormatCategoryWeightsPublic(dlg.SelectedCategoryWeights));
+            ctrl.SaveSetting("callingPriorities", Controller.FormatCallingPrioritiesPublic(dlg.SelectedCallingPriorities));
+        }
+
+        private void OpenRowDisplayOrderEditor()
+        {
+            if (ctrl.wsjtxClient == null) return;
+            var dlg = new RowDisplayOrderWindow(ctrl.wsjtxClient.callWaitingRowOrderFields, ctrl.wsjtxClient.rawDecodeRowOrderFields,
+                ctrl.spotWatchRowOrderFields, ctrl.wsjtxClient.debug)
+            { Owner = this };
+            if (dlg.ShowDialog() != true) return;
+
+            ctrl.SaveSetting("callWaitingRowOrder", string.Join(",", dlg.SelectedCallWaitingFields));
+            ctrl.wsjtxClient.callWaitingRowOrderFields = new List<string>(dlg.SelectedCallWaitingFields);
+
+            ctrl.SaveSetting("rawDecodeRowOrder", string.Join(",", dlg.SelectedRawDecodeFields));
+            ctrl.wsjtxClient.rawDecodeRowOrderFields = new List<string>(dlg.SelectedRawDecodeFields);
+
+            ctrl.SaveSetting("spotWatchRowOrder", string.Join(",", dlg.SelectedSpotWatchFields));
+            ctrl.spotWatchRowOrderFields = new List<string>(dlg.SelectedSpotWatchFields);
+
+            ctrl.wsjtxClient.RefreshCallWaitingRows();
+            ctrl.wsjtxClient.RefreshAdvancedLists();
+            ctrl.RenderSpotWatchList();
+        }
+
         private void ListenRadio_Checked(object sender, RoutedEventArgs e)
         {
             if (suppressEvents) return;
-            CqOptionsPanel.IsEnabled = false;
             ctrl.listenModeButton_Click(null, null);
         }
 
         private void CqRadio_Checked(object sender, RoutedEventArgs e)
         {
             if (suppressEvents) return;
-            CqOptionsPanel.IsEnabled = true;
             ctrl.cqModeButton_Click(null, null);
         }
 
-        private void NonDirCqCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.callNonDirCqCheckBox.Checked = NonDirCqCheck.IsChecked == true; }
-        private void CqDxCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.callCqDxCheckBox.Checked = CqDxCheck.IsChecked == true; }
-        private void DirCqCheck_Changed(object sender, RoutedEventArgs e)
-        { if (!suppressEvents) ctrl.callDirCqCheckBox.Checked = DirCqCheck.IsChecked == true; }
-        private void DirectedBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-        { if (!suppressEvents) ctrl.directedTextBox.Text = DirectedBox.Text; }
+        private CallCqWindow _callCqWindow;
+        private void CallCqOptionsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_callCqWindow != null)
+            {
+                _callCqWindow.Activate();
+                return;
+            }
+            _callCqWindow = new CallCqWindow(ctrl, ctrl.wsjtxClient);
+            _callCqWindow.Closed += (s, e2) => _callCqWindow = null;
+            _callCqWindow.Show();
+        }
 
         private void HoldCheck_Changed(object sender, RoutedEventArgs e)
         { if (!suppressEvents) ctrl.holdCheckBox.Checked = HoldCheck.IsChecked == true; }
@@ -306,6 +456,28 @@ namespace WSJTX_Controller
                 return;
             }
 
+            if (keyData == ctrl.hotkeyConfig[HotkeyAction.Help])
+            {
+                OpenHelp();
+                e.Handled = true;
+                return;
+            }
+
+            if (keyData == ctrl.hotkeyConfig[HotkeyAction.OpenLogbook] && ctrl.hotkeyConfig[HotkeyAction.OpenLogbook] != WinKeys.None)
+            {
+                OpenLogbookWindow();
+                e.Handled = true;
+                return;
+            }
+
+            if (keyData == ctrl.hotkeyConfig[HotkeyAction.AddManualQso] && ctrl.hotkeyConfig[HotkeyAction.AddManualQso] != WinKeys.None)
+            {
+                OpenLogbookWindow();
+                _logbookWindow?.OpenAddQsoDialog();
+                e.Handled = true;
+                return;
+            }
+
             if (!ctrl.FormLoaded || ctrl.wsjtxClient == null) return;
             if (!ctrl.wsjtxClient.WsjtxConnecting()) return;
 
@@ -362,12 +534,29 @@ namespace WSJTX_Controller
                 return;
             }
 
+            if (keyData == ctrl.hotkeyConfig[HotkeyAction.AnalyzeSlot] && ctrl.hotkeyConfig[HotkeyAction.AnalyzeSlot] != WinKeys.None)
+            {
+                ctrl.wsjtxClient.StartSlotAnalysis(false);
+                e.Handled = true;
+                return;
+            }
+            if (keyData == ctrl.hotkeyConfig[HotkeyAction.LookupStation] && ctrl.hotkeyConfig[HotkeyAction.LookupStation] != WinKeys.None)
+            {
+                LookupSelectedCall();
+                e.Handled = true;
+                return;
+            }
+
             if (keyData == ctrl.hotkeyConfig[HotkeyAction.ListenMode]) { ctrl.listenModeButton_Click(null, null); e.Handled = true; return; }
             if (keyData == ctrl.hotkeyConfig[HotkeyAction.NextCall]) { ctrl.wsjtxClient.NextBestPriorityCall(); e.Handled = true; return; }
+            if (keyData == ctrl.hotkeyConfig[HotkeyAction.ManualCall]) { OpenManualCallDialog(); e.Handled = true; return; }
             if (keyData == ctrl.hotkeyConfig[HotkeyAction.TxPeriod]) { e.Handled = ctrl.wsjtxClient.ToggleTxFirst(); return; }
             if (keyData == ctrl.hotkeyConfig[HotkeyAction.HoldTimeout]) { e.Handled = ctrl.wsjtxClient.ToggleHoldCheckBox(); return; }
             if (keyData == ctrl.hotkeyConfig[HotkeyAction.PowerSwr]) { e.Handled = ctrl.wsjtxClient.ReportPowerSwr(); return; }
             if (keyData == ctrl.hotkeyConfig[HotkeyAction.TuneMode]) { e.Handled = ctrl.wsjtxClient.ToggleTuningProcess(); return; }
+            if (keyData == ctrl.hotkeyConfig[HotkeyAction.SortOrder]) { OpenSortOrderEditor(); e.Handled = true; return; }
+            if (keyData == ctrl.hotkeyConfig[HotkeyAction.RowOrder]) { OpenRowDisplayOrderEditor(); e.Handled = true; return; }
+            if (keyData == ctrl.hotkeyConfig[HotkeyAction.ResetWindowSize]) { ResetWindowSize(); e.Handled = true; return; }
             if (keyData == ctrl.hotkeyConfig[HotkeyAction.AudioUp]) { e.Handled = ctrl.wsjtxClient.AudioLevel(true); return; }
             if (keyData == ctrl.hotkeyConfig[HotkeyAction.AudioDown]) { e.Handled = ctrl.wsjtxClient.AudioLevel(false); return; }
         }
@@ -432,6 +621,7 @@ namespace WSJTX_Controller
             // Advanced Tx1/Tx2/Raw panes are deferred in this pass -- see migration report.
         }
 
+        private List<string> _loggedKeys = new List<string>();
         public void RenderLoggedList(string headerText, List<string> items, List<string> keys)
         {
             Dispatcher.BeginInvoke(new Action(() =>
@@ -439,7 +629,32 @@ namespace WSJTX_Controller
                 LoggedHeader.Text = string.IsNullOrEmpty(headerText) ? $"Logged ({items.Count})" : headerText;
                 loggedItems.Clear();
                 foreach (var it in items) loggedItems.Add(it);
+                _loggedKeys = keys;
             }));
+        }
+
+        // HotkeyAction.LookupStation -- whichever list currently has keyboard focus wins,
+        // falling back to the call queue's own selection (matches LookupFocusedCall's own
+        // fallback order). Advanced Tx1/Tx2/Raw panes are deferred, so only the two lists
+        // this WPF pass actually builds are checked.
+        private void LookupSelectedCall()
+        {
+            string call = null;
+            if (LoggedList.IsFocused)
+            {
+                int idx = LoggedList.SelectedIndex;
+                if (idx >= 0 && idx < _loggedKeys.Count) call = _loggedKeys[idx];
+            }
+            else
+            {
+                int idx = CallQueueList.SelectedIndex;
+                if (idx >= 0) call = ctrl.wsjtxClient.GetCallAtIndex(ctrl.wsjtxClient.MapNormalListIndex(idx));
+            }
+            if (string.IsNullOrEmpty(call)) return;
+
+            var dlg = new LookupInfoWindow(call, ctrl.wsjtxClient.lookupManager) { Owner = this };
+            dlg.ShowDialog();
+            if (dlg.QrzLookupOccurred) ctrl.wsjtxClient?.DebugChanged();
         }
     }
 }

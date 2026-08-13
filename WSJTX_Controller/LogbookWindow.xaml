@@ -1,0 +1,26 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="WSJTX_Controller.LogbookWindow"
+        Title="Ham Radio Center -- Logbook"
+        Width="900" Height="620" MinWidth="700" MinHeight="480" WindowStartupLocation="CenterScreen" ShowInTaskbar="True">
+    <DockPanel Margin="10">
+        <TextBox x:Name="StatusBox" DockPanel.Dock="Bottom" Margin="0,8,0,0" IsReadOnly="True" BorderThickness="0"
+                 Background="Transparent" Foreground="Gray" AutomationProperties.Name="Logbook status"/>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="150"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <ListBox x:Name="CategoryList" Grid.Column="0" AutomationProperties.Name="Logbook sections"
+                     SelectionChanged="CategoryList_SelectionChanged">
+                <ListBoxItem Content="My Log"/>
+                <ListBoxItem Content="Edit Log"/>
+            </ListBox>
+
+            <Border x:Name="CategoryHost" Grid.Column="2" BorderThickness="0"/>
+        </Grid>
+    </DockPanel>
+</Window>
