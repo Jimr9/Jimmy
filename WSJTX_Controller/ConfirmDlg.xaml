@@ -1,0 +1,19 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="WSJTX_Controller.ConfirmDlg"
+        Title="Jimmy Test"
+        Width="420" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize">
+    <StackPanel Margin="16">
+        <TextBlock x:Name="MessageText" TextWrapping="Wrap" Margin="0,0,0,16"
+                   AutomationProperties.Name="Confirm"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="YesButton" Content="_Yes" Width="80" Margin="0,0,8,0"
+                    IsDefault="True" Click="YesButton_Click"/>
+            <Button x:Name="NoButton" Content="_No" Width="80"
+                    IsCancel="True" Click="NoButton_Click"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

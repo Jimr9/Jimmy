@@ -10,6 +10,20 @@ namespace WSJTX_Controller
     // revisited structurally when Phase 1 lands.
     public class RadioSettings
     {
+        // Rig-model combo boxes display "Kenwood TS-590SG (2037)" or, for the currently
+        // configured model when it's not in the loaded list, "(currently configured: 2037)" --
+        // this pulls out just the numeric Hamlib rig ID that RigModel actually stores. Moved
+        // here from the WinForms OptionsDlg during the WPF migration (pure string parsing, no
+        // UI dependency) so the WPF Options window's Radio tab can reuse it unchanged.
+        public static string ExtractRigModelId(string display)
+        {
+            if (string.IsNullOrEmpty(display)) return display;
+            var m = System.Text.RegularExpressions.Regex.Match(display, @"\((\d+)\)\s*$");
+            if (m.Success) return m.Groups[1].Value;
+            m = System.Text.RegularExpressions.Regex.Match(display, @"^\(currently configured:\s*(.+)\)$");
+            return m.Success ? m.Groups[1].Value : display;
+        }
+
         public RadioControlMode Mode { get; set; } = RadioControlMode.WsjtxCat;
 
         // false (default): Jimmy launches its own bundled rigctld.exe (Phase 1) against

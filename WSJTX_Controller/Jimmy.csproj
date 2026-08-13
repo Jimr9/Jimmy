@@ -3,6 +3,12 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- Business-logic files (HotkeyConfig.cs: 88 uses of Keys; IJimmyView.cs: SelectionMode)
+         use a handful of System.Windows.Forms types as plain data/enum values, not UI —
+         keeping these unchanged (rather than rewriting working hotkey persistence just to
+         change an enum type) is exactly the "don't rewrite core logic unnecessarily"
+         requirement. This does not add any WinForms UI; only the assembly reference. -->
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>WSJTX_Controller</RootNamespace>
     <AssemblyName>Jimmy</AssemblyName>
@@ -10,11 +16,6 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
-    <!-- WFO1000: WinForms-designer serialization-visibility analyzer. Jimmy's Controller.cs
-         has plain pass-through properties (advancedCallLayout etc.) that are never touched by
-         the visual designer (Designer.cs is hand-maintained), so this design-time-only
-         completeness check has no runtime relevance here. -->
-    <NoWarn>$(NoWarn);WFO1000</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

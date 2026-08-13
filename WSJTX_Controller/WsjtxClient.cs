@@ -2552,15 +2552,10 @@ namespace WSJTX_Controller
             // (~100 ms round-trip).  ShowStatus() will overwrite this once newTxFirst
             // is set in the txFirst-change handler.
             string pendingSide = txFirst ? "second" : "first";
-            ctrl.statusText.ForeColor = Color.Black;
-            ctrl.statusText.BackColor = Color.Yellow;
-            ctrl.statusText.Text = $"Tx {pendingSide} selected, halted";
-            ctrl.statusText.SelectionStart  = 0;
-            ctrl.statusText.SelectionLength = 0;
-            // Force NVDA/JAWS to announce this pending status immediately, same guard and
-            // reasoning as Controller.RenderStatus (only send to the foreground window).
-            if (ctrl.statusText.Focused && Form.ActiveForm == ctrl)
-                SendKeys.Send("{UP}");
+            // WPF migration: routed through the same StatusView.ShowMessage abstraction as
+            // every other announcement (was direct statusText/SendKeys manipulation duplicating
+            // Controller.RenderStatus's own logic) -- one path, one LiveRegion mechanism.
+            StatusView.ShowMessage($"Tx {pendingSide} selected, halted", false);
             return true;
         }
 
@@ -2684,7 +2679,7 @@ namespace WSJTX_Controller
                 EnqueueDecodeMessage dmsg = new EnqueueDecodeMessage();
                 string call = _callQueueStore.PeekCall(idx, out dmsg);
 
-                if (!confirm || Confirm($"Reply to {call}?") == DialogResult.Yes)
+                if (!confirm || Confirm($"Reply to {call}?"))
                 {
                     if (!callQueue.Contains(call)) return;          //call has already been removed or processed
 
@@ -3403,13 +3398,14 @@ namespace WSJTX_Controller
             return true;
         }*/
 
-        private DialogResult Confirm(string s)
+        // WPF migration: returns bool directly (was WinForms DialogResult) -- see this
+        // method's one call site below.
+        private bool Confirm(string s)
         {
-            var confDlg = new ConfirmDlg();
-            confDlg.text = s;
-            confDlg.Owner = ctrl;
+            var confDlg = new ConfirmDlg { Text = s };
+            if (ctrl.StatusSink is System.Windows.Window ownerWindow) confDlg.Owner = ownerWindow;
             confDlg.ShowDialog();
-            return confDlg.DialogResult;
+            return confDlg.Confirmed;
         }
 
         private void SetupCq(bool enableTx)

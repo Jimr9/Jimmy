@@ -153,7 +153,6 @@ static class JimmyTests
         A6ClassificationParityTests();
         DirectModePlumbingParityTests();
         StartupStatusMessageTests();
-        OptionsDlgConstructionTests();
         AudioTuningHotkeyTests();
         ClubLogPrefixTableTests();
         StatusMessageParseTests();
@@ -1089,22 +1088,11 @@ static class JimmyTests
         try
         {
             var ctrl = new Controller(); // never Show()/Run() -- Load event (real .ini, real engine spawn) never fires
-
-            // callCqOptionsButton is normally built by Controller's real settings-load method
-            // (the one this test deliberately never calls, to avoid touching the real
-            // Jimmy.ini) -- WsjtxClient's own constructor calls UpdateModeVisible(), which
-            // sets this button's Visible state unconditionally, so it must exist first.
-            // Built here exactly as Controller.cs itself builds it, without pulling in that
-            // whole ini-reading method.
-            ctrl.callCqOptionsButton = new System.Windows.Forms.Button { Visible = false };
-            // Same story -- weak-signal-floor controls (Controller.cs builds these
-            // dynamically too, reparented into Options > Receive/Auto Reply > Block List).
-            // AddSelectedCall reads ignoreWeakSnrCheckBox.Checked first and short-circuits
-            // (default false) before ever touching minSnrNumUpDown.Value, so only existing
-            // (not any particular value) matters here.
-            ctrl.ignoreWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
-            ctrl.minSnrNumUpDown = new System.Windows.Forms.NumericUpDown { Minimum = -30, Maximum = 20, Value = -24 };
-            ctrl.removeOnWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
+            // WPF migration: callCqOptionsButton/ignoreWeakSnrCheckBox/minSnrNumUpDown/
+            // removeOnWeakSnrCheckBox are now WPF shim view-state objects (ViewState.cs),
+            // pre-initialized as field defaults on Controller itself -- no per-test construction
+            // needed any more (the old WinForms controls this test used to build by hand here
+            // are gone).
 
             var wc = new WsjtxClient(ctrl, System.Net.IPAddress.Loopback, 2237, false, false, false, WsjtxClient.TxModes.LISTEN);
 
@@ -1344,10 +1332,6 @@ static class JimmyTests
         try
         {
             var ctrl = new Controller();
-            ctrl.callCqOptionsButton = new System.Windows.Forms.Button { Visible = false };
-            ctrl.ignoreWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
-            ctrl.minSnrNumUpDown = new System.Windows.Forms.NumericUpDown { Minimum = -30, Maximum = 20, Value = -24 };
-            ctrl.removeOnWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
             var wc = new WsjtxClient(ctrl, System.Net.IPAddress.Loopback, 2237, false, false, false, WsjtxClient.TxModes.LISTEN);
 
             // DirectApplyStatus must set the class-level `tuning` field from radio.tuning, the
@@ -1440,10 +1424,6 @@ static class JimmyTests
         Console.WriteLine("\n── Startup status message (Prompt Mode / version, no obsolete wording) ──");
 
         var ctrl = new Controller();
-        ctrl.callCqOptionsButton = new System.Windows.Forms.Button { Visible = false };
-        ctrl.ignoreWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
-        ctrl.minSnrNumUpDown = new System.Windows.Forms.NumericUpDown { Minimum = -30, Maximum = 20, Value = -24 };
-        ctrl.removeOnWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
         var wc = new WsjtxClient(ctrl, System.Net.IPAddress.Loopback, 2237, false, false, false, WsjtxClient.TxModes.LISTEN);
 
         // cmdPrompts defaults to true, so the constructor's own first render already exercises
@@ -1472,51 +1452,10 @@ static class JimmyTests
             HotkeyConfig.Defaults[HotkeyAction.Help] == (System.Windows.Forms.Keys.Alt | System.Windows.Forms.Keys.K), true);
     }
 
-    static void OptionsDlgConstructionTests()
-    {
-        Console.WriteLine("\n── OptionsDlg: constructs without throwing ──");
-        try
-        {
-            using (var dlg = new OptionsDlg(null, null))
-            {
-                Check("OptionsDlg constructs (InitializeComponent) without throwing", true, true);
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"  FAIL  OptionsDlg construction threw: {ex.GetType().Name}: {ex.Message}{Environment.NewLine}{ex.StackTrace}");
-            failed++;
-        }
-
-        // Root-caused live, 2026-08-12: InitializeComponent alone never reaches
-        // BuildFrequenciesTab (only OptionsDlg_Load does, which the construction-only check
-        // above never triggers), so the NullReferenceException that actually crashed Options
-        // the instant Alt+O was pressed went uncaught. Calling BuildFrequenciesTab directly --
-        // rather than the full OptionsDlg_Load, which drags in every OTHER panel's own
-        // unrelated scaffolding needs (BuildHotkeysTab needs a real Controller.hotkeyConfig,
-        // BuildRadioTab touches System.IO.Ports, etc. -- not needed to cover this specific bug)
-        // -- targets exactly the method that crashed, with no window ever appearing.
-        try
-        {
-            var ctrl = new Controller();
-            ctrl.callCqOptionsButton = new System.Windows.Forms.Button { Visible = false };
-            ctrl.ignoreWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
-            ctrl.minSnrNumUpDown = new System.Windows.Forms.NumericUpDown { Minimum = -30, Maximum = 20, Value = -24 };
-            ctrl.removeOnWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
-            var wc = new WsjtxClient(ctrl, System.Net.IPAddress.Loopback, 2237, false, false, false, WsjtxClient.TxModes.LISTEN);
-
-            using (var dlg = new OptionsDlg(wc, ctrl))
-            {
-                dlg.BuildFrequenciesTab();
-                Check("BuildFrequenciesTab runs without throwing (the actual live-reported crash)", true, true);
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"  FAIL  BuildFrequenciesTab threw: {ex.GetType().Name}: {ex.Message}{Environment.NewLine}{ex.StackTrace}");
-            failed++;
-        }
-    }
+    // OptionsDlgConstructionTests (WinForms OptionsDlg reparenting-crash guard) removed during
+    // the WPF migration -- OptionsDlg.cs no longer exists (replaced by OptionsWindow.xaml, a
+    // much simpler WPF window not susceptible to the WinForms TabPage/Panel reparenting bug
+    // this test guarded against).
 
     // ── ClubLogProvider: prefixes/exceptions tables ─────────────────────────────
     // Found via live A6 field testing 2026-07-16: <entities><entity><prefix> is only
@@ -2044,25 +1983,25 @@ static class JimmyTests
               models.Count == new System.Collections.Generic.HashSet<int>(models.ConvertAll(m => m.Id)).Count, true);
     }
 
-    // ── OptionsDlg.ExtractRigModelId ─────────────────────────────────────────────
+    // ── RadioSettings.ExtractRigModelId ─────────────────────────────────────────────
     static void OptionsDlgExtractRigModelIdTests()
     {
-        Console.WriteLine("\n── OptionsDlg.ExtractRigModelId ──");
+        Console.WriteLine("\n── RadioSettings.ExtractRigModelId ──");
 
         CheckStr("extracts id from a normal catalog entry",
-              OptionsDlg.ExtractRigModelId("Kenwood TS-590SG (2037)"), "2037");
+              RadioSettings.ExtractRigModelId("Kenwood TS-590SG (2037)"), "2037");
         CheckStr("extracts id from a multi-word manufacturer entry",
-              OptionsDlg.ExtractRigModelId("Vertex Standard VX-1700 (1033)"), "1033");
+              RadioSettings.ExtractRigModelId("Vertex Standard VX-1700 (1033)"), "1033");
         CheckStr("extracts the raw value from the unlisted-fallback entry",
-              OptionsDlg.ExtractRigModelId("(currently configured: 9999)"), "9999");
+              RadioSettings.ExtractRigModelId("(currently configured: 9999)"), "9999");
         CheckStr("a bare number (old-style stored value) passes through unchanged",
-              OptionsDlg.ExtractRigModelId("2037"), "2037");
+              RadioSettings.ExtractRigModelId("2037"), "2037");
         CheckStr("unrecognized text passes through unchanged rather than disappearing",
-              OptionsDlg.ExtractRigModelId("garbage"), "garbage");
+              RadioSettings.ExtractRigModelId("garbage"), "garbage");
         CheckStr("null passes through as null (no throw)",
-              OptionsDlg.ExtractRigModelId(null), null);
+              RadioSettings.ExtractRigModelId(null), null);
         CheckStr("empty string passes through as empty",
-              OptionsDlg.ExtractRigModelId(""), "");
+              RadioSettings.ExtractRigModelId(""), "");
     }
 
     // ── TqslUploadClient.ParseFinalStatus ────────────────────────────────────────
@@ -4329,10 +4268,6 @@ static class JimmyTests
         Console.WriteLine("\n── Clock-sync notification (ClockOutOfSync / ClockSynced) ──");
 
         var ctrl = new Controller();
-        ctrl.callCqOptionsButton = new System.Windows.Forms.Button { Visible = false };
-        ctrl.ignoreWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
-        ctrl.minSnrNumUpDown = new System.Windows.Forms.NumericUpDown { Minimum = -30, Maximum = 20, Value = -24 };
-        ctrl.removeOnWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
         var wc = new WsjtxClient(ctrl, System.Net.IPAddress.Loopback, 2237, false, false, false, WsjtxClient.TxModes.LISTEN);
         ctrl.anyMsgRadioButton.Checked = true;
         ctrl.replyDxCheckBox.Checked = true;
@@ -4497,10 +4432,6 @@ static class JimmyTests
         Console.WriteLine("\n── Clock-sync: Direct-path reconnect / mode-switch state hygiene ──");
 
         var ctrl = new Controller();
-        ctrl.callCqOptionsButton = new System.Windows.Forms.Button { Visible = false };
-        ctrl.ignoreWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
-        ctrl.minSnrNumUpDown = new System.Windows.Forms.NumericUpDown { Minimum = -30, Maximum = 20, Value = -24 };
-        ctrl.removeOnWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
         var wc = new WsjtxClient(ctrl, System.Net.IPAddress.Loopback, 2237, false, false, false, WsjtxClient.TxModes.LISTEN);
         ctrl.anyMsgRadioButton.Checked = true;
         ctrl.replyDxCheckBox.Checked = true;
@@ -4584,10 +4515,6 @@ static class JimmyTests
         Console.WriteLine("\n── Direct-path Tx-hold safety net (consecTxCount/auto-freq-pause) ──");
 
         var ctrl = new Controller();
-        ctrl.callCqOptionsButton = new System.Windows.Forms.Button { Visible = false };
-        ctrl.ignoreWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
-        ctrl.minSnrNumUpDown = new System.Windows.Forms.NumericUpDown { Minimum = -30, Maximum = 20, Value = -24 };
-        ctrl.removeOnWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
         var wc = new WsjtxClient(ctrl, System.Net.IPAddress.Loopback, 2237, false, false, false, WsjtxClient.TxModes.LISTEN);
         ctrl.anyMsgRadioButton.Checked = true;
         ctrl.replyDxCheckBox.Checked = true;
@@ -4679,10 +4606,6 @@ static class JimmyTests
         Console.WriteLine("\n── Direct-path poll-failure connection-loss notification ──");
 
         var ctrl = new Controller();
-        ctrl.callCqOptionsButton = new System.Windows.Forms.Button { Visible = false };
-        ctrl.ignoreWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
-        ctrl.minSnrNumUpDown = new System.Windows.Forms.NumericUpDown { Minimum = -30, Maximum = 20, Value = -24 };
-        ctrl.removeOnWeakSnrCheckBox = new System.Windows.Forms.CheckBox();
         var wc = new WsjtxClient(ctrl, System.Net.IPAddress.Loopback, 2237, false, false, false, WsjtxClient.TxModes.LISTEN);
 
         var settings = new NotificationSettings();

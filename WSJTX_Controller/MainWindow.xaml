@@ -1,0 +1,121 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="WSJTX_Controller.MainWindow"
+        Title="Jimmy Test"
+        Width="760" Height="820" MinWidth="620" MinHeight="600">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Row 0: station / options -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,8">
+            <Button x:Name="OptionsButton" Content="_Options" Width="90" Height="26" DockPanel.Dock="Right"
+                    AutomationProperties.Name="Options" Click="OptionsButton_Click"/>
+            <TextBlock x:Name="StationText" VerticalAlignment="Center" FontWeight="Bold"
+                       AutomationProperties.Name="Station"/>
+        </DockPanel>
+
+        <!-- Row 1: operating mode -->
+        <GroupBox Grid.Row="1" Header="Operating mode" Margin="0,0,0,8">
+            <StackPanel Margin="6">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <RadioButton x:Name="ListenRadio" Content="_Listen for calls" GroupName="Mode" Margin="0,0,16,0"
+                                 AutomationProperties.Name="Listen for calls" Checked="ListenRadio_Checked"/>
+                    <RadioButton x:Name="CqRadio" Content="Call C_Q" GroupName="Mode"
+                                 AutomationProperties.Name="Call CQ" Checked="CqRadio_Checked"/>
+                </StackPanel>
+                <StackPanel x:Name="CqOptionsPanel" Margin="20,0,0,6">
+                    <CheckBox x:Name="NonDirCqCheck" Content="Call 'CQ' (non-directed)" Margin="0,2"
+                              AutomationProperties.Name="Call CQ non-directed" Checked="NonDirCqCheck_Changed" Unchecked="NonDirCqCheck_Changed"/>
+                    <CheckBox x:Name="CqDxCheck" Content="Call 'CQ DX'" Margin="0,2"
+                              AutomationProperties.Name="Call CQ DX" Checked="CqDxCheck_Changed" Unchecked="CqDxCheck_Changed"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,2">
+                        <CheckBox x:Name="DirCqCheck" Content="Call CQ directed to:" VerticalAlignment="Center" Margin="0,0,8,0"
+                                  AutomationProperties.Name="Call CQ directed to" Checked="DirCqCheck_Changed" Unchecked="DirCqCheck_Changed"/>
+                        <TextBox x:Name="DirectedBox" Width="160" AutomationProperties.Name="Directed CQ codes, separated by spaces"
+                                 TextChanged="DirectedBox_TextChanged"/>
+                    </StackPanel>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <CheckBox x:Name="HoldCheck" Content="_Hold" Margin="0,0,16,0" AutomationProperties.Name="Hold" Checked="HoldCheck_Changed" Unchecked="HoldCheck_Changed"/>
+                    <CheckBox x:Name="FreqCheck" Content="Use best Tx fre_quency" Margin="0,0,16,0" AutomationProperties.Name="Use best Tx frequency" Checked="FreqCheck_Changed" Unchecked="FreqCheck_Changed"/>
+                    <TextBlock Text="Band:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                    <ComboBox x:Name="BandCombo" Width="90" AutomationProperties.Name="Band" SelectionChanged="BandCombo_SelectionChanged">
+                        <ComboBoxItem Content="Current"/>
+                        <ComboBoxItem Content="New on band"/>
+                    </ComboBox>
+                    <TextBlock Text="Period:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+                    <ComboBox x:Name="PeriodCombo" Width="90" AutomationProperties.Name="Transmit period" SelectionChanged="PeriodCombo_SelectionChanged">
+                        <ComboBoxItem Content="Even"/>
+                        <ComboBoxItem Content="Odd"/>
+                        <ComboBoxItem Content="Any"/>
+                    </ComboBox>
+                    <TextBlock x:Name="RepeatLabel" Text="repeated Tx" VerticalAlignment="Center" Margin="12,0,4,0"/>
+                    <TextBox x:Name="TimeoutBox" Width="40" AutomationProperties.Name="Extended timeout, periods" TextChanged="TimeoutBox_TextChanged"/>
+                </StackPanel>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Row 2: auto-reply filters -->
+        <GroupBox Grid.Row="2" Header="Auto-reply filters and announcements" Margin="0,0,0,8">
+            <WrapPanel Margin="6">
+                <CheckBox x:Name="ReplyDxCheck" Content="Reply DX" Margin="0,2,16,2" AutomationProperties.Name="Reply to DX stations" Checked="ReplyDxCheck_Changed" Unchecked="ReplyDxCheck_Changed"/>
+                <CheckBox x:Name="ReplyLocalCheck" Content="Reply local" Margin="0,2,16,2" AutomationProperties.Name="Reply to local-continent stations" Checked="ReplyLocalCheck_Changed" Unchecked="ReplyLocalCheck_Changed"/>
+                <StackPanel Orientation="Horizontal" Margin="0,2,16,2">
+                    <CheckBox x:Name="ReplyDirCqCheck" Content="Reply to directed CQ:" VerticalAlignment="Center" Margin="0,0,6,0"
+                              AutomationProperties.Name="Reply to directed CQ" Checked="ReplyDirCqCheck_Changed" Unchecked="ReplyDirCqCheck_Changed"/>
+                    <TextBox x:Name="AlertBox" Width="120" AutomationProperties.Name="Directed CQ codes to reply to, separated by spaces" TextChanged="AlertBox_TextChanged"/>
+                </StackPanel>
+                <CheckBox x:Name="ReplyRR73Check" Content="Reply to RR73" Margin="0,2,16,2" AutomationProperties.Name="Reply to RR73" Checked="ReplyRR73Check_Changed" Unchecked="ReplyRR73Check_Changed"/>
+                <CheckBox x:Name="UseRR73Check" Content="Use RR73" Margin="0,2,16,2" AutomationProperties.Name="Use RR73" Checked="UseRR73Check_Changed" Unchecked="UseRR73Check_Changed"/>
+                <CheckBox x:Name="IgnoreNonDxCheck" Content="Ignore non-DX" Margin="0,2,16,2" AutomationProperties.Name="Ignore non-DX stations" Checked="IgnoreNonDxCheck_Changed" Unchecked="IgnoreNonDxCheck_Changed"/>
+                <CheckBox x:Name="LogEarlyCheck" Content="Log early" Margin="0,2,16,2" AutomationProperties.Name="Log early" Checked="LogEarlyCheck_Changed" Unchecked="LogEarlyCheck_Changed"/>
+                <CheckBox x:Name="OptimizeCheck" Content="Optimize Tx repeats" Margin="0,2,16,2" AutomationProperties.Name="Optimize transmit repeats" Checked="OptimizeCheck_Changed" Unchecked="OptimizeCheck_Changed"/>
+                <CheckBox x:Name="ShowUsStateCheck" Content="Show US state" Margin="0,2,16,2" AutomationProperties.Name="Show US state" Checked="ShowUsStateCheck_Changed" Unchecked="ShowUsStateCheck_Changed"/>
+                <CheckBox x:Name="MyCallCheck" Content="Announce: called by my call" Margin="0,2,16,2" AutomationProperties.Name="Announce when called by my call" Checked="MyCallCheck_Changed" Unchecked="MyCallCheck_Changed"/>
+                <CheckBox x:Name="LoggedCheck" Content="Announce: logged" Margin="0,2,16,2" AutomationProperties.Name="Announce when a QSO is logged" Checked="LoggedCheck_Changed" Unchecked="LoggedCheck_Changed"/>
+                <CheckBox x:Name="CallAddedCheck" Content="Announce: call added" Margin="0,2,16,2" AutomationProperties.Name="Announce when a station is added to the list" Checked="CallAddedCheck_Changed" Unchecked="CallAddedCheck_Changed"/>
+            </WrapPanel>
+        </GroupBox>
+
+        <!-- Row 3: except list -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,8">
+            <TextBlock Text="Never call/reply to:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBox x:Name="ExceptBox" Width="300" AutomationProperties.Name="Callsigns to never call or reply to, separated by spaces"
+                     TextChanged="ExceptBox_TextChanged"/>
+        </StackPanel>
+
+        <!-- Row 4: lists -->
+        <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <DockPanel Grid.Column="0">
+                <TextBlock x:Name="CallQueueHeader" Text="Available stations (0)" DockPanel.Dock="Top" FontWeight="Bold" Margin="0,0,0,4"/>
+                <ListBox x:Name="CallQueueList" AutomationProperties.Name="Available stations"
+                         PreviewKeyDown="CallQueueList_PreviewKeyDown"/>
+            </DockPanel>
+            <DockPanel Grid.Column="2">
+                <TextBlock x:Name="LoggedHeader" Text="Logged (0)" DockPanel.Dock="Top" FontWeight="Bold" Margin="0,0,0,4"/>
+                <ListBox x:Name="LoggedList" AutomationProperties.Name="Auto-logged QSOs"/>
+            </DockPanel>
+        </Grid>
+
+        <!-- Row 5: status -->
+        <StackPanel Grid.Row="5" Margin="0,8,0,0">
+            <TextBlock x:Name="StatusAnnounceText" Text="Ready." FontWeight="Bold" TextWrapping="Wrap"
+                       AutomationProperties.Name="Ready."
+                       AutomationProperties.LiveSetting="Assertive"/>
+            <TextBox x:Name="StatusReviewBox" Margin="0,4,0,0" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="60"
+                     VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Status detail"/>
+        </StackPanel>
+    </Grid>
+</Window>
