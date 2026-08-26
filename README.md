@@ -56,7 +56,7 @@ To build the installer: `wix build -o Release\Jimmy.msi Jimmy.wxs` (from `Setup_
 
 ## More Information
 
-- Discussion group: https://groups.io/g/tilly-beta/topics
+- Issues and discussion: https://github.com/Jimr9/Jimmy/issues
 
 ## Acknowledgements
 
