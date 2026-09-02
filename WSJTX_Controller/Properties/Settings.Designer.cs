@@ -241,18 +241,6 @@ namespace WSJTX_Controller.Properties {
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("False")]
-        public bool autoReplyCq {
-            get {
-                return ((bool)(this["autoReplyCq"]));
-            }
-            set {
-                this["autoReplyCq"] = value;
-            }
-        }
-        
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("False")]
         public bool alwaysOnTop {
             get {
                 return ((bool)(this["alwaysOnTop"]));
